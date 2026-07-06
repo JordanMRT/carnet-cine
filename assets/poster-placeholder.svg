@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300">
+  <rect width="200" height="300" fill="#23263a"/>
+  <text x="100" y="155" font-family="sans-serif" font-size="14" fill="#8a8ea3" text-anchor="middle">Pas d'affiche</text>
+</svg>
