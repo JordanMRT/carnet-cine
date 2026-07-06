@@ -265,7 +265,7 @@ function authTemplate() {
           </div>
 
           <div id="step-code" style="display:none;">
-            <input type="text" id="auth-code" placeholder="Code à 6 chiffres" maxlength="6" />
+            <input type="text" id="auth-code" placeholder="Code reçu par email" />
             <button type="submit" class="btn btn--primary">
               Valider le code
             </button>
@@ -320,18 +320,20 @@ function bindAuthEvents() {
       }
 
       // ---------------- STEP CODE ----------------
-      if (authStep === "code") {
-        const code = qs("#auth-code").value.trim();
+     if (authStep === "code") {
+  const code = qs("#auth-code").value.trim();
 
-        btn.textContent = "Vérification…";
+  btn.textContent = "Vérification…";
 
-        await DB.verifyOtp(pendingEmail, code);
+  await DB.verifyOtp(pendingEmail, code);
 
-        successEl.textContent = "Connexion réussie !";
+  successEl.textContent = "Connexion réussie !";
 
-        pendingEmail = "";
-        authStep = "email";
-      }
+  pendingEmail = "";
+  authStep = "email";
+
+  return;
+}
 
     } catch (err) {
       errorEl.textContent = err.message;
