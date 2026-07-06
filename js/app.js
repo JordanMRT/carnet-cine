@@ -243,6 +243,9 @@ async function runImport(e, kind) {
 }
 
 // ---------- AUTH ----------
+let pendingEmail = "";
+let authStep = "email"; // "email" | "code"
+
 function authTemplate() {
   return `
     <div class="auth-screen">
@@ -250,11 +253,26 @@ function authTemplate() {
         <div class="auth-ticket">🎟️</div>
         <h1>Carnet Ciné</h1>
         <p class="auth-sub">Ton journal de séries et de films, un ticket à la fois.</p>
+
         <form id="auth-form" class="auth-form">
-          <input type="email" id="auth-email" placeholder="Email" required />
-          <input type="text" id="auth-username" placeholder="Pseudo (optionnel, pour un nouveau compte)" />
-          <button type="submit" class="btn btn--primary">Recevoir le lien de connexion</button>
+
+          <div id="step-email">
+            <input type="email" id="auth-email" placeholder="Email" required />
+            <input type="text" id="auth-username" placeholder="Pseudo (optionnel)" />
+            <button type="submit" class="btn btn--primary">
+              Recevoir le code
+            </button>
+          </div>
+
+          <div id="step-code" style="display:none;">
+            <input type="text" id="auth-code" placeholder="Code à 6 chiffres" maxlength="6" />
+            <button type="submit" class="btn btn--primary">
+              Valider le code
+            </button>
+          </div>
+
         </form>
+
         <p id="auth-error" class="auth-error"></p>
         <p id="auth-success" class="auth-success"></p>
       </div>
@@ -266,23 +284,63 @@ function bindAuthEvents() {
   const form = qs("#auth-form");
   const errorEl = qs("#auth-error");
   const successEl = qs("#auth-success");
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const email = qs("#auth-email").value.trim();
-    const username = qs("#auth-username").value.trim();
+
     errorEl.textContent = "";
     successEl.textContent = "";
+
     const btn = form.querySelector("button");
     btn.disabled = true;
-    btn.textContent = "Envoi…";
+
     try {
-      await DB.sendMagicLink(email, username || undefined);
-      form.innerHTML = "";
-      successEl.textContent = `Lien envoyé à ${email} — ouvre ta boîte mail et clique dessus pour te connecter (pense à vérifier les spams).`;
+      // ---------------- STEP EMAIL ----------------
+      if (authStep === "email") {
+        const email = qs("#auth-email").value.trim();
+        const username = qs("#auth-username").value.trim();
+
+        pendingEmail = email;
+
+        btn.textContent = "Envoi…";
+
+        await DB.sendOtp(email, username || undefined);
+
+        // switch UI
+        authStep = "code";
+        qs("#step-email").style.display = "none";
+        qs("#step-code").style.display = "block";
+
+        btn.disabled = false;
+        btn.textContent = "Valider le code";
+
+        successEl.textContent = "Code envoyé ! Vérifie tes mails.";
+
+        return;
+      }
+
+      // ---------------- STEP CODE ----------------
+      if (authStep === "code") {
+        const code = qs("#auth-code").value.trim();
+
+        btn.textContent = "Vérification…";
+
+        await DB.verifyOtp(pendingEmail, code);
+
+        successEl.textContent = "Connexion réussie !";
+
+        pendingEmail = "";
+        authStep = "email";
+      }
+
     } catch (err) {
       errorEl.textContent = err.message;
+
       btn.disabled = false;
-      btn.textContent = "Recevoir le lien de connexion";
+      btn.textContent =
+        authStep === "email"
+          ? "Recevoir le code"
+          : "Valider le code";
     }
   });
 }

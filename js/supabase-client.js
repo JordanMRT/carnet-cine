@@ -9,16 +9,28 @@ const supabaseClient = window.supabase.createClient(
 
 const DB = {
   // ---------- AUTH (lien magique, sans mot de passe) ----------
-  async sendMagicLink(email, username) {
-    const { error } = await supabaseClient.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: window.location.origin + window.location.pathname,
-        ...(username ? { data: { username } } : {}),
-      },
-    });
-    if (error) throw error;
-  },
+  async sendOtp(email, username) {
+  const { error } = await supabaseClient.auth.signInWithOtp({
+    email,
+    options: {
+      shouldCreateUser: true,
+      data: username ? { username } : undefined,
+    },
+  });
+
+  if (error) throw error;
+},
+
+async verifyOtp(email, code) {
+  const { data, error } = await supabaseClient.auth.verifyOtp({
+    email,
+    token: code,
+    type: 'email',
+  });
+
+  if (error) throw error;
+  return data;
+},
 
   async updateUsername(username) {
     const { error } = await supabaseClient.auth.updateUser({ data: { username } });
