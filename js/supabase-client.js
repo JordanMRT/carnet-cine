@@ -9,28 +9,16 @@ const supabaseClient = window.supabase.createClient(
 
 const DB = {
   // ---------- AUTH (lien magique, sans mot de passe) ----------
-  async sendOtp(email, username) {
-  const { error } = await supabaseClient.auth.signInWithOtp({
-    email,
-    options: {
-      shouldCreateUser: true,
-      data: username ? { username } : undefined,
-    },
-  });
-
-  if (error) throw error;
-},
-
-async verifyOtp(email, code) {
-  const { data, error } = await supabaseClient.auth.verifyOtp({
-    email,
-    token: code,
-    type: 'email',
-  });
-
-  if (error) throw error;
-  return data;
-},
+  async sendMagicLink(email, username) {
+    const { error } = await supabaseClient.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: window.location.origin + window.location.pathname,
+        ...(username ? { data: { username } } : {}),
+      },
+    });
+    if (error) throw error;
+  },
 
   async updateUsername(username) {
     const { error } = await supabaseClient.auth.updateUser({ data: { username } });
@@ -53,13 +41,7 @@ async verifyOtp(email, code) {
 
   // ---------- LIBRARY (bibliothèque : à voir / en cours / terminé) ----------
   async getLibrary(userId) {
-    const { data, error } = await supabaseClient
-      .from("library")
-      .select("*")
-      .eq("user_id", userId)
-      .order("updated_at", { ascending: false });
-    if (error) throw error;
-    return data;
+    return this._getAllPages("library", userId, { column: "updated_at", ascending: false });
   },
 
   async updateDiaryEntryRuntime(id, runtimeMinutes) {
@@ -107,13 +89,31 @@ async upsertLibraryItems(items) {
 
   // ---------- DIARY (journal de visionnage) ----------
   async getDiary(userId) {
-    const { data, error } = await supabaseClient
-      .from("diary_entries")
-      .select("*")
-      .eq("user_id", userId)
-      .order("watched_date", { ascending: false });
-    if (error) throw error;
-    return data;
+    return this._getAllPages("diary_entries", userId, [
+      { column: "watched_date", ascending: false },
+      { column: "created_at", ascending: false },
+    ]);
+  },
+
+  // Récupère TOUTES les lignes en paginant par lots de 1000, car
+  // Supabase/PostgREST plafonne les réponses à 1000 lignes par défaut —
+  // sans ça, un gros historique importé se fait tronquer silencieusement
+  // et certaines entrées "disparaissent" au rechargement.
+  async _getAllPages(table, userId, orderSpec) {
+    const orders = Array.isArray(orderSpec) ? orderSpec : [orderSpec];
+    const pageSize = 1000;
+    let all = [];
+    let from = 0;
+    while (true) {
+      let query = supabaseClient.from(table).select("*").eq("user_id", userId);
+      orders.forEach((o) => (query = query.order(o.column, { ascending: o.ascending })));
+      const { data, error } = await query.range(from, from + pageSize - 1);
+      if (error) throw error;
+      all = all.concat(data);
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+    return all;
   },
 
   async addDiaryEntry(entry) {
@@ -127,6 +127,12 @@ async upsertLibraryItems(items) {
 
   async deleteDiaryEntry(id) {
     const { error } = await supabaseClient.from("diary_entries").delete().eq("id", id);
+    if (error) throw error;
+  },
+
+  async deleteDiaryEntries(ids) {
+    if (!ids.length) return;
+    const { error } = await supabaseClient.from("diary_entries").delete().in("id", ids);
     if (error) throw error;
   },
 

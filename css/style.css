@@ -176,16 +176,32 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
 /* ---------- LIBRARY ---------- */
 .library-group { margin-bottom: 2.4rem; }
 
+.library-filters { display: flex; gap: 0.6rem; margin-bottom: 1.6rem; }
+.filter-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  padding: 0.5em 1.1em;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.filter-btn:hover { color: var(--cream); border-color: var(--cream); }
+.filter-btn--active { background: var(--mustard); color: var(--ink); border-color: var(--mustard); }
+
 /* ---------- SHOW DETAIL ---------- */
 .show-detail-overlay {
-  background: linear-gradient(180deg, rgba(14, 15, 20, 0.55) 0%, var(--bg) 90%), var(--backdrop) center / cover no-repeat;
-    border-radius: var(--radius);
-    padding: 2rem;
-    display: flex;
-    gap: 1.6rem;
-    margin-bottom: 2rem;
-    flex-wrap: wrap;
-    align-items: center;
+  background:
+    linear-gradient(180deg, rgba(14,15,20,0.55) 0%, var(--bg) 90%),
+    var(--backdrop) center/cover no-repeat;
+  border-radius: var(--radius);
+  padding: 2rem;
+  display: flex;
+  gap: 1.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 2rem;
+  align-items: center;
 }
 .show-detail-poster { width: 180px; border-radius: 10px; box-shadow: var(--shadow); }
 .show-detail-info { flex: 1; min-width: 240px; }
@@ -229,6 +245,52 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
 .episode-num { font-family: var(--font-mono); color: var(--mustard); font-size: 0.85rem; }
 .episode-date { font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); }
 .episode-check { color: var(--sage); font-weight: 700; }
+
+.episode-row-actions { display: flex; align-items: center; gap: 0.5rem; }
+.episode-check-toggle {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--ink);
+  color: transparent;
+  cursor: pointer;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s ease;
+}
+.episode-check-toggle:hover { border-color: var(--sage); }
+.episode-check-toggle.is-watched { background: var(--sage); color: var(--ink); border-color: var(--sage); }
+.episode-rewatch-btn {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--ink);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  display: flex; align-items: center; justify-content: center;
+}
+.episode-rewatch-btn:hover { border-color: var(--mustard); color: var(--mustard); }
+.episode-rewatch-badge {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--mustard);
+  background: rgba(232, 163, 61, 0.12);
+  padding: 0.1em 0.5em;
+  border-radius: 999px;
+}
+.rewatch-badge {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--mustard);
+  background: rgba(232, 163, 61, 0.12);
+  padding: 0.3em 0.7em;
+  border-radius: 999px;
+  align-self: center;
+}
+
+.modal--confirm { max-width: 340px; }
+.modal-confirm-text { font-size: 0.95rem; line-height: 1.5; margin: 0.2rem 0 0.6rem; }
 
 /* ---------- PROGRESS BAR (fiche série + bibliothèque) ---------- */
 .show-progress { margin: 0.6rem 0 1rem; max-width: 320px; }
@@ -348,7 +410,7 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
   padding: .6em;
   text-align: center;
 }
-.stat-num { display: block; font-family: var(--font-display); font-size: 1.2rem; color: var(--mustard); }
+.stat-num { display: block; font-family: var(--font-display); font-size: 1.2rem; color: var(--mustard); text-transform: uppercase; }
 .stat-label { font-size: 0.7rem; color: var(--muted); }
 
 .stats-section { margin-bottom: 2.4rem; }
@@ -511,13 +573,25 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
   }
 
   .show-detail-poster{
-    width:auto;
+    width:160px;
     margin:0 auto;
   }
 
   .show-detail-actions{
     justify-content:center;
   }
+  .episode-row {
+    display: grid;
+    grid-template-columns: 60px 1fr auto auto;
+    gap: 1rem;
+    padding: 0.7em 1em;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    align-items: center;
+    grid-auto-flow: column;
+}
 
   .ticket{
     grid-template-columns:70px 1fr;

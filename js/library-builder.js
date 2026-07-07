@@ -80,9 +80,8 @@ const LibraryBuilder = {
           work.total_seasons = meta.total_seasons;
 
           if (work.total_episodes > 0) {
-            work.progress = Number(
-              ((work.watched_episodes / work.total_episodes) * 100).toFixed(1)
-            );
+            const cappedWatched = Math.min(work.watched_episodes, work.total_episodes);
+            work.progress = Number(((cappedWatched / work.total_episodes) * 100).toFixed(1));
             work.status =
               work.watched_episodes >= work.total_episodes ? "completed" : "watching";
           }

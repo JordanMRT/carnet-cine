@@ -129,6 +129,26 @@ puisses vérifier ou corriger à la main dans Supabase si besoin.
 
 ## Nouveautés de cette version
 
+**Coche rapide** — chaque épisode a maintenant un rond à droite : un
+clic le marque vu (ou non vu) instantanément, sans ouvrir de modale, et
+met à jour la bibliothèque/progress bar dans la foulée. Cliquer sur le
+reste de la ligne ouvre toujours la modale détaillée (note, date
+précise). Décocher un épisode supprime toutes ses entrées, y compris
+d'éventuels revisionnages.
+
+**Revisionnages (rewatch)** — un bouton ↻ apparaît une fois l'épisode
+vu : chaque clic ajoute un nouveau visionnage, affiché en badge "×2",
+"×3"… Même logique pour les films sur leur fiche (bouton qui devient
+"Revoir" une fois vu une première fois). Les temps de visionnage dans
+les stats comptent bien chaque revisionnage (donc un épisode vu 3 fois
+compte 3 fois sa durée).
+
+**Confirmation à la complétion** — passer une série sur "Terminé"
+propose de marquer tous les épisodes de toutes les saisons comme vus
+d'un coup (utile pour une série que tu as déjà vue avant d'utiliser
+l'appli). Si tu réponds non, seul le statut change.
+
+
 **Navigation saisons/épisodes complète** — la fiche série propose
 maintenant un sélecteur de saison (toutes les saisons, plus seulement
 la 1ère). Les épisodes déjà enregistrés dans ton journal sont marqués
@@ -153,6 +173,16 @@ et **films** séparément.
 pourcentage de chaque genre plutôt qu'un chiffre brut, et résout les
 noms de genre correctement (avant, les entrées importées affichaient
 parfois un id numérique à la place du nom).
+
+## À venir (noté, pas encore implémenté)
+
+**Un seul ticket par film/série complet** — actuellement, chaque
+épisode génère son propre ticket dans le journal (nécessaire pour la
+coche rapide et la progress bar). L'idée d'un ticket unique par
+visionnage complet (1 film vu = 1 ticket, 1 série terminée = 1 ticket)
+plutôt qu'un ticket par épisode est un changement de logique
+d'affichage assez important — noté pour un prochain chantier, pas
+traité dans cette passe de correctifs.
 
 ## Ce qui n'est PAS inclus / à faire toi-même
 

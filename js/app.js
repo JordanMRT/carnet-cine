@@ -154,10 +154,10 @@ function shellTemplate() {
 
 <nav class="mobile-nav">
 
-     <!--<a href="#/diary" class="nav-link" data-view="diary">
+    <a href="#/diary" class="nav-link" data-view="diary">
         <i data-lucide="ticket"></i>
         <span>Journal</span>
-    </a>-->
+    </a>
 
     <a href="#/search" class="nav-link" data-view="search">
         <i data-lucide="search"></i>
@@ -400,6 +400,10 @@ function emptyState(msg) {
   return `<p class="empty-state">${escapeHtml(msg)}</p>`;
 }
 
+// Mémorise la dernière saison consultée par série, pour ne pas revenir
+// à la saison 1 après chaque coche.
+const lastViewedSeason = {};
+
 // ---------- SHOW DETAIL ----------
 async function renderShowDetail(param) {
   const [type, id] = param.split("-");
@@ -418,9 +422,23 @@ async function renderShowDetail(param) {
       type === "tv" && inLibrary && inLibrary.total_episodes > 0
         ? `<div class="show-progress">
              <div class="progress-bar"><div class="progress-bar-fill" style="width:${inLibrary.progress}%"></div></div>
-             <span class="progress-label">${inLibrary.watched_episodes}/${inLibrary.total_episodes} épisodes vus — ${inLibrary.progress}%</span>
+             <span class="progress-label">${Math.min(inLibrary.watched_episodes, inLibrary.total_episodes)}/${inLibrary.total_episodes} épisodes vus — ${inLibrary.progress}%</span>
            </div>`
         : "";
+
+    // Films : bouton de log qui devient "revoir" une fois déjà vu, + badge ×N
+    const movieEntries =
+      type === "movie" ? App.diary.filter((e) => String(e.tmdb_id) === String(id) && e.media_type === "movie") : [];
+    const movieWatchCount = movieEntries.length;
+    const movieActionsHTML =
+      type === "movie"
+        ? `
+        <button id="quick-log-btn" class="btn btn--accent">
+          ${movieWatchCount > 0 ? "Revoir (nouveau visionnage)" : "Marquer comme vu"}
+        </button>
+        ${movieWatchCount > 0 ? `<span class="rewatch-badge">×${movieWatchCount}</span>` : ""}
+        <button id="log-btn" class="btn btn--ghost">Détails (note, date…)</button>`
+        : `<button id="log-btn" class="btn btn--accent">Enregistrer un visionnage</button>`;
 
     view.innerHTML = `
       <div class="show-detail" style="--backdrop:url('${TMDB.backdropUrl(data.backdrop_path)}')">
@@ -439,7 +457,7 @@ async function renderShowDetail(param) {
                 <option value="completed" ${inLibrary?.status === "completed" ? "selected" : ""}>Terminé</option>
                 <option value="dropped" ${inLibrary?.status === "dropped" ? "selected" : ""}>Abandonné</option>
               </select>
-              <button id="log-btn" class="btn btn--accent">Enregistrer un visionnage</button>
+              ${movieActionsHTML}
             </div>
           </div>
         </div>
@@ -450,15 +468,37 @@ async function renderShowDetail(param) {
     qs("#status-select").addEventListener("change", async (e) => {
       const status = e.target.value;
       if (!status) return;
-      await DB.upsertLibraryItem({
-        user_id: App.session.user.id,
-        tmdb_id: Number(id),
-        media_type: type,
-        title,
-        poster_path: data.poster_path,
-        status,
-        updated_at: new Date().toISOString(),
-      });
+
+      if (status === "completed" && type === "tv") {
+        const markAll = await showConfirm(
+          "Marquer tous les épisodes de cette série comme vus ?",
+          { confirmLabel: "Oui, tout marquer", cancelLabel: "Non, juste le statut" }
+        );
+        if (markAll) {
+          toast("Marquage de tous les épisodes en cours…");
+          await markAllEpisodesWatched(id, data.number_of_seasons, title, data.poster_path, genreIds);
+        } else {
+          await DB.upsertLibraryItem({
+            user_id: App.session.user.id,
+            tmdb_id: Number(id),
+            media_type: type,
+            title,
+            poster_path: data.poster_path,
+            status,
+            updated_at: new Date().toISOString(),
+          });
+        }
+      } else {
+        await DB.upsertLibraryItem({
+          user_id: App.session.user.id,
+          tmdb_id: Number(id),
+          media_type: type,
+          title,
+          poster_path: data.poster_path,
+          status,
+          updated_at: new Date().toISOString(),
+        });
+      }
       toast("Bibliothèque mise à jour.", "success");
       await App.refresh();
     });
@@ -467,12 +507,83 @@ async function renderShowDetail(param) {
       openLogModal({ tmdb_id: Number(id), media_type: type, title, poster_path: data.poster_path, genres: genreIds })
     );
 
+    if (type === "movie") {
+      qs("#quick-log-btn").addEventListener("click", async () => {
+        try {
+          await DB.addDiaryEntry({
+            user_id: App.session.user.id,
+            tmdb_id: Number(id),
+            media_type: "movie",
+            title,
+            poster_path: data.poster_path,
+            season: null,
+            episode: null,
+            watched_date: new Date().toISOString().slice(0, 10),
+            rating: null,
+            rewatch: movieWatchCount > 0,
+            note: null,
+            genres: genreIds,
+            runtime_minutes: data.runtime || null,
+          });
+          toast(movieWatchCount > 0 ? "Nouveau visionnage ajouté 🎟️" : "Marqué comme vu 🎟️", "success");
+          await App.refresh();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+    }
+
     if (type === "tv") {
-      await renderSeasonsInto(qs("#seasons-container"), id, data.number_of_seasons, title, data.poster_path, genreIds);
+      const initialSeason = lastViewedSeason[id] || 1;
+      await renderSeasonsInto(qs("#seasons-container"), id, data.number_of_seasons, title, data.poster_path, genreIds, initialSeason);
     }
   } catch (err) {
     view.innerHTML = emptyState("Erreur de chargement — vérifie ta clé TMDB.");
   }
+}
+
+// Marque tous les épisodes d'une série comme vus (toutes saisons), en
+// ne créant des entrées que pour ceux qui ne sont pas déjà loggués.
+async function markAllEpisodesWatched(tvId, numberOfSeasons, title, posterPath, genreIds) {
+  const watchedKeys = new Set(
+    App.diary
+      .filter((e) => String(e.tmdb_id) === String(tvId) && e.media_type === "tv")
+      .map((e) => `${e.season}x${e.episode}`)
+  );
+  const today = new Date().toISOString().slice(0, 10);
+  const toInsert = [];
+
+  for (let s = 1; s <= numberOfSeasons; s++) {
+    try {
+      const season = await TMDB.getSeason(tvId, s);
+      (season.episodes || []).forEach((ep) => {
+        const key = `${s}x${ep.episode_number}`;
+        if (!watchedKeys.has(key)) {
+          toInsert.push({
+            user_id: App.session.user.id,
+            tmdb_id: Number(tvId),
+            media_type: "tv",
+            title,
+            poster_path: posterPath,
+            season: s,
+            episode: ep.episode_number,
+            watched_date: today,
+            rating: null,
+            rewatch: false,
+            note: null,
+            genres: genreIds,
+            runtime_minutes: ep.runtime || null,
+          });
+        }
+      });
+      await new Promise((r) => setTimeout(r, 60));
+    } catch {
+      // saison indisponible sur TMDB, on continue avec les autres
+    }
+  }
+
+  if (toInsert.length) await DB.bulkInsertDiary(toInsert);
+  toast(`${toInsert.length} épisode(s) marqué(s) comme vus.`, "success");
 }
 
 async function renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, selectedSeason = 1) {
@@ -480,26 +591,34 @@ async function renderSeasonsInto(container, tvId, numberOfSeasons, title, poster
     container.innerHTML = "";
     return;
   }
+  lastViewedSeason[tvId] = selectedSeason;
   container.innerHTML = `<p class="loading">Chargement de la saison…</p>`;
   try {
     const season = await TMDB.getSeason(tvId, selectedSeason);
-    const watchedKeys = new Set(
-      App.diary
-        .filter((e) => String(e.tmdb_id) === String(tvId) && e.media_type === "tv")
-        .map((e) => `${e.season}x${e.episode}`)
-    );
+    const watchCounts = {};
+    App.diary
+      .filter((e) => String(e.tmdb_id) === String(tvId) && e.media_type === "tv" && e.season === selectedSeason)
+      .forEach((e) => {
+        watchCounts[e.episode] = (watchCounts[e.episode] || 0) + 1;
+      });
+
     const seasonOptions = Array.from({ length: numberOfSeasons }, (_, i) => i + 1)
       .map((n) => `<option value="${n}" ${n === selectedSeason ? "selected" : ""}>Saison ${n}</option>`)
       .join("");
     const rows = (season.episodes || [])
       .map((ep) => {
-        const watched = watchedKeys.has(`${selectedSeason}x${ep.episode_number}`);
+        const count = watchCounts[ep.episode_number] || 0;
+        const watched = count > 0;
         return `
         <div class="episode-row ${watched ? "episode-row--watched" : ""}" data-season="${selectedSeason}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}">
           <span class="episode-num">S${selectedSeason}E${ep.episode_number}</span>
           <span class="episode-title">${escapeHtml(ep.name)}</span>
           <span class="episode-date">${ep.air_date ? formatDate(ep.air_date) : ""}</span>
-          ${watched ? '<span class="episode-check" title="Déjà vu">✓</span>' : ""}
+          <div class="episode-row-actions">
+            ${count > 1 ? `<span class="episode-rewatch-badge">×${count}</span>` : ""}
+            ${watched ? `<button class="episode-rewatch-btn" title="Ajouter un revisionnage" data-season="${selectedSeason}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}">↻</button>` : ""}
+            <button class="episode-check-toggle ${watched ? "is-watched" : ""}" title="${watched ? "Marquer comme non vu" : "Marquer comme vu"}" data-season="${selectedSeason}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}">${watched ? "✓" : ""}</button>
+          </div>
         </div>`;
       })
       .join("");
@@ -515,6 +634,36 @@ async function renderSeasonsInto(container, tvId, numberOfSeasons, title, poster
     qs("#season-select", container).addEventListener("change", (e) => {
       renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, Number(e.target.value));
     });
+
+    qsa(".episode-check-toggle", container).forEach((btn) =>
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await toggleEpisodeWatched({
+          tmdb_id: Number(tvId),
+          title,
+          poster_path: posterPath,
+          genres: genreIds,
+          season: Number(btn.dataset.season),
+          episode: Number(btn.dataset.episode),
+          runtime_minutes: Number(btn.dataset.runtime) || null,
+        });
+      })
+    );
+
+    qsa(".episode-rewatch-btn", container).forEach((btn) =>
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await addEpisodeRewatch({
+          tmdb_id: Number(tvId),
+          title,
+          poster_path: posterPath,
+          genres: genreIds,
+          season: Number(btn.dataset.season),
+          episode: Number(btn.dataset.episode),
+          runtime_minutes: Number(btn.dataset.runtime) || null,
+        });
+      })
+    );
 
     qsa(".episode-row", container).forEach((row) =>
       row.addEventListener("click", () =>
@@ -533,6 +682,94 @@ async function renderSeasonsInto(container, tvId, numberOfSeasons, title, poster
   } catch {
     container.innerHTML = emptyState("Impossible de charger les épisodes de cette saison.");
   }
+}
+
+// Coche rapide : ajoute une entrée si l'épisode n'est pas vu, ou retire
+// TOUTES les entrées (y compris les revisionnages) si on décoche.
+async function toggleEpisodeWatched(ctx) {
+  const existing = App.diary.filter(
+    (e) =>
+      String(e.tmdb_id) === String(ctx.tmdb_id) &&
+      e.media_type === "tv" &&
+      e.season === ctx.season &&
+      e.episode === ctx.episode
+  );
+  try {
+    if (existing.length === 0) {
+      await DB.addDiaryEntry({
+        user_id: App.session.user.id,
+        tmdb_id: ctx.tmdb_id,
+        media_type: "tv",
+        title: ctx.title,
+        poster_path: ctx.poster_path,
+        season: ctx.season,
+        episode: ctx.episode,
+        watched_date: new Date().toISOString().slice(0, 10),
+        rating: null,
+        rewatch: false,
+        note: null,
+        genres: ctx.genres || [],
+        runtime_minutes: ctx.runtime_minutes,
+      });
+      toast("Épisode marqué comme vu 🎟️", "success");
+    } else {
+      await DB.deleteDiaryEntries(existing.map((e) => e.id));
+      toast("Épisode marqué comme non vu.", "success");
+    }
+    await App.refresh();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+// Ajoute un revisionnage (rewatch) pour un épisode déjà vu.
+async function addEpisodeRewatch(ctx) {
+  try {
+    await DB.addDiaryEntry({
+      user_id: App.session.user.id,
+      tmdb_id: ctx.tmdb_id,
+      media_type: "tv",
+      title: ctx.title,
+      poster_path: ctx.poster_path,
+      season: ctx.season,
+      episode: ctx.episode,
+      watched_date: new Date().toISOString().slice(0, 10),
+      rating: null,
+      rewatch: true,
+      note: null,
+      genres: ctx.genres || [],
+      runtime_minutes: ctx.runtime_minutes,
+    });
+    toast("Revisionnage ajouté 🎟️", "success");
+    await App.refresh();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+// ---------- CONFIRM MODAL (générique) ----------
+function showConfirm(message, { confirmLabel = "Oui", cancelLabel = "Non" } = {}) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal modal--confirm">
+        <p class="modal-confirm-text">${escapeHtml(message)}</p>
+        <div class="modal-actions">
+          <button id="confirm-no" class="btn btn--ghost">${escapeHtml(cancelLabel)}</button>
+          <button id="confirm-yes" class="btn btn--accent">${escapeHtml(confirmLabel)}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const close = (result) => {
+      overlay.remove();
+      resolve(result);
+    };
+    overlay.querySelector("#confirm-no").addEventListener("click", () => close(false));
+    overlay.querySelector("#confirm-yes").addEventListener("click", () => close(true));
+    overlay.addEventListener("click", (e) => e.target === overlay && close(false));
+  });
 }
 
 // ---------- LOG MODAL (ticket de visionnage) ----------
@@ -587,13 +824,26 @@ function openLogModal(ctx) {
 }
 
 // ---------- LIBRARY ----------
+let libraryFilter = "all"; // "all" | "movie" | "tv"
+
 function libraryTemplate(library) {
+  const filterBar = `
+    <div class="library-filters">
+      <button class="filter-btn ${libraryFilter === "all" ? "filter-btn--active" : ""}" data-filter="all">Tout</button>
+      <button class="filter-btn ${libraryFilter === "movie" ? "filter-btn--active" : ""}" data-filter="movie">Films</button>
+      <button class="filter-btn ${libraryFilter === "tv" ? "filter-btn--active" : ""}" data-filter="tv">Séries</button>
+    </div>`;
+
+  const filtered = libraryFilter === "all" ? library : library.filter((l) => l.media_type === libraryFilter);
+
   if (!library.length) return emptyState("Ta bibliothèque est vide pour l'instant — va chercher une série ou un film.");
+  if (!filtered.length) return filterBar + emptyState("Rien dans cette catégorie pour l'instant.");
+
   const groups = ["watching", "watchlist", "completed", "dropped"];
   const labels = { watching: "En cours", watchlist: "À voir", completed: "Terminé", dropped: "Abandonné" };
-  return groups
+  const groupsHTML = groups
     .map((g) => {
-      const items = library.filter((l) => l.status === g);
+      const items = filtered.filter((l) => l.status === g);
       if (!items.length) return "";
       return `
         <section class="library-group">
@@ -602,12 +852,13 @@ function libraryTemplate(library) {
             ${items
               .map((l) => {
                 const showProgress = l.media_type === "tv" && l.total_episodes > 0;
+                const clampedWatched = showProgress ? Math.min(l.watched_episodes, l.total_episodes) : 0;
                 return `
               <div class="poster-card" data-id="${l.tmdb_id}" data-type="${l.media_type}" data-lib-id="${l.id}">
                 <img src="${TMDB.posterUrl(l.poster_path)}" alt="${escapeHtml(l.title)}" loading="lazy" />
                 ${
                   showProgress
-                    ? `<div class="poster-card-progress" title="${l.watched_episodes}/${l.total_episodes} épisodes">
+                    ? `<div class="poster-card-progress" title="${clampedWatched}/${l.total_episodes} épisodes">
                         <div class="poster-card-progress-fill" style="width:${l.progress}%"></div>
                       </div>`
                     : ""
@@ -616,7 +867,7 @@ function libraryTemplate(library) {
                   <span class="poster-card-title">${escapeHtml(l.title)}</span>
                   <button class="remove-btn" data-lib-id="${l.id}" title="Retirer">✕</button>
                 </div>
-                ${showProgress ? `<span class="poster-card-progress-label">${l.watched_episodes}/${l.total_episodes} épisodes</span>` : ""}
+                ${showProgress ? `<span class="poster-card-progress-label">${clampedWatched}/${l.total_episodes} épisodes</span>` : ""}
               </div>`;
               })
               .join("")}
@@ -624,10 +875,18 @@ function libraryTemplate(library) {
         </section>`;
     })
     .join("");
+
+  return filterBar + groupsHTML;
 }
 
 function bindLibraryEvents() {
   qs("#view").addEventListener("click", async (e) => {
+    const filterBtn = e.target.closest(".filter-btn");
+    if (filterBtn) {
+      libraryFilter = filterBtn.dataset.filter;
+      App.route();
+      return;
+    }
     if (e.target.classList.contains("remove-btn")) {
       e.stopPropagation();
       await DB.removeLibraryItem(e.target.dataset.libId);
@@ -687,11 +946,10 @@ function statsTemplate(diary, library) {
   return `
     <div class="stats-view">
       <div class="stats-cards">
-        
-        <div class="stat-card"><span class="stat-num">${s.episodesCount}</span><span class="stat-label">Épisodes regardés</span></div>
-        <div class="stat-card"><span class="stat-num">${s.moviesCount}</span><span class="stat-label">Films regardés</span></div>
-        <div class="stat-card"><span class="stat-num">${formatMinutes(s.totalTvMinutes)}</span><span class="stat-label">passées devant des séries</span></div>
-        <div class="stat-card"><span class="stat-num">${formatMinutes(s.totalMovieMinutes)}</span><span class="stat-label">passsées devant des films</span></div>
+        <div class="stat-card"><span class="stat-num">${s.episodesCount}</span><span class="stat-label">Épisodes</span></div>
+        <div class="stat-card"><span class="stat-num">${s.moviesCount}</span><span class="stat-label">Films</span></div>
+        <div class="stat-card"><span class="stat-num">${formatWatchDuration(s.totalTvMinutes)}</span><span class="stat-label">passés devant des séries</span></div>
+        <div class="stat-card"><span class="stat-num">${formatWatchDuration(s.totalMovieMinutes)}</span><span class="stat-label">passés devant des films</span></div>
         <div class="stat-card"><span class="stat-num">${s.avgRating ? s.avgRating.toFixed(1) : "—"}</span><span class="stat-label">Note moyenne</span></div>
         <div class="stat-card"><span class="stat-num">${s.showsCompleted}</span><span class="stat-label">Séries terminées</span></div>
       </div>

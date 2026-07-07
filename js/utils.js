@@ -27,6 +27,25 @@ function formatMinutes(mins) {
   return `${h} h ${m > 0 ? m + " min" : ""}`.trim();
 }
 
+// Convertit un temps de visionnage en une échelle lisible : mois > jours > heures.
+// Repères : 1 jour = 24h, 1 mois ≈ 30 jours (720h).
+function formatWatchDuration(mins) {
+  if (!mins) return "0 h";
+  const totalHours = mins / 60;
+
+  if (totalHours >= 720) {
+    const months = Math.floor(totalHours / 720);
+    const remDays = Math.floor((totalHours % 720) / 24);
+    return `${months} mois${remDays > 0 ? ` ${remDays} j` : ""}`;
+  }
+  if (totalHours >= 24) {
+    const days = Math.floor(totalHours / 24);
+    const remHours = Math.floor(totalHours % 24);
+    return `${days} j${remHours > 0 ? ` ${remHours} h` : ""}`;
+  }
+  return formatMinutes(mins);
+}
+
 function debounce(fn, delay = 350) {
   let timer;
   return (...args) => {

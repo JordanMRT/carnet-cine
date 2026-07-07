@@ -77,16 +77,19 @@ alter table library enable row level security;
 alter table diary_entries enable row level security;
 alter table badges enable row level security;
 
+drop policy if exists "Users manage their own library" on library;
 create policy "Users manage their own library"
   on library for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
+drop policy if exists "Users manage their own diary" on diary_entries;
 create policy "Users manage their own diary"
   on diary_entries for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
+drop policy if exists "Users manage their own badges" on badges;
 create policy "Users manage their own badges"
   on badges for all
   using (auth.uid() = user_id)
