@@ -154,10 +154,10 @@ function shellTemplate() {
 
 <nav class="mobile-nav">
 
-    <a href="#/diary" class="nav-link" data-view="diary">
+    <!-- <a href="#/diary" class="nav-link" data-view="diary">
         <i data-lucide="ticket"></i>
         <span>Journal</span>
-    </a>
+    </a> -->
 
     <a href="#/search" class="nav-link" data-view="search">
         <i data-lucide="search"></i>
