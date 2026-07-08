@@ -1,7 +1,10 @@
 // ============================================
 // LIBRARY BUILDER
 // Reconstruit automatiquement la bibliothèque (statut, progression,
-// nombre d'épisodes restants) à partir du journal de visionnage.
+// nombre d'épisodes restants, note moyenne, dernière note) à partir
+// du journal de visionnage. C'est cette table qui alimente le Journal
+// (1 ticket par film vu / série terminée), beaucoup plus légère que de
+// parcourir tout le journal épisode par épisode à chaque affichage.
 // ============================================
 
 const LibraryBuilder = {
@@ -47,6 +50,11 @@ const LibraryBuilder = {
           total_seasons: 0,
           progress: 0,
           status: "watching",
+          ratingSum: 0,
+          ratingCount: 0,
+          lastNote: null,
+          lastNoteDate: null,
+          lastNoteCreatedAt: null,
         });
       }
 
@@ -64,6 +72,24 @@ const LibraryBuilder = {
 
       if (entry.watched_date < work.first_watched_date) work.first_watched_date = entry.watched_date;
       if (entry.watched_date > work.last_watched_date) work.last_watched_date = entry.watched_date;
+
+      if (entry.rating != null) {
+        work.ratingSum += entry.rating;
+        work.ratingCount++;
+      }
+
+      if (entry.note) {
+        const isNewer =
+          !work.lastNoteDate ||
+          entry.watched_date > work.lastNoteDate ||
+          (entry.watched_date === work.lastNoteDate &&
+            (entry.created_at || "") > (work.lastNoteCreatedAt || ""));
+        if (isNewer) {
+          work.lastNote = entry.note;
+          work.lastNoteDate = entry.watched_date;
+          work.lastNoteCreatedAt = entry.created_at || null;
+        }
+      }
     }
 
     const library = [];
@@ -108,6 +134,8 @@ const LibraryBuilder = {
         total_seasons: work.total_seasons,
         progress: work.progress,
         tmdb_last_sync: new Date().toISOString(),
+        avg_rating: work.ratingCount > 0 ? Number((work.ratingSum / work.ratingCount).toFixed(1)) : null,
+        last_note: work.lastNote,
       });
     }
 

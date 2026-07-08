@@ -129,6 +129,35 @@ puisses vérifier ou corriger à la main dans Supabase si besoin.
 
 ## Nouveautés de cette version
 
+**Journal allégé — 1 ticket par visionnage complet** — le Journal
+n'affiche plus un ticket par épisode, mais un seul ticket par film vu
+et par série **entièrement terminée** (tous les épisodes vus). Un show
+en cours n'apparaît pas encore dans le Journal — il y arrive dès que
+son dernier épisode est coché. Techniquement, la vue s'appuie
+maintenant sur la bibliothèque (une ligne par film/série) plutôt que
+sur le journal détaillé (une ligne par épisode), ce qui règle le
+ralentissement que tu avais avec un gros historique importé. Les notes
+affichées sur le ticket sont la note moyenne et le dernier commentaire
+laissé sur ce film/série ; un rewatch de film affiche un badge "×N".
+Cliquer sur un ticket ouvre sa fiche détaillée. Le supprimer efface
+aussi tous les visionnages associés (demande confirmation avant).
+
+**Partage en image** — chaque ticket a un bouton discret "Partager" qui
+génère une image PNG du ticket (affiche, titre, date, note, code-barres
+décoratif) et propose le partage natif du téléphone (réseaux sociaux,
+messages…) si disponible, ou un téléchargement direct sinon.
+
+## À venir (noté, pas encore implémenté)
+
+**Fiches détails enrichies** — ajout du casting, de vignettes par
+épisode, et conservation des titres originaux (non traduits) sur les
+fiches film/série.
+
+**Calendrier "à venir"** — un calendrier listant les films de ta
+watchlist pas encore sortis et les prochains épisodes des séries que tu
+suis.
+
+
 **Coche rapide** — chaque épisode a maintenant un rond à droite : un
 clic le marque vu (ou non vu) instantanément, sans ouvrir de modale, et
 met à jour la bibliothèque/progress bar dans la foulée. Cliquer sur le
@@ -173,16 +202,6 @@ et **films** séparément.
 pourcentage de chaque genre plutôt qu'un chiffre brut, et résout les
 noms de genre correctement (avant, les entrées importées affichaient
 parfois un id numérique à la place du nom).
-
-## À venir (noté, pas encore implémenté)
-
-**Un seul ticket par film/série complet** — actuellement, chaque
-épisode génère son propre ticket dans le journal (nécessaire pour la
-coche rapide et la progress bar). L'idée d'un ticket unique par
-visionnage complet (1 film vu = 1 ticket, 1 série terminée = 1 ticket)
-plutôt qu'un ticket par épisode est un changement de logique
-d'affichage assez important — noté pour un prochain chantier, pas
-traité dans cette passe de correctifs.
 
 ## Ce qui n'est PAS inclus / à faire toi-même
 

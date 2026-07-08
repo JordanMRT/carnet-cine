@@ -21,6 +21,8 @@ create table if not exists library (
   total_seasons int default 0,
   progress numeric(5,1) default 0,
   tmdb_last_sync timestamptz,
+  avg_rating numeric(3,1),
+  last_note text,
   unique (user_id, tmdb_id, media_type)
 );
 
@@ -35,6 +37,8 @@ alter table library add column if not exists total_episodes int default 0;
 alter table library add column if not exists total_seasons int default 0;
 alter table library add column if not exists progress numeric(5,1) default 0;
 alter table library add column if not exists tmdb_last_sync timestamptz;
+alter table library add column if not exists avg_rating numeric(3,1);
+alter table library add column if not exists last_note text;
 
 -- Journal de visionnage (chaque "ticket")
 create table if not exists diary_entries (

@@ -148,6 +148,16 @@ async upsertLibraryItems(items) {
     if (error) throw error;
   },
 
+  async deleteAllEntriesForWork(userId, tmdbId, mediaType) {
+    const { error } = await supabaseClient
+      .from("diary_entries")
+      .delete()
+      .eq("user_id", userId)
+      .eq("tmdb_id", tmdbId)
+      .eq("media_type", mediaType);
+    if (error) throw error;
+  },
+
   async bulkInsertDiary(entries) {
     // Insère par lots de 500 pour éviter les limites de payload
     const chunks = [];

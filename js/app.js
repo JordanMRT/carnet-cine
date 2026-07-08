@@ -8,30 +8,47 @@ const App = {
   diary: [],
   earnedBadges: [],
   genreMaps: { movie: {}, tv: {} },
+  _rendering: false, // évite les rendus concurrents (plusieurs événements d'auth d'affilée)
 
   async init() {
+    let initialRenderDone = false;
     DB.onAuthChange((session) => {
+      const wasLoggedIn = !!this.session;
+      const isLoggedIn = !!session;
       this.session = session;
+      // Un simple rafraîchissement de token (déjà connecté avant/après) ne
+      // doit pas relancer tout le rendu — seule une vraie transition
+      // connecté/déconnecté le justifie.
+      if (wasLoggedIn && isLoggedIn) return;
+      initialRenderDone = true;
       this.renderShell();
     });
     this.session = await DB.getSession();
-    this.renderShell();
+    if (!initialRenderDone) {
+      await this.renderShell();
+    }
     window.addEventListener("hashchange", () => this.route());
   },
 
   async renderShell() {
-    const root = qs("#root");
-    if (!this.session) {
-      root.innerHTML = authTemplate();
-      bindAuthEvents();
-      return;
+    if (this._rendering) return; // un rendu est déjà en cours, on ne le double pas
+    this._rendering = true;
+    try {
+      const root = qs("#root");
+      if (!this.session) {
+        root.innerHTML = authTemplate();
+        bindAuthEvents();
+        return;
+      }
+      root.innerHTML = shellTemplate();
+      if (typeof lucide !== "undefined") lucide.createIcons();
+      await this.loadGenreMaps();
+      await this.syncAndRoute();
+      if (typeof lucide !== "undefined") lucide.createIcons();
+      bindShellEvents();
+    } finally {
+      this._rendering = false;
     }
-    root.innerHTML = shellTemplate();
-    lucide.createIcons();
-    await this.loadGenreMaps();
-    await this.syncAndRoute();
-    lucide.createIcons();
-    bindShellEvents();
   },
 
   async loadGenreMaps() {
@@ -57,7 +74,16 @@ const App = {
   // épisodes restants) depuis le journal, puis affiche la vue. Lance en
   // tâche de fond la récupération des durées manquantes sur TMDB.
   async syncAndRoute() {
-    await this.loadData();
+    try {
+      await this.loadData();
+    } catch (err) {
+      console.error("Chargement des données impossible :", err);
+      qs("#view").innerHTML =
+        emptyState("Chargement impossible pour le moment (problème réseau ou Supabase).") +
+        `<div style="text-align:center;margin-top:1rem;"><button id="retry-load" class="btn btn--accent">Réessayer</button></div>`;
+      qs("#retry-load")?.addEventListener("click", () => this.syncAndRoute());
+      return;
+    }
     try {
       await LibraryBuilder.rebuild(this.session.user.id, this.diary, this.library);
       await this.loadData();
@@ -103,7 +129,7 @@ const App = {
         break;
       case "diary":
       default:
-        view_el.innerHTML = diaryTemplate(this.diary);
+        view_el.innerHTML = diaryTemplate(this.library);
         bindDiaryEvents();
         break;
     }
@@ -154,10 +180,10 @@ function shellTemplate() {
 
 <nav class="mobile-nav">
 
-    <!-- <a href="#/diary" class="nav-link" data-view="diary">
+    <a href="#/diary" class="nav-link" data-view="diary">
         <i data-lucide="ticket"></i>
         <span>Journal</span>
-    </a> -->
+    </a>
 
     <a href="#/search" class="nav-link" data-view="search">
         <i data-lucide="search"></i>
@@ -291,7 +317,7 @@ function bindAuthEvents() {
     errorEl.textContent = "";
     successEl.textContent = "";
 
-    const btn = form.querySelector("button");
+    const btn = qs(authStep === "email" ? "#step-email button" : "#step-code button", form);
     btn.disabled = true;
 
     try {
@@ -899,16 +925,67 @@ function bindLibraryEvents() {
 }
 
 // ---------- DIARY (ticket display) ----------
-function diaryTemplate(diary) {
-  if (!diary.length)
-    return emptyState("Ton journal est vide. Enregistre un visionnage depuis une fiche série/film, ou importe ton export TV Time.");
-  return `<div class="ticket-list">${diary.map(ticketCard).join("")}</div>`;
+// ---------- JOURNAL (1 ticket par film vu / série terminée) ----------
+// S'appuie sur la bibliothèque (déjà agrégée par LibraryBuilder) plutôt
+// que sur le journal épisode par épisode : beaucoup plus léger à
+// afficher, même avec un gros historique importé.
+function diaryTemplate(library) {
+  const items = library
+    .filter(
+      (l) =>
+        (l.media_type === "movie" && l.status === "completed") ||
+        (l.media_type === "tv" && l.status === "completed")
+    )
+    .sort((a, b) => (b.last_watched_date || "").localeCompare(a.last_watched_date || ""));
+
+  if (!items.length)
+    return emptyState(
+      "Ton journal est vide pour l'instant. Un ticket apparaît ici dès qu'un film est vu ou qu'une série est entièrement terminée. Importe ton export TV Time ou enregistre un visionnage pour commencer."
+    );
+  return `<div class="ticket-list">${items.map(journalTicketCard).join("")}</div>`;
 }
 
-function ticketCard(entry) {
+function journalTicketCard(item) {
+  const sub =
+    item.media_type === "tv"
+      ? `Série · ${item.total_episodes || item.watched_episodes} épisode${(item.total_episodes || item.watched_episodes) > 1 ? "s" : ""}`
+      : "Film";
+  const rewatchCount = item.media_type === "movie" ? item.watch_count : 0;
+  const ticketId = `${item.media_type}-${item.tmdb_id}`;
+
+  return `
+    <div class="ticket" data-ticket-id="${ticketId}" data-lib-id="${item.id}" data-type="${item.media_type}" data-tmdb-id="${item.tmdb_id}" data-title="${escapeHtml(item.title)}">
+      <div class="ticket-poster">
+        <img src="${TMDB.posterUrl(item.poster_path, "w185")}" alt="" loading="lazy" />
+      </div>
+      <div class="ticket-perforation"></div>
+      <div class="ticket-body">
+        <div class="ticket-row">
+          <span class="ticket-title">${escapeHtml(item.title)}</span>
+          <span class="ticket-sub">${sub}</span>
+        </div>
+        <div class="ticket-row ticket-row--meta">
+          <span class="ticket-date">${formatDate(item.last_watched_date)}</span>
+          ${rewatchCount > 1 ? `<span class="ticket-tag">×${rewatchCount}</span>` : ""}
+        </div>
+        ${item.avg_rating != null ? `<div class="ticket-stars">${stars(item.avg_rating)}</div>` : ""}
+        ${item.last_note ? `<p class="ticket-note">${escapeHtml(item.last_note)}</p>` : ""}
+        <div class="ticket-barcode">${barcodeSVG(ticketId + item.last_watched_date)}</div>
+      </div>
+      <div class="ticket-actions">
+        <button class="ticket-share" data-ticket-id="${ticketId}" title="Partager en image">Partager</button>
+        <button class="ticket-delete" data-lib-id="${item.id}" data-tmdb-id="${item.tmdb_id}" data-type="${item.media_type}" title="Supprimer">✕</button>
+      </div>
+    </div>
+  `;
+}
+
+// Version individuelle (par entrée) utilisée pour "Tes meilleures notes"
+// dans les stats — reste au niveau épisode/film, contrairement au Journal.
+function entryTicketCard(entry) {
   const sub = entry.media_type === "tv" && entry.season != null ? `S${entry.season}E${entry.episode}` : "Film";
   return `
-    <div class="ticket" data-id="${entry.id}">
+    <div class="ticket ticket--compact">
       <div class="ticket-poster">
         <img src="${TMDB.posterUrl(entry.poster_path, "w185")}" alt="" loading="lazy" />
       </div>
@@ -923,19 +1000,44 @@ function ticketCard(entry) {
           ${entry.rewatch ? '<span class="ticket-tag">Rewatch</span>' : ""}
         </div>
         ${entry.rating != null ? `<div class="ticket-stars">${stars(entry.rating)}</div>` : ""}
-        ${entry.note ? `<p class="ticket-note">${escapeHtml(entry.note)}</p>` : ""}
-        <div class="ticket-barcode">${barcodeSVG(String(entry.id) + entry.watched_date)}</div>
       </div>
-      <button class="ticket-delete" data-id="${entry.id}" title="Supprimer">✕</button>
     </div>
   `;
 }
 
 function bindDiaryEvents() {
   qs("#view").addEventListener("click", async (e) => {
-    if (e.target.classList.contains("ticket-delete")) {
-      await DB.deleteDiaryEntry(e.target.dataset.id);
-      await App.refresh();
+    const shareBtn = e.target.closest(".ticket-share");
+    if (shareBtn) {
+      e.stopPropagation();
+      const [type, tmdbId] = shareBtn.dataset.ticketId.split("-");
+      const item = App.library.find((l) => l.media_type === type && String(l.tmdb_id) === tmdbId);
+      if (item) await TicketShare.generate(item);
+      return;
+    }
+
+    const deleteBtn = e.target.closest(".ticket-delete");
+    if (deleteBtn) {
+      e.stopPropagation();
+      const confirmed = await showConfirm(
+        "Supprimer ce ticket ? Tous les visionnages associés (épisodes compris) seront effacés du journal.",
+        { confirmLabel: "Supprimer", cancelLabel: "Annuler" }
+      );
+      if (!confirmed) return;
+      try {
+        await DB.deleteAllEntriesForWork(App.session.user.id, Number(deleteBtn.dataset.tmdbId), deleteBtn.dataset.type);
+        await DB.removeLibraryItem(deleteBtn.dataset.libId);
+        toast("Ticket supprimé.", "success");
+        await App.refresh();
+      } catch (err) {
+        toast(err.message, "error");
+      }
+      return;
+    }
+
+    const ticket = e.target.closest(".ticket[data-tmdb-id]");
+    if (ticket) {
+      location.hash = `#/show/${ticket.dataset.type}-${ticket.dataset.tmdbId}`;
     }
   });
 }
@@ -972,7 +1074,7 @@ function statsTemplate(diary, library) {
         s.topRated.length
           ? `<section class="stats-section">
         <h2>Tes meilleures notes</h2>
-        <div class="ticket-list">${s.topRated.map(ticketCard).join("")}</div>
+        <div class="ticket-list">${s.topRated.map(entryTicketCard).join("")}</div>
       </section>`
           : ""
       }
