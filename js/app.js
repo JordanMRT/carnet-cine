@@ -123,6 +123,7 @@ const App = {
         break;
       case "stats":
         view_el.innerHTML = statsTemplate(this.diary, this.library);
+        bindStatsEvents();
         break;
       case "badges":
         view_el.innerHTML = badgesTemplate(this.earnedBadges);
@@ -133,6 +134,7 @@ const App = {
         bindDiaryEvents();
         break;
     }
+    if (typeof lucide !== "undefined") lucide.createIcons();
   },
 
   async refresh() {
@@ -146,7 +148,7 @@ function shellTemplate() {
     <header class="topbar">
       <div class="brand">
         🎟️
-        <span>Carnet Ciné</span>
+        <span>Time To Binge</span>
       </div>
 
       <nav class="nav">
@@ -162,15 +164,7 @@ function shellTemplate() {
           ${escapeHtml(displayName())}
         </button>
 
-        <button id="import-shows-btn" class="btn btn--ghost">
-          Import séries
-        </button>
-
-        <button id="import-movies-btn" class="btn btn--ghost">
-          Import films
-        </button>
-
-        <button id="logout-btn" class="btn btn--ghost">
+          <button id="logout-btn" class="btn btn--ghost">
           Déconnexion
         </button>
       </div>
@@ -195,14 +189,14 @@ function shellTemplate() {
         <span>Bibliothèque</span>
     </a>
 
-    <a href="#/stats" class="nav-link" data-view="stats">
-        <i data-lucide="chart-column"></i>
-        <span>Stats</span>
-    </a>
-
     <a href="#/badges" class="nav-link" data-view="badges">
         <i data-lucide="award"></i>
         <span>Badges</span>
+    </a>
+
+    <a href="#/stats" class="nav-link" data-view="stats">
+        <i data-lucide="user-round"></i>
+        <span>Profil</span>
     </a>
 
 </nav>
@@ -237,11 +231,13 @@ function bindShellEvents() {
     }
   });
 
-  qs("#import-shows-btn").addEventListener("click", () => qs("#import-shows-input").click());
-  qs("#import-movies-btn").addEventListener("click", () => qs("#import-movies-input").click());
-
   qs("#import-shows-input").addEventListener("change", (e) => runImport(e, "shows"));
   qs("#import-movies-input").addEventListener("change", (e) => runImport(e, "movies"));
+}
+
+function bindStatsEvents() {
+  qs("#import-shows-btn")?.addEventListener("click", () => qs("#import-shows-input").click());
+  qs("#import-movies-btn")?.addEventListener("click", () => qs("#import-movies-input").click());
 }
 
 async function runImport(e, kind) {
@@ -409,7 +405,7 @@ function bindSearchEvents() {
 }
 
 function posterCard(item) {
-  const title = item.title || item.name;
+  const title = item.original_title || item.original_name || item.title || item.name;
   const date = item.release_date || item.first_air_date || "";
   return `
     <div class="poster-card" data-id="${item.id}" data-type="${item.media_type}">
@@ -437,12 +433,34 @@ async function renderShowDetail(param) {
   view.innerHTML = `<p class="loading">Chargement…</p>`;
   try {
     const data = type === "movie" ? await TMDB.getMovie(id) : await TMDB.getTv(id);
-    const title = data.title || data.name;
+    const title = data.original_title || data.original_name || data.title || data.name;
     const genreNames = (data.genres || []).map((g) => g.name);
     const genreIds = (data.genres || []).map((g) => String(g.id));
     const inLibrary = App.library.find(
       (l) => String(l.tmdb_id) === String(id) && l.media_type === type
     );
+
+
+    const cast = (data.credits?.cast || []).slice(0, 12);
+    const castHTML = cast.length
+      ? `
+      <div class="cast-strip">
+        <h2 class="cast-title">Casting</h2>
+        <div class="cast-scroll">
+          ${cast
+            .map(
+              (actor) => `
+            <div class="cast-card">
+              <img src="${TMDB.posterUrl(actor.profile_path, "w185")}" alt="${escapeHtml(actor.name)}" loading="lazy" />
+              <span class="cast-name">${escapeHtml(actor.name)}</span>
+              <span class="cast-character">${escapeHtml(actor.character || "")}</span>
+            </div>`
+            )
+            .join("")}
+        </div>
+      </div>`
+      : "";
+
 
     const progressHTML =
       type === "tv" && inLibrary && inLibrary.total_episodes > 0
@@ -473,7 +491,10 @@ async function renderShowDetail(param) {
           <div class="show-detail-info">
             <h1>${escapeHtml(title)}</h1>
             <p class="show-detail-meta">${genreNames.join(" · ")}</p>
-            <p class="show-detail-overview">${escapeHtml(data.overview || "Pas de synopsis disponible.")}</p>
+            <div class="overview-wrapper">
+             <p class="show-detail-overview">${escapeHtml(data.overview || "Pas de synopsis disponible.")}</p>
+              <button class="overview-toggle" hidden>Afficher plus</button>
+             </div>
             ${progressHTML}
             <div class="show-detail-actions">
               <select id="status-select">
@@ -487,9 +508,29 @@ async function renderShowDetail(param) {
             </div>
           </div>
         </div>
-        ${type === "tv" ? `<div id="seasons-container"></div>` : ""}
+        ${type === "tv" ? `<div id="seasons-container"></div>${castHTML}` : castHTML}
       </div>
     `;
+
+    const overview = qs(".show-detail-overview");
+    const overviewWrapper = qs(".overview-wrapper");
+    const overviewToggle = qs(".overview-toggle");
+
+    if (overview && overviewWrapper && overviewToggle) {
+      requestAnimationFrame(() => {
+        if (overview.scrollHeight > overview.clientHeight) {
+          overviewWrapper.classList.add("is-truncated");
+          overviewToggle.hidden = false;
+        }
+      });
+
+      overviewToggle.addEventListener("click", () => {
+        const expanded = overview.classList.toggle("expanded");
+
+        overviewWrapper.classList.toggle("is-truncated", !expanded);
+        overviewToggle.textContent = expanded ? "Réduire" : "Afficher plus";
+      });
+    }
 
     qs("#status-select").addEventListener("change", async (e) => {
       const status = e.target.value;
@@ -599,6 +640,7 @@ async function markAllEpisodesWatched(tvId, numberOfSeasons, title, posterPath, 
             note: null,
             genres: genreIds,
             runtime_minutes: ep.runtime || null,
+            air_date: ep.air_date || null,
           });
         }
       });
@@ -636,14 +678,19 @@ async function renderSeasonsInto(container, tvId, numberOfSeasons, title, poster
         const count = watchCounts[ep.episode_number] || 0;
         const watched = count > 0;
         return `
-        <div class="episode-row ${watched ? "episode-row--watched" : ""}" data-season="${selectedSeason}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}">
-          <span class="episode-num">S${selectedSeason}E${ep.episode_number}</span>
-          <span class="episode-title">${escapeHtml(ep.name)}</span>
-          <span class="episode-date">${ep.air_date ? formatDate(ep.air_date) : ""}</span>
+        <div class="episode-row ${watched ? "episode-row--watched" : ""}" data-season="${selectedSeason}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}" data-air-date="${ep.air_date || ""}">
+          <img class="episode-thumb" src="${TMDB.posterUrl(ep.still_path, "w300")}" alt="" loading="lazy" />
+          <div class="episode-info">
+            <span class="episode-title-row">
+              <span class="episode-num">S${selectedSeason}E${ep.episode_number}</span>
+              <span class="episode-title">${escapeHtml(ep.name)}</span>
+            </span>
+            <span class="episode-date">${ep.air_date ? formatDate(ep.air_date) : ""}</span>
+          </div>
           <div class="episode-row-actions">
             ${count > 1 ? `<span class="episode-rewatch-badge">×${count}</span>` : ""}
-            ${watched ? `<button class="episode-rewatch-btn" title="Ajouter un revisionnage" data-season="${selectedSeason}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}">↻</button>` : ""}
-            <button class="episode-check-toggle ${watched ? "is-watched" : ""}" title="${watched ? "Marquer comme non vu" : "Marquer comme vu"}" data-season="${selectedSeason}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}">${watched ? "✓" : ""}</button>
+            ${watched ? `<button class="episode-rewatch-btn" title="Ajouter un revisionnage" data-season="${selectedSeason}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}" data-air-date="${ep.air_date || ""}"><i data-lucide="rotate-ccw"></i></button>` : ""}
+            <button class="episode-check-toggle ${watched ? "is-watched" : ""}" title="${watched ? "Marquer comme non vu" : "Marquer comme vu"}" data-season="${selectedSeason}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}" data-air-date="${ep.air_date || ""}">${watched ? '<i data-lucide="circle-check-big"></i>' : ""}</button>
           </div>
         </div>`;
       })
@@ -656,6 +703,8 @@ async function renderSeasonsInto(container, tvId, numberOfSeasons, title, poster
         </div>
         <div class="episode-list">${rows}</div>
       </div>`;
+
+if (typeof lucide !== "undefined") lucide.createIcons();
 
     qs("#season-select", container).addEventListener("change", (e) => {
       renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, Number(e.target.value));
@@ -672,6 +721,7 @@ async function renderSeasonsInto(container, tvId, numberOfSeasons, title, poster
           season: Number(btn.dataset.season),
           episode: Number(btn.dataset.episode),
           runtime_minutes: Number(btn.dataset.runtime) || null,
+          air_date: btn.dataset.airDate || null,
         });
       })
     );
@@ -687,6 +737,7 @@ async function renderSeasonsInto(container, tvId, numberOfSeasons, title, poster
           season: Number(btn.dataset.season),
           episode: Number(btn.dataset.episode),
           runtime_minutes: Number(btn.dataset.runtime) || null,
+          air_date: btn.dataset.airDate || null,
         });
       })
     );
@@ -702,6 +753,7 @@ async function renderSeasonsInto(container, tvId, numberOfSeasons, title, poster
           season: Number(row.dataset.season),
           episode: Number(row.dataset.episode),
           runtime_minutes: Number(row.dataset.runtime) || null,
+          air_date: row.dataset.airDate || null,
         })
       )
     );
@@ -765,6 +817,7 @@ async function addEpisodeRewatch(ctx) {
       note: null,
       genres: ctx.genres || [],
       runtime_minutes: ctx.runtime_minutes,
+      air_date: ctx.air_date || null,
     });
     toast("Revisionnage ajouté 🎟️", "success");
     await App.refresh();
@@ -971,10 +1024,11 @@ function journalTicketCard(item) {
         ${item.avg_rating != null ? `<div class="ticket-stars">${stars(item.avg_rating)}</div>` : ""}
         ${item.last_note ? `<p class="ticket-note">${escapeHtml(item.last_note)}</p>` : ""}
         <div class="ticket-barcode">${barcodeSVG(ticketId + item.last_watched_date)}</div>
-      </div>
+      
       <div class="ticket-actions">
-        <button class="ticket-share" data-ticket-id="${ticketId}" title="Partager en image">Partager</button>
         <button class="ticket-delete" data-lib-id="${item.id}" data-tmdb-id="${item.tmdb_id}" data-type="${item.media_type}" title="Supprimer">✕</button>
+        <button class="ticket-share" data-ticket-id="${ticketId}" title="Partager en image"><i data-lucide="share"></i></button>
+      </div>
       </div>
     </div>
   `;
@@ -1078,6 +1132,15 @@ function statsTemplate(diary, library) {
       </section>`
           : ""
       }
+
+      <section class="stats-section stats-section-import">
+        <h2>Importer mon historique</h2>
+        <p class="import-hint">Depuis un export TV Time (JSON), séries et films séparément.</p>
+        <div class="import-actions">
+          <button id="import-shows-btn" class="btn btn--ghost">Importer mes séries</button>
+          <button id="import-movies-btn" class="btn btn--ghost">Importer mes films</button>
+        </div>
+      </section>
     </div>
   `;
 }

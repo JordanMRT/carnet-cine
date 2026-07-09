@@ -25,7 +25,7 @@ async function resolveTvdbShow(tvdbId) {
     if (show) {
       resolved = {
         tmdb_id: show.id,
-        title: show.name,
+        title: show.original_name || show.name,
         poster_path: show.poster_path,
         genres: (show.genre_ids || []).map(String),
       };
@@ -46,7 +46,7 @@ async function resolveImdbMovie(imdbId) {
     if (movie) {
       resolved = {
         tmdb_id: movie.id,
-        title: movie.title,
+        title: movie.original_title || movie.title,
         poster_path: movie.poster_path,
         genres: (movie.genre_ids || []).map(String),
       };

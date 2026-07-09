@@ -23,7 +23,7 @@ const TicketShare = {
         await navigator.share({
           files: [file],
           title: item.title,
-          text: `${item.title} — vu sur Carnet Ciné 🎟️`,
+          text: `${item.title} — vu sur Time To Binge 🎟️`,
         });
       } else {
         const url = URL.createObjectURL(blob);
@@ -69,7 +69,7 @@ const TicketShare = {
     roundRectPath(ctx, 0, 0, posterW, H, [18, 0, 0, 18]);
     ctx.clip();
     try {
-      const img = await loadImageCORS(TMDB.posterUrl(item.poster_path, "w342"));
+      const img = await loadImageCORS(tmdbImageProxyUrl(TMDB.posterUrl(item.poster_path, "w342")));
       ctx.drawImage(img, 0, 0, posterW, H);
     } catch {
       ctx.fillStyle = ink;
@@ -139,15 +139,23 @@ const TicketShare = {
         ctx.fillStyle = i < filled ? mustard : border;
         ctx.fillText("★", textX + i * 22, y);
       }
+      y += 28;
     }
+
+    drawBarcode(ctx, `${item.tmdb_id}${item.last_watched_date}`, textX, y, 130, 22, muted);
 
     ctx.fillStyle = muted;
     ctx.font = '600 11px "IBM Plex Mono", monospace';
-    ctx.fillText("CARNET CINÉ 🎟️", textX, H - 20);
+    ctx.fillText("TIME TO BINGE 🎟️", textX, H - 20);
 
     return canvas;
   },
 };
+
+function tmdbImageProxyUrl(tmdbUrl) {
+  const bare = tmdbUrl.replace(/^https?:\/\//, "");
+  return `https://images.weserv.nl/?url=${encodeURIComponent(bare)}`;
+}
 
 function loadImageCORS(src) {
   return new Promise((resolve, reject) => {
@@ -172,6 +180,19 @@ function roundRectPath(ctx, x, y, w, h, r) {
   ctx.lineTo(x, y + radii[0]);
   ctx.arcTo(x, y, x + radii[0], y, radii[0]);
   ctx.closePath();
+}
+
+function drawBarcode(ctx, seed, x, y, width, height, color) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) % 997;
+  const rng = mulberry32(hash || 1);
+  ctx.fillStyle = color;
+  let bx = 0;
+  while (bx < width) {
+    const w = 1 + Math.floor(rng() * 3);
+    if (rng() > 0.4) ctx.fillRect(x + bx, y, w, height);
+    bx += w + 1;
+  }
 }
 
 // Retourne la position Y après le texte (pour enchaîner d'autres lignes).
