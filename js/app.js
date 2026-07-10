@@ -478,7 +478,9 @@ async function renderShowDetail(param) {
       type === "movie"
         ? `
         <button id="quick-log-btn" class="btn btn--accent">
-          ${movieWatchCount > 0 ? "Revoir (nouveau visionnage)" : "Marquer comme vu"}
+          ${movieWatchCount > 0
+  ? `Rewatch <i data-lucide="rotate-ccw"></i>`
+  : "Marquer comme vu"}
         </button>
         ${movieWatchCount > 0 ? `<span class="rewatch-badge">×${movieWatchCount}</span>` : ""}`
         : "";
@@ -526,6 +528,7 @@ async function renderShowDetail(param) {
         ${type === "tv" ? `<div id="seasons-container"></div>` : ""}${ratingHTML}${castHTML}
       </div>
     `;
+if (typeof lucide !== "undefined") lucide.createIcons();
 
     const overview = qs(".show-detail-overview");
     const overviewWrapper = qs(".overview-wrapper");
@@ -750,15 +753,15 @@ if (typeof lucide !== "undefined") lucide.createIcons();
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
         await toggleEpisodeWatched({
-          tmdb_id: Number(tvId),
-          title,
-          poster_path: posterPath,
-          genres: genreIds,
-          season: Number(btn.dataset.season),
-          episode: Number(btn.dataset.episode),
-          runtime_minutes: Number(btn.dataset.runtime) || null,
-          air_date: btn.dataset.airDate || null,
-        });
+  tmdb_id: Number(tvId),
+  title,
+  poster_path: posterPath,
+  genres: genreIds,
+  season: Number(btn.dataset.season),
+  episode: Number(btn.dataset.episode),
+  runtime_minutes: Number(btn.dataset.runtime) || null,
+  seasonEpisodes: season.episodes || [],
+});
       })
     );
 
@@ -794,7 +797,56 @@ async function toggleEpisodeWatched(ctx) {
   );
   try {
     if (existing.length === 0) {
-      await DB.addDiaryEntry({
+  const watchedEpisodes = new Set(
+    App.diary
+      .filter(
+        (e) =>
+          String(e.tmdb_id) === String(ctx.tmdb_id) &&
+          e.media_type === "tv" &&
+          e.season === ctx.season
+      )
+      .map((e) => e.episode)
+  );
+
+  const missingEpisodes = (ctx.seasonEpisodes || []).filter(
+    (ep) =>
+      ep.episode_number < ctx.episode &&
+      !watchedEpisodes.has(ep.episode_number)
+  );
+
+  let markPrevious = false;
+
+  if (missingEpisodes.length > 0) {
+    markPrevious = await showConfirm(
+      `Marquer également les ${missingEpisodes.length} épisode${missingEpisodes.length > 1 ? "s" : ""} précédent${missingEpisodes.length > 1 ? "s" : ""} comme vus ?`,
+      {
+        confirmLabel: "Oui",
+        cancelLabel: "Non",
+      }
+    );
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (markPrevious) {
+    await DB.bulkInsertDiary([
+      ...missingEpisodes.map((ep) => ({
+        user_id: App.session.user.id,
+        tmdb_id: ctx.tmdb_id,
+        media_type: "tv",
+        title: ctx.title,
+        poster_path: ctx.poster_path,
+        season: ctx.season,
+        episode: ep.episode_number,
+        watched_date: today,
+        rating: null,
+        rewatch: false,
+        note: null,
+        genres: ctx.genres || [],
+        runtime_minutes: ep.runtime || null,
+        air_date: ep.air_date || null,
+      })),
+      {
         user_id: App.session.user.id,
         tmdb_id: ctx.tmdb_id,
         media_type: "tv",
@@ -802,15 +854,37 @@ async function toggleEpisodeWatched(ctx) {
         poster_path: ctx.poster_path,
         season: ctx.season,
         episode: ctx.episode,
-        watched_date: new Date().toISOString().slice(0, 10),
+        watched_date: today,
         rating: null,
         rewatch: false,
         note: null,
         genres: ctx.genres || [],
         runtime_minutes: ctx.runtime_minutes,
         air_date: ctx.air_date || null,
-      });
-      toast("Épisode marqué comme vu 🎟️", "success");
+      },
+    ]);
+
+    toast(`${missingEpisodes.length + 1} épisodes marqués comme vus 🎟️`, "success");
+  } else {
+    await DB.addDiaryEntry({
+      user_id: App.session.user.id,
+      tmdb_id: ctx.tmdb_id,
+      media_type: "tv",
+      title: ctx.title,
+      poster_path: ctx.poster_path,
+      season: ctx.season,
+      episode: ctx.episode,
+      watched_date: today,
+      rating: null,
+      rewatch: false,
+      note: null,
+      genres: ctx.genres || [],
+      runtime_minutes: ctx.runtime_minutes,
+      air_date: ctx.air_date || null,
+    });
+
+    toast("Épisode marqué comme vu 🎟️", "success");
+  }
     } else {
       await DB.deleteDiaryEntries(existing.map((e) => e.id));
       toast("Épisode marqué comme non vu.", "success");

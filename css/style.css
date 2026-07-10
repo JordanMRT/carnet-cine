@@ -458,6 +458,20 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
   align-self: center;
 }
 
+#quick-log-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+#quick-log-btn svg {
+  width: .9rem;
+  height: .9rem;
+  stroke-width: 2.2;
+  flex-shrink: 0;
+}
+
 .modal--confirm { max-width: 340px; }
 .modal-confirm-text { font-size: 0.95rem; line-height: 1.5; margin: 0.2rem 0 0.6rem; }
 
