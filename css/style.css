@@ -681,6 +681,24 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
 .badge-icon { display: block; font-size: 2rem; margin-bottom: 0.4rem; }
 .badge-name { display: block; font-family: var(--font-display); font-weight: 600; margin-bottom: 0.3rem; }
 .badge-desc { font-size: 0.78rem; color: var(--muted); }
+.badge-ring-wrap { position: relative; width: 56px; height: 56px; margin: 0 auto 0.4rem; }
+.badge-ring { position: absolute; top: 0; left: 0; }
+.badge-ring-bg { stroke: var(--border); }
+.badge-ring-fill { stroke: var(--mustard); stroke-linecap: round; transition: stroke-dashoffset 0.4s ease; }
+.badge-icon--ring {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  font-size: 1.4rem; margin: 0;
+}
+.badge-card--tiered .badge-icon:not(.badge-icon--ring) { display: none; }
+.badge-tier-label { font-family: var(--font-mono); font-size: 0.75rem; color: var(--sage); font-weight: 600; }
+.badge-card--tiered:not(.badge-card--earned) .badge-tier-label { color: var(--muted); }
+.badge-progress-counter {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
 
 /* ---------- TOAST ---------- */
 .toast {

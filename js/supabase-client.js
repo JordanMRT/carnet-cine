@@ -192,4 +192,16 @@ async upsertLibraryItems(items) {
       );
     if (error) throw error;
   },
+
+  // Pour les badges à paliers : met à jour le niveau à chaque évaluation
+  // (contrairement à awardBadge, qui ignore les doublons).
+  async awardBadgeTier(userId, badgeKey, tier) {
+    const { error } = await supabaseClient
+      .from("badges")
+      .upsert(
+        { user_id: userId, badge_key: badgeKey, tier },
+        { onConflict: "user_id,badge_key" }
+      );
+    if (error) throw error;
+  },
 };

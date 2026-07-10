@@ -39,6 +39,7 @@ alter table library add column if not exists progress numeric(5,1) default 0;
 alter table library add column if not exists tmdb_last_sync timestamptz;
 alter table library add column if not exists avg_rating numeric(3,1);
 alter table library add column if not exists last_note text;
+alter table diary_entries add column if not exists air_date date;
 
 -- Journal de visionnage (chaque "ticket")
 create table if not exists diary_entries (
@@ -56,6 +57,7 @@ create table if not exists diary_entries (
   note text,
   genres text[] default '{}',
   runtime_minutes int,
+  air_date date,
   created_at timestamptz default now()
 );
 
@@ -64,9 +66,12 @@ create table if not exists badges (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users(id) on delete cascade not null,
   badge_key text not null,
+  tier int default 1,
   earned_at timestamptz default now(),
   unique (user_id, badge_key)
 );
+
+alter table badges add column if not exists tier int default 1;
 
 -- Index utiles
 create index if not exists idx_library_user on library(user_id);

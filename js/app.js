@@ -788,6 +788,7 @@ async function toggleEpisodeWatched(ctx) {
         note: null,
         genres: ctx.genres || [],
         runtime_minutes: ctx.runtime_minutes,
+        air_date: ctx.air_date || null,
       });
       toast("Épisode marqué comme vu 🎟️", "success");
     } else {
@@ -890,6 +891,7 @@ function openLogModal(ctx) {
       note: qs("#log-note", overlay).value || null,
       genres: ctx.genres || [],
       runtime_minutes: ctx.runtime_minutes || null,
+      air_date: ctx.air_date || null,
     };
     try {
       await DB.addDiaryEntry(entry);
@@ -1146,18 +1148,57 @@ function statsTemplate(diary, library) {
 }
 
 // ---------- BADGES ----------
-function badgesTemplate(earnedKeys) {
+function progressRingSVG(fraction, size = 56, strokeWidth = 4) {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference * (1 - Math.min(Math.max(fraction, 0), 1));
+  return `
+    <svg class="badge-ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <circle class="badge-ring-bg" cx="${size / 2}" cy="${size / 2}" r="${radius}" stroke-width="${strokeWidth}" fill="none" />
+      <circle class="badge-ring-fill" cx="${size / 2}" cy="${size / 2}" r="${radius}" stroke-width="${strokeWidth}" fill="none"
+        stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"
+        transform="rotate(-90 ${size / 2} ${size / 2})" />
+    </svg>`;
+}
+
+function badgeCardHTML(badge, info) {
+  if (!badge.tiers) {
+    const earned = (info?.tier || 0) > 0;
+    return `
+      <div class="badge-card ${earned ? "badge-card--earned" : ""}">
+        <span class="badge-icon">${badge.icon}</span>
+        <span class="badge-name">${badge.name}</span>
+        <span class="badge-desc">${badge.description}</span>
+      </div>`;
+  }
+
+  const tier = info?.tier || 0;
+  const value = info?.value || 0;
+  const maxTier = badge.tiers.length;
+  const earned = tier > 0;
+  const nextThreshold = tier < maxTier ? badge.tiers[tier] : null;
+  const prevThreshold = tier > 0 ? badge.tiers[tier - 1] : 0;
+  const fraction = tier >= maxTier ? 1 : (value - prevThreshold) / (nextThreshold - prevThreshold);
+  const unit = badge.unit === "percent" ? "%" : "";
+  const counterText = nextThreshold != null ? `${value}${unit}/${nextThreshold}${unit}` : `${value}${unit}`;
+
+  return `
+    <div class="badge-card badge-card--tiered ${earned ? "badge-card--earned" : ""}">
+      <div class="badge-ring-wrap">
+        ${progressRingSVG(fraction)}
+        <span class="badge-icon badge-icon--ring">${badge.icon}</span>
+      </div>
+      <span class="badge-progress-counter">${counterText}</span>
+      <span class="badge-name">${badge.name}</span>
+      <span class="badge-tier-label">${earned ? `Niveau ${tier}/${maxTier}` : "Pas encore débloqué"}</span>
+      <span class="badge-desc">${badge.description}</span>
+    </div>`;
+}
+
+function badgesTemplate(earned) {
   return `
     <div class="badges-grid">
-      ${BADGES.map((b) => {
-        const earned = earnedKeys.includes(b.key);
-        return `
-        <div class="badge-card ${earned ? "badge-card--earned" : ""}">
-          <span class="badge-icon">${b.icon}</span>
-          <span class="badge-name">${b.name}</span>
-          <span class="badge-desc">${b.description}</span>
-        </div>`;
-      }).join("")}
+      ${BADGES.map((b) => badgeCardHTML(b, earned[b.key])).join("")}
     </div>
   `;
 }
