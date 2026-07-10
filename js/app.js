@@ -480,9 +480,24 @@ async function renderShowDetail(param) {
         <button id="quick-log-btn" class="btn btn--accent">
           ${movieWatchCount > 0 ? "Revoir (nouveau visionnage)" : "Marquer comme vu"}
         </button>
-        ${movieWatchCount > 0 ? `<span class="rewatch-badge">×${movieWatchCount}</span>` : ""}
-        <button id="log-btn" class="btn btn--ghost">Détails (note, date…)</button>`
-        : `<button id="log-btn" class="btn btn--accent">Enregistrer un visionnage</button>`;
+        ${movieWatchCount > 0 ? `<span class="rewatch-badge">×${movieWatchCount}</span>` : ""}`
+        : "";
+
+    const userRating = inLibrary?.avg_rating != null ? Math.round(inLibrary.avg_rating / 2) : 0;
+    const canRate = type === "movie" ? movieWatchCount > 0 : (inLibrary?.watched_episodes || 0) > 0;
+    const ratingHTML = `
+      <div class="rating-widget-block">
+        <h2 class="rating-title">Ta note</h2>
+        <div class="rating-widget ${canRate ? "" : "rating-widget--disabled"}" id="rating-widget">
+          ${[1, 2, 3, 4, 5]
+            .map(
+              (n) =>
+                `<button class="rating-star ${n <= userRating ? "rating-star--filled" : ""}" data-value="${n}" ${canRate ? "" : "disabled"} title="${n} étoile${n > 1 ? "s" : ""}">${n <= userRating ? "★" : "☆"}</button>`
+            )
+            .join("")}
+        </div>
+        ${!canRate ? `<p class="rating-hint">Marque ${type === "movie" ? "le film" : "la série"} comme vu${type === "movie" ? "" : "e"} pour pouvoir ${type === "movie" ? "le" : "la"} noter.</p>` : ""}
+      </div>`;
 
     view.innerHTML = `
       <div class="show-detail" style="--backdrop:url('${TMDB.backdropUrl(data.backdrop_path)}')">
@@ -508,7 +523,7 @@ async function renderShowDetail(param) {
             </div>
           </div>
         </div>
-        ${type === "tv" ? `<div id="seasons-container"></div>${castHTML}` : castHTML}
+        ${type === "tv" ? `<div id="seasons-container"></div>` : ""}${ratingHTML}${castHTML}
       </div>
     `;
 
@@ -570,10 +585,6 @@ async function renderShowDetail(param) {
       await App.refresh();
     });
 
-    qs("#log-btn").addEventListener("click", () =>
-      openLogModal({ tmdb_id: Number(id), media_type: type, title, poster_path: data.poster_path, genres: genreIds })
-    );
-
     if (type === "movie") {
       qs("#quick-log-btn").addEventListener("click", async () => {
         try {
@@ -598,6 +609,31 @@ async function renderShowDetail(param) {
           toast(err.message, "error");
         }
       });
+    }
+
+if (canRate) {
+      const widget = qs("#rating-widget");
+      const starEls = qsa(".rating-star", widget);
+      const applyPreview = (value) =>
+        starEls.forEach((s) => {
+          const filled = Number(s.dataset.value) <= value;
+          s.classList.toggle("rating-star--filled", filled);
+          s.textContent = filled ? "★" : "☆";
+        });
+      starEls.forEach((btn) => {
+        const value = Number(btn.dataset.value);
+        btn.addEventListener("mouseenter", () => applyPreview(value));
+        btn.addEventListener("click", async () => {
+          try {
+            await DB.setWorkRating(App.session.user.id, Number(id), type, value * 2);
+            toast("Note enregistrée 🎟️", "success");
+            await App.refresh();
+          } catch (err) {
+            toast(err.message, "error");
+          }
+        });
+      });
+      widget.addEventListener("mouseleave", () => applyPreview(userRating));
     }
 
     if (type === "tv") {
@@ -741,22 +777,6 @@ if (typeof lucide !== "undefined") lucide.createIcons();
         });
       })
     );
-
-    qsa(".episode-row", container).forEach((row) =>
-      row.addEventListener("click", () =>
-        openLogModal({
-          tmdb_id: Number(tvId),
-          media_type: "tv",
-          title,
-          poster_path: posterPath,
-          genres: genreIds,
-          season: Number(row.dataset.season),
-          episode: Number(row.dataset.episode),
-          runtime_minutes: Number(row.dataset.runtime) || null,
-          air_date: row.dataset.airDate || null,
-        })
-      )
-    );
   } catch {
     container.innerHTML = emptyState("Impossible de charger les épisodes de cette saison.");
   }
@@ -849,58 +869,6 @@ function showConfirm(message, { confirmLabel = "Oui", cancelLabel = "Non" } = {}
     overlay.querySelector("#confirm-no").addEventListener("click", () => close(false));
     overlay.querySelector("#confirm-yes").addEventListener("click", () => close(true));
     overlay.addEventListener("click", (e) => e.target === overlay && close(false));
-  });
-}
-
-// ---------- LOG MODAL (ticket de visionnage) ----------
-function openLogModal(ctx) {
-  const overlay = document.createElement("div");
-  overlay.className = "modal-overlay";
-  overlay.innerHTML = `
-    <div class="modal">
-      <h2>Nouveau ticket</h2>
-      <p class="modal-subtitle">${escapeHtml(ctx.title)}${ctx.season ? ` — S${ctx.season}E${ctx.episode}` : ""}</p>
-      <label>Date de visionnage</label>
-      <input type="date" id="log-date" value="${new Date().toISOString().slice(0, 10)}" />
-      <label>Note (0 à 10)</label>
-      <input type="number" id="log-rating" min="0" max="10" step="0.5" placeholder="optionnel" />
-      <label><input type="checkbox" id="log-rewatch" /> Rediffusion (rewatch)</label>
-      <label>Note personnelle</label>
-      <textarea id="log-note" rows="2" placeholder="optionnel"></textarea>
-      <div class="modal-actions">
-        <button id="log-cancel" class="btn btn--ghost">Annuler</button>
-        <button id="log-save" class="btn btn--accent">Valider le ticket</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(overlay);
-  overlay.querySelector("#log-cancel").addEventListener("click", () => overlay.remove());
-  overlay.addEventListener("click", (e) => e.target === overlay && overlay.remove());
-  overlay.querySelector("#log-save").addEventListener("click", async () => {
-    const entry = {
-      user_id: App.session.user.id,
-      tmdb_id: ctx.tmdb_id,
-      media_type: ctx.media_type,
-      title: ctx.title,
-      poster_path: ctx.poster_path,
-      season: ctx.season ?? null,
-      episode: ctx.episode ?? null,
-      watched_date: qs("#log-date", overlay).value,
-      rating: qs("#log-rating", overlay).value ? Number(qs("#log-rating", overlay).value) : null,
-      rewatch: qs("#log-rewatch", overlay).checked,
-      note: qs("#log-note", overlay).value || null,
-      genres: ctx.genres || [],
-      runtime_minutes: ctx.runtime_minutes || null,
-      air_date: ctx.air_date || null,
-    };
-    try {
-      await DB.addDiaryEntry(entry);
-      toast("Ticket ajouté au journal 🎟️", "success");
-      overlay.remove();
-      await App.refresh();
-    } catch (err) {
-      toast(err.message, "error");
-    }
   });
 }
 
@@ -1053,7 +1021,6 @@ function entryTicketCard(entry) {
         </div>
         <div class="ticket-row ticket-row--meta">
           <span class="ticket-date">${formatDate(entry.watched_date)}</span>
-          ${entry.rewatch ? '<span class="ticket-tag">Rewatch</span>' : ""}
         </div>
         ${entry.rating != null ? `<div class="ticket-stars">${stars(entry.rating)}</div>` : ""}
       </div>

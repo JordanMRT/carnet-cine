@@ -64,6 +64,18 @@ async verifyOtp(email, code) {
     if (error) throw error;
   },
 
+  // Applique une note à TOUS les visionnages enregistrés d'un film/série
+  // (note globale par œuvre, pas par épisode).
+  async setWorkRating(userId, tmdbId, mediaType, rating) {
+    const { error } = await supabaseClient
+      .from("diary_entries")
+      .update({ rating })
+      .eq("user_id", userId)
+      .eq("tmdb_id", tmdbId)
+      .eq("media_type", mediaType);
+    if (error) throw error;
+  },
+
 async clearLibrary(userId) {
   const { error } = await supabaseClient
     .from("library")
