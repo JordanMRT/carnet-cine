@@ -891,7 +891,7 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 .picker-item { cursor: pointer; text-align: center; font-size: 0.75rem; color: var(--muted); }
 .picker-item img { width: 100%; border-radius: 8px; margin-bottom: 0.3rem; background: var(--ink); }
 .picker-item--show img { aspect-ratio: 2 / 3; object-fit: cover; }
-.picker-item--actor img { aspect-ratio: 2 / 3; object-fit: cover; border-radius: 50%; }
+.picker-item--actor img { aspect-ratio: 1 / 1; object-fit: cover; border-radius: 50%; }
 .picker-item:hover { color: var(--mustard); }
 
 @media (max-width: 640px) {
