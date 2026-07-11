@@ -76,6 +76,11 @@ button, input, select, textarea { font-family: inherit; }
 .btn--primary { background: var(--mustard); color: var(--ink); border-color: var(--mustard); }
 .btn--accent { background: var(--coral); color: var(--ink); border-color: var(--coral); }
 .btn--ghost { background: transparent; }
+.btn--primary-log {background: var(--mustard);
+    color: var(--ink);
+    border-color: var(--mustard);
+    margin-top: 5px;
+    padding: .7rem 1.5rem .7rem 1.5rem;}
 
 /* ---------- TOPBAR ---------- */
 .topbar {
@@ -145,6 +150,8 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
   border: 1px solid var(--border);
   background: var(--ink);
   color: var(--cream);
+  margin-bottom: .2rem;
+  font-size: 16px;
 }
 .auth-actions { display: flex; gap: 0.6rem; margin-top: 0.4rem; }
 .auth-actions .btn { flex: 1; }

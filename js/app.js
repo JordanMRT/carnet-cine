@@ -278,23 +278,23 @@ function authTemplate() {
   return `
     <div class="auth-screen">
       <div class="auth-card">
-        <div class="auth-ticket">🎟️</div>
-        <h1>Carnet Ciné</h1>
+        <div class="auth-ticket"><img src="brand-top.png"></div>
+        <h1>Time To Binge</h1>
         <p class="auth-sub">Ton journal de séries et de films, un ticket à la fois.</p>
 
         <form id="auth-form" class="auth-form">
 
           <div id="step-email">
             <input type="email" id="auth-email" placeholder="Email" required />
-            <input type="text" id="auth-username" placeholder="Pseudo (optionnel)" />
-            <button type="submit" class="btn btn--primary">
+            <input type="text" id="auth-username" placeholder="Pseudo (création)" />
+            <button type="submit" class="btn btn--primary-log">
               Recevoir le code
             </button>
           </div>
 
           <div id="step-code" style="display:none;">
             <input type="text" id="auth-code" placeholder="Code reçu par email" />
-            <button type="submit" class="btn btn--primary">
+            <button type="submit" class="btn btn--primary-log">
               Valider le code
             </button>
           </div>
