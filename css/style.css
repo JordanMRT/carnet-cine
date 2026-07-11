@@ -888,7 +888,12 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 .picker-item:hover { color: var(--mustard); }
 
 @media (max-width: 640px) {
-  .profile-header { margin: -1.2rem -1.2rem 2rem; }
+  .profile-header {
+    margin: -1.2rem -1.2rem 2rem;
+        margin-top: -2rem;
+        margin-bottom: 2rem;
+        width: calc(100% + 3rem);
+        margin-left: -2rem;}
   .profile-banner-wrap { height: 250px; }
   .profile-avatar { width: 72px; height: 72px; }
   .profile-identity { margin-top: -75px; padding: 0 1.2rem; }
