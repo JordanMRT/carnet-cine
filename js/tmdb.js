@@ -49,6 +49,13 @@ const TMDB = {
     return tmdbFetch(`/${mediaType}/${id}/images`, { include_image_language: "en,fr,null" });
   },
 
+  // Pour les séries : contrairement à /tv/{id}?append_to_response=credits
+  // (qui renvoie un instantané limité), cet endpoint agrège le casting
+  // sur l'ensemble des épisodes diffusés — plus complet.
+  async getAggregateCredits(tvId) {
+    return tmdbFetch(`/tv/${tvId}/aggregate_credits`);
+  },
+
   async getTrending(mediaType = "all", window = "week") {
     const data = await tmdbFetch(`/trending/${mediaType}/${window}`);
     return data.results;

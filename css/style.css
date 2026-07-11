@@ -1012,6 +1012,57 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   }
 
 }
+/* ==========================================================
+   INSTALL PROMPT ON MOBILE
+   ========================================================== */
+.install-prompt {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 300;
+  display: flex;
+  justify-content: center;
+  padding: 0 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  pointer-events: none;
+}
+.install-prompt-card {
+  pointer-events: auto;
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.2rem;
+  position: relative;
+  transform: translateY(120%);
+  transition: transform 0.3s ease;
+  margin-bottom: 5rem;
+}
+.install-prompt--visible .install-prompt-card { transform: translateY(0); }
+.install-prompt-close {
+  position: absolute; top: 0.6rem; right: 0.6rem;
+  background: none; border: none; color: var(--muted);
+  cursor: pointer; font-size: 0.85rem;
+}
+.install-prompt-close:hover { color: var(--coral); }
+.install-prompt-header { display: flex; gap: 0.8rem; align-items: flex-start; margin-bottom: 0.9rem; padding-right: 1.2rem; }
+.install-prompt-emoji { font-size: 1.6rem; }
+.install-prompt-header strong { display: block; font-family: var(--font-display); font-size: 1rem; margin-bottom: 0.2rem; }
+.install-prompt-header p { margin: 0; color: var(--muted); font-size: 0.85rem; line-height: 1.4; }
+.install-steps { list-style: none; margin: 0 0 1rem; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.install-steps li { display: flex; align-items: center; gap: 0.7rem; font-size: 0.85rem; color: var(--cream); }
+.install-steps li svg { width: 18px; height: 18px; color: var(--mustard); flex-shrink: 0; }
+.install-prompt-forever {
+  display: block;
+  margin: 0 auto;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.install-prompt-forever:hover { color: var(--coral); }
 
 /* ==========================================================
    MOBILE APP NAVIGATION (PWA)

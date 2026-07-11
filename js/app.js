@@ -28,6 +28,7 @@ const App = {
       await this.renderShell();
     }
     window.addEventListener("hashchange", () => this.route());
+    maybeShowInstallPrompt();
   },
 
   async renderShell() {
@@ -446,7 +447,9 @@ async function renderShowDetail(param) {
       (l) => String(l.tmdb_id) === String(id) && l.media_type === type
     );
 
-    const cast = (data.credits?.cast || []).slice(0, 12);
+    const rawCast =
+      type === "tv" ? (await TMDB.getAggregateCredits(id)).cast || [] : data.credits?.cast || [];
+    const cast = rawCast.slice(0, 12);
     const castHTML = cast.length
       ? `
       <div class="cast-strip">
@@ -667,6 +670,7 @@ async function renderEpisodeDetail(param) {
   try {
     const show = await TMDB.getTv(tvId);
     const season = await TMDB.getSeason(tvId, Number(seasonNumber));
+    const aggregateCredits = await TMDB.getAggregateCredits(tvId).catch(() => null);
 
     const episode = season.episodes.find(
       (ep) => ep.episode_number === Number(episodeNumber)
@@ -687,11 +691,18 @@ async function renderEpisodeDetail(param) {
     const watched = entries.length > 0;
     const watchCount = entries.length;
 
-    // Cast : les guest stars de l'épisode si TMDB les fournit, sinon le
-    // casting principal de la série.
-    const episodeCast = (
-      episode.guest_stars?.length ? episode.guest_stars : show.credits?.cast || []
-    ).slice(0, 12);
+    // Cast : le casting principal de la série (agrégé sur toute la
+    // série) + les invités propres à cet épisode, sans doublons.
+    const mainCast = aggregateCredits?.cast || show.credits?.cast || [];
+    const guestStars = episode.guest_stars || [];
+    const seenIds = new Set();
+    const episodeCast = [...mainCast, ...guestStars]
+      .filter((actor) => {
+        if (!actor.profile_path || seenIds.has(actor.id)) return false;
+        seenIds.add(actor.id);
+        return true;
+      })
+      .slice(0, 12);
     const castHTML = episodeCast.length
       ? `
       <div class="cast-strip">
@@ -1826,9 +1837,15 @@ function openAvatarPicker() {
       resultsEl.innerHTML = `<p class="loading">Chargement du casting…</p>`;
       try {
         const type = showItem.dataset.type;
-        const data =
-          type === "movie" ? await TMDB.getMovie(showItem.dataset.id) : await TMDB.getTv(showItem.dataset.id);
-        const cast = (data.credits?.cast || []).filter((a) => a.profile_path).slice(0, 20);
+        let rawCast;
+        if (type === "movie") {
+          const data = await TMDB.getMovie(showItem.dataset.id);
+          rawCast = data.credits?.cast || [];
+        } else {
+          const data = await TMDB.getAggregateCredits(showItem.dataset.id);
+          rawCast = data.cast || [];
+        }
+        const cast = rawCast.filter((a) => a.profile_path).slice(0, 20);
         resultsEl.innerHTML = cast.length
           ? cast
               .map(
