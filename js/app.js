@@ -161,14 +161,12 @@ function shellTemplate() {
         <a href="#/diary" class="nav-link" data-view="diary">Journal</a>
         <a href="#/search" class="nav-link" data-view="search">Rechercher</a>
         <a href="#/library" class="nav-link" data-view="library">Bibliothèque</a>
-        <a href="#/stats" class="nav-link" data-view="stats">Stats</a>
+        
         <a href="#/badges" class="nav-link" data-view="badges">Badges</a>
       </nav>
 
       <div class="topbar-actions">
-        <button id="username-btn" class="btn btn--ghost">
-          ${escapeHtml(displayName())}
-        </button>
+        <a href="#/stats" class="btn btn--ghost">${escapeHtml(displayName())}</a>
 
           <button id="logout-btn" class="btn btn--ghost">
           Déconnexion
@@ -222,21 +220,6 @@ function bindShellEvents() {
     await DB.signOut();
   });
 
-  qs("#username-btn").addEventListener("click", async () => {
-    const current = App.session.user.user_metadata?.username || "";
-    const next = prompt("Ton pseudo :", current);
-    if (next && next.trim() && next.trim() !== current) {
-      try {
-        await DB.updateUsername(next.trim());
-        App.session = await DB.getSession();
-        qs("#username-btn").textContent = displayName();
-        toast("Pseudo mis à jour.", "success");
-      } catch (err) {
-        toast(err.message, "error");
-      }
-    }
-  });
-
   qs("#import-shows-input").addEventListener("change", (e) => runImport(e, "shows"));
   qs("#import-movies-input").addEventListener("change", (e) => runImport(e, "movies"));
 }
@@ -244,6 +227,23 @@ function bindShellEvents() {
 function bindStatsEvents() {
   qs("#import-shows-btn")?.addEventListener("click", () => qs("#import-shows-input").click());
   qs("#import-movies-btn")?.addEventListener("click", () => qs("#import-movies-input").click());
+  qs("#edit-banner-btn")?.addEventListener("click", openBannerPicker);
+  qs("#edit-avatar-btn")?.addEventListener("click", openAvatarPicker);
+  qs("#profile-username-btn")?.addEventListener("click", async () => {
+    const current = App.session.user.user_metadata?.username || "";
+    const next = prompt("Ton pseudo :", current);
+    if (next && next.trim() && next.trim() !== current) {
+      try {
+        await DB.updateUsername(next.trim());
+        App.session = await DB.getSession();
+        toast("Pseudo mis à jour.", "success");
+        App.route();
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    }
+  });
+  if (typeof lucide !== "undefined") lucide.createIcons();
 }
 
 async function runImport(e, kind) {
@@ -1577,11 +1577,190 @@ function bindDiaryEvents() {
   });
 }
 
+// ---------- PROFIL ----------
+function profileHeaderHTML() {
+  const meta = App.session.user.user_metadata || {};
+  const username = meta.username || App.session.user.email?.split("@")[0] || "Toi";
+  const bannerUrl = meta.banner_path ? TMDB.backdropUrl(meta.banner_path, "w1280") : null;
+  const avatarUrl = meta.avatar_path ? TMDB.posterUrl(meta.avatar_path, "w185") : null;
+  const bannerStyle = bannerUrl ? `background-image: url('${bannerUrl}');` : "";
+
+  return `
+    <div class="profile-header">
+      <div class="profile-banner-wrap">
+        <div class="profile-banner" style="${bannerStyle}"></div>
+        <button id="edit-banner-btn" class="profile-banner-edit" title="Modifier la bannière"><i data-lucide="pencil"></i></button>
+      </div>
+      <div class="profile-identity">
+        <div class="profile-avatar-wrap">
+          <div class="profile-avatar" style="${avatarUrl ? `background-image:url('${avatarUrl}')` : ""}">
+            ${avatarUrl ? "" : `<span class="profile-avatar-fallback">${escapeHtml(username[0]?.toUpperCase() || "?")}</span>`}
+          </div>
+          <button id="edit-avatar-btn" class="profile-avatar-edit" title="Modifier l'avatar"><i data-lucide="pencil"></i></button>
+        </div>
+        <button id="profile-username-btn" class="profile-username" title="Modifier ton pseudo">${escapeHtml(username)}</button>
+      </div>
+    </div>`;
+}
+
+// ---------- SÉLECTEURS BANNIÈRE / AVATAR (recherche TMDB) ----------
+function openBannerPicker() {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal modal--picker">
+      <h2>Choisir une bannière</h2>
+      <p class="modal-subtitle">Cherche un film ou une série, son image de fond sera utilisée.</p>
+      <input type="search" id="banner-search-input" class="search-input" placeholder="Cherche un titre…" autofocus />
+      <div id="banner-search-results" class="picker-grid"></div>
+      <div class="modal-actions">
+        <button id="banner-cancel" class="btn btn--ghost">Annuler</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector("#banner-cancel").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => e.target === overlay && overlay.remove());
+
+  const input = qs("#banner-search-input", overlay);
+  const results = qs("#banner-search-results", overlay);
+
+  input.addEventListener(
+    "input",
+    debounce(async () => {
+      const q = input.value.trim();
+      if (q.length < 2) {
+        results.innerHTML = "";
+        return;
+      }
+      try {
+        const items = await TMDB.searchMulti(q);
+        const withBackdrop = items.filter((it) => it.backdrop_path);
+        results.innerHTML =
+          withBackdrop
+            .map(
+              (it) => `
+          <div class="picker-item" data-backdrop="${it.backdrop_path}">
+            <img src="${TMDB.backdropUrl(it.backdrop_path, "w300")}" alt="" loading="lazy" />
+            <span>${escapeHtml(it.original_title || it.original_name || it.title || it.name)}</span>
+          </div>`
+            )
+            .join("") || emptyState("Aucun résultat avec une image disponible.");
+      } catch {
+        results.innerHTML = emptyState("Erreur TMDB.");
+      }
+    }, 400)
+  );
+
+  results.addEventListener("click", async (e) => {
+    const item = e.target.closest(".picker-item");
+    if (!item) return;
+    try {
+      await DB.updateProfile({ banner_path: item.dataset.backdrop });
+      toast("Bannière mise à jour 🎟️", "success");
+      overlay.remove();
+      App.session = await DB.getSession();
+      App.route();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
+}
+
+function openAvatarPicker() {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal modal--picker">
+      <h2>Choisir un avatar</h2>
+      <p class="modal-subtitle">Cherche un film ou une série, puis choisis un personnage dans son casting.</p>
+      <input type="search" id="avatar-search-input" class="search-input" placeholder="Cherche un titre…" autofocus />
+      <div id="avatar-step-results" class="picker-grid"></div>
+      <div class="modal-actions">
+        <button id="avatar-cancel" class="btn btn--ghost">Annuler</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector("#avatar-cancel").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => e.target === overlay && overlay.remove());
+
+  const input = qs("#avatar-search-input", overlay);
+  const resultsEl = qs("#avatar-step-results", overlay);
+
+  input.addEventListener(
+    "input",
+    debounce(async () => {
+      const q = input.value.trim();
+      if (q.length < 2) {
+        resultsEl.innerHTML = "";
+        return;
+      }
+      try {
+        const items = await TMDB.searchMulti(q);
+        resultsEl.innerHTML =
+          items
+            .map(
+              (it) => `
+          <div class="picker-item picker-item--show" data-id="${it.id}" data-type="${it.media_type}">
+            <img src="${TMDB.posterUrl(it.poster_path, "w185")}" alt="" loading="lazy" />
+            <span>${escapeHtml(it.original_title || it.original_name || it.title || it.name)}</span>
+          </div>`
+            )
+            .join("") || emptyState("Aucun résultat.");
+      } catch {
+        resultsEl.innerHTML = emptyState("Erreur TMDB.");
+      }
+    }, 400)
+  );
+
+  resultsEl.addEventListener("click", async (e) => {
+    const showItem = e.target.closest(".picker-item--show");
+    if (showItem) {
+      resultsEl.innerHTML = `<p class="loading">Chargement du casting…</p>`;
+      try {
+        const type = showItem.dataset.type;
+        const data =
+          type === "movie" ? await TMDB.getMovie(showItem.dataset.id) : await TMDB.getTv(showItem.dataset.id);
+        const cast = (data.credits?.cast || []).filter((a) => a.profile_path).slice(0, 20);
+        resultsEl.innerHTML = cast.length
+          ? cast
+              .map(
+                (actor) => `
+            <div class="picker-item picker-item--actor" data-profile="${actor.profile_path}">
+              <img src="${TMDB.posterUrl(actor.profile_path, "w185")}" alt="" loading="lazy" />
+              <span>${escapeHtml(actor.name)}</span>
+            </div>`
+              )
+              .join("")
+          : emptyState("Pas de photos de casting disponibles pour ce titre.");
+      } catch {
+        resultsEl.innerHTML = emptyState("Erreur TMDB.");
+      }
+      return;
+    }
+
+    const actorItem = e.target.closest(".picker-item--actor");
+    if (actorItem) {
+      try {
+        await DB.updateProfile({ avatar_path: actorItem.dataset.profile });
+        toast("Avatar mis à jour 🎟️", "success");
+        overlay.remove();
+        App.session = await DB.getSession();
+        App.route();
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    }
+  });
+}
+
 // ---------- STATS ----------
 function statsTemplate(diary, library) {
   const s = Stats.compute(diary, library, App.genreMaps);
   return `
+    ${profileHeaderHTML()}
     <div class="stats-view">
+    <section class="stats-section-intro">
+        <h2>Mes stats</h2>
       <div class="stats-cards">
         <div class="stat-card"><span class="stat-num">${s.episodesCount}</span><span class="stat-label">Épisodes</span></div>
         <div class="stat-card"><span class="stat-num">${s.moviesCount}</span><span class="stat-label">Films</span></div>
@@ -1590,6 +1769,7 @@ function statsTemplate(diary, library) {
         <div class="stat-card"><span class="stat-num">${s.avgRating ? s.avgRating.toFixed(1) : "—"}</span><span class="stat-label">Note moyenne</span></div>
         <div class="stat-card"><span class="stat-num">${s.showsCompleted}</span><span class="stat-label">Séries terminées</span></div>
       </div>
+     </section>
 
       <section class="stats-section">
         <h2>Activité (12 derniers mois)</h2>

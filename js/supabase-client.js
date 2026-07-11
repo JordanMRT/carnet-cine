@@ -37,6 +37,11 @@ async verifyOtp(email, code) {
     if (error) throw error;
   },
 
+async updateProfile(fields) {
+    const { error } = await supabaseClient.auth.updateUser({ data: fields });
+    if (error) throw error;
+  },
+
   async signOut() {
     const { error } = await supabaseClient.auth.signOut();
     if (error) throw error;

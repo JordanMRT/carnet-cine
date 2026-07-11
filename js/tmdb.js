@@ -57,12 +57,12 @@ const TMDB = {
     return data;
   },
 
-  posterUrl(path, size = "w342") {
+  posterUrl(path, size = "w500") {
     if (!path) return "assets/poster-placeholder.svg";
     return `${CONFIG.TMDB_IMG_BASE}${size}${path}`;
   },
 
-  backdropUrl(path, size = "w780") {
+  backdropUrl(path, size = "w1280") {
     if (!path) return "";
     return `${CONFIG.TMDB_IMG_BASE}${size}${path}`;
   },

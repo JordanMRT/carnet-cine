@@ -63,6 +63,7 @@ button, input, select, textarea { font-family: inherit; }
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
+  text-decoration: none;
 }
 
 .btn svg {
@@ -279,7 +280,7 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   inset: 0;
 
   background-image:
-    linear-gradient(180deg, rgba(14,15,20,0.55) 0%, var(--bg) 70%),
+    linear-gradient(180deg, rgba(14,15,20,0.55) 0%, var(--bg) 90%),
     var(--backdrop);
 
   background-size:
@@ -293,6 +294,8 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   background-repeat: no-repeat;
 
   z-index: 0;
+  -webkit-mask-image: linear-gradient(180deg, black 40%, transparent 100%);
+  mask-image: linear-gradient(180deg, black 40%, transparent 100%);
 }
 
 .show-detail-overlay > * {
@@ -791,6 +794,105 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 .genre-row-track { height: 8px; background: var(--ink); border-radius: 999px; overflow: hidden; }
 .genre-row-fill { height: 100%; background: var(--coral); }
 .genre-row-count { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); text-align: right; }
+
+
+/* ---------- PROFIL ---------- */
+.profile-header { margin: -2rem -2rem 2rem; overflow-x: hidden; }
+.profile-banner-wrap {
+  position: relative;
+  height: 300px;
+}
+.profile-banner {
+  width: 100%;
+  height: 100%;
+  background-color: var(--bg-elevated);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  -webkit-mask-image: linear-gradient(180deg, black 40%, transparent 100%);
+  mask-image: linear-gradient(180deg, black 40%, transparent 100%);
+}
+
+.profile-banner-edit {
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: rgba(14, 15, 20, 0.7);
+  color: var(--cream);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(2px);
+}
+.profile-banner-edit:hover { border-color: var(--mustard); color: var(--mustard); }
+.profile-banner-edit svg { width: .9rem; height: .9rem; }
+.profile-identity {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0 2rem;
+  margin-top: -48px;
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
+}
+.profile-identity > * { pointer-events: auto; }
+.profile-avatar-wrap { position: relative; flex-shrink: 0; }
+.profile-avatar {
+  width: 96px; height: 96px;
+  border-radius: 50%;
+  background: var(--bg-elevated) center/cover no-repeat;
+  border: 4px solid var(--bg);
+  display: flex; align-items: center; justify-content: center;
+}
+.profile-avatar-fallback { font-family: var(--font-display); font-size: 2rem; color: var(--muted); }
+.profile-avatar-edit {
+  position: absolute; bottom: 0; right: 0;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--mustard);
+  color: var(--ink);
+  border: 2px solid var(--bg);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.profile-avatar-edit svg { width: 14px; height: 14px; }
+.profile-username {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.3rem;
+  margin-top: 1.2rem;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+.profile-username:hover { color: var(--mustard); }
+
+.modal--picker { max-width: 480px; max-height: 80vh; overflow-y: auto; }
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 0.8rem;
+  margin-top: 1rem;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.picker-item { cursor: pointer; text-align: center; font-size: 0.75rem; color: var(--muted); }
+.picker-item img { width: 100%; border-radius: 8px; margin-bottom: 0.3rem; background: var(--ink); }
+.picker-item--show img { aspect-ratio: 2 / 3; object-fit: cover; }
+.picker-item--actor img { aspect-ratio: 2 / 3; object-fit: cover; border-radius: 50%; }
+.picker-item:hover { color: var(--mustard); }
+
+@media (max-width: 640px) {
+  .profile-header { margin: -1.2rem -1.2rem 2rem; }
+  .profile-banner-wrap { height: 250px; }
+  .profile-avatar { width: 72px; height: 72px; }
+  .profile-identity { margin-top: -75px; padding: 0 1.2rem; }
+}
 
 /* ---------- BADGES ---------- */
 .badges-grid {
