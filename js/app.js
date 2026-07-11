@@ -118,6 +118,9 @@ const App = {
         view_el.innerHTML = libraryTemplate(this.library);
         bindLibraryEvents();
         break;
+      case "upcoming":
+        renderUpcoming();
+        break;
       case "show":
         renderShowDetail(param);
         break;
@@ -133,6 +136,9 @@ const App = {
         view_el.innerHTML = diaryTemplate(this.library);
         bindDiaryEvents();
         break;
+        case "episode":
+        renderEpisodeDetail(param);
+        break;
     }
     if (typeof lucide !== "undefined") lucide.createIcons();
   },
@@ -147,7 +153,7 @@ function shellTemplate() {
   return `
     <header class="topbar">
       <div class="brand">
-        🎟️
+        <img src="brand-top.png">
         <span>Time To Binge</span>
       </div>
 
@@ -440,7 +446,6 @@ async function renderShowDetail(param) {
       (l) => String(l.tmdb_id) === String(id) && l.media_type === type
     );
 
-
     const cast = (data.credits?.cast || []).slice(0, 12);
     const castHTML = cast.length
       ? `
@@ -476,13 +481,14 @@ async function renderShowDetail(param) {
     const movieWatchCount = movieEntries.length;
     const movieActionsHTML =
       type === "movie"
-        ? `
-        <button id="quick-log-btn" class="btn btn--accent">
-          ${movieWatchCount > 0
-  ? `Rewatch <i data-lucide="rotate-ccw"></i>`
-  : "Marquer comme vu"}
+        ? movieWatchCount > 0
+          ? `
+        <span class="episode-watch-info"><i data-lucide="circle-check-big"></i> vu${movieWatchCount > 1 ? ` • ${movieWatchCount} visionnages` : ""}</span>
+        <button id="movie-rewatch-btn" class="btn btn--accent">
+          Rewatch <i data-lucide="rotate-ccw"></i>
         </button>
-        ${movieWatchCount > 0 ? `<span class="rewatch-badge">×${movieWatchCount}</span>` : ""}`
+        <button id="movie-undo-btn" class="btn btn--ghost">Annuler le dernier visionnage</button>`
+          : `<button id="quick-log-btn" class="btn btn--accent">Marquer comme vu</button>`
         : "";
 
     const userRating = inLibrary?.avg_rating != null ? Math.round(inLibrary.avg_rating / 2) : 0;
@@ -589,7 +595,7 @@ if (typeof lucide !== "undefined") lucide.createIcons();
     });
 
     if (type === "movie") {
-      qs("#quick-log-btn").addEventListener("click", async () => {
+      const logMovieEntry = async (rewatch) => {
         try {
           await DB.addDiaryEntry({
             user_id: App.session.user.id,
@@ -601,17 +607,21 @@ if (typeof lucide !== "undefined") lucide.createIcons();
             episode: null,
             watched_date: new Date().toISOString().slice(0, 10),
             rating: null,
-            rewatch: movieWatchCount > 0,
+            rewatch,
             note: null,
             genres: genreIds,
             runtime_minutes: data.runtime || null,
           });
-          toast(movieWatchCount > 0 ? "Nouveau visionnage ajouté 🎟️" : "Marqué comme vu 🎟️", "success");
+          toast(rewatch ? "Nouveau visionnage ajouté 🎟️" : "Marqué comme vu 🎟️", "success");
           await App.refresh();
         } catch (err) {
           toast(err.message, "error");
         }
-      });
+      };
+
+      qs("#quick-log-btn")?.addEventListener("click", () => logMovieEntry(false));
+      qs("#movie-rewatch-btn")?.addEventListener("click", () => logMovieEntry(true));
+      qs("#movie-undo-btn")?.addEventListener("click", () => undoLastMovieWatch({ tmdb_id: Number(id) }));
     }
 
 if (canRate) {
@@ -645,6 +655,214 @@ if (canRate) {
     }
   } catch (err) {
     view.innerHTML = emptyState("Erreur de chargement — vérifie ta clé TMDB.");
+  }
+}
+
+async function renderEpisodeDetail(param) {
+  const [tvId, seasonNumber, episodeNumber] = param.split("-");
+
+  const view = qs("#view");
+  view.innerHTML = `<p class="loading">Chargement…</p>`;
+
+  try {
+    const show = await TMDB.getTv(tvId);
+    const season = await TMDB.getSeason(tvId, Number(seasonNumber));
+
+    const episode = season.episodes.find(
+      (ep) => ep.episode_number === Number(episodeNumber)
+    );
+
+    if (!episode) {
+      throw new Error("Episode introuvable");
+    }
+
+    const entries = App.diary.filter(
+      (e) =>
+        String(e.tmdb_id) === String(tvId) &&
+        e.media_type === "tv" &&
+        e.season === Number(seasonNumber) &&
+        e.episode === Number(episodeNumber)
+    );
+
+    const watched = entries.length > 0;
+    const watchCount = entries.length;
+
+    // Cast : les guest stars de l'épisode si TMDB les fournit, sinon le
+    // casting principal de la série.
+    const episodeCast = (
+      episode.guest_stars?.length ? episode.guest_stars : show.credits?.cast || []
+    ).slice(0, 12);
+    const castHTML = episodeCast.length
+      ? `
+      <div class="cast-strip">
+        <h2 class="cast-title">Casting</h2>
+        <div class="cast-scroll">
+          ${episodeCast
+            .map(
+              (actor) => `
+            <div class="cast-card">
+              <img src="${TMDB.posterUrl(actor.profile_path, "w185")}" alt="${escapeHtml(actor.name)}" loading="lazy" />
+              <span class="cast-name">${escapeHtml(actor.name)}</span>
+              <span class="cast-character">${escapeHtml(actor.character || "")}</span>
+            </div>`
+            )
+            .join("")}
+        </div>
+      </div>`
+      : "";
+
+    // Note de l'épisode (5 étoiles, activée une fois l'épisode vu)
+    const epRatingRaw = entries.find((e) => e.rating != null)?.rating;
+    const userEpRating = epRatingRaw != null ? Math.round(epRatingRaw / 2) : 0;
+    const ratingHTML = `
+      <div class="rating-widget-block">
+        <h2 class="rating-title">Ta note</h2>
+        <div class="rating-widget ${watched ? "" : "rating-widget--disabled"}" id="episode-rating-widget">
+          ${[1, 2, 3, 4, 5]
+            .map(
+              (n) =>
+                `<button class="rating-star ${n <= userEpRating ? "rating-star--filled" : ""}" data-value="${n}" ${watched ? "" : "disabled"} title="${n} étoile${n > 1 ? "s" : ""}">${n <= userEpRating ? "★" : "☆"}</button>`
+            )
+            .join("")}
+        </div>
+        ${!watched ? `<p class="rating-hint">Marque l'épisode comme vu pour pouvoir le noter.</p>` : ""}
+      </div>`;
+
+    view.innerHTML = `
+      <div class="show-detail"
+           style="--backdrop:url('${TMDB.backdropUrl(show.backdrop_path)}')">
+
+        <div class="show-detail-overlay">
+
+          <img
+            class="show-detail-poster"
+            src="${TMDB.posterUrl(episode.still_path || show.poster_path, "w500")}"
+            alt=""
+          />
+
+          <div class="show-detail-info">
+
+            <h1>${escapeHtml(episode.name)}</h1>
+
+            <p class="show-detail-meta">
+              <a href="#/show/tv-${tvId}" class="episode-show-link">${escapeHtml(show.name)}</a> • S${seasonNumber}E${episodeNumber}
+            </p>
+
+            <div class="overview-wrapper">
+              <p class="show-detail-overview">
+                ${escapeHtml(episode.overview || "Pas de synopsis disponible.")}
+              </p>
+            </div>
+
+            <p class="episode-airdate">
+              Diffusé le ${episode.air_date ? formatDate(episode.air_date) : "Date inconnue"}
+            </p>
+
+            <div class="show-detail-actions">
+              ${
+                watched
+                  ? `
+                  <span class="episode-watch-info"><i data-lucide="circle-check-big"></i> vu${watchCount > 1 ? ` • ${watchCount} visionnages` : ""}</span>
+                  <button id="episode-rewatch-btn" class="btn btn--accent">
+                    Rewatch <i data-lucide="rotate-ccw"></i>
+                  </button>
+                  <button id="episode-undo-btn" class="btn btn--ghost">Annuler le dernier visionnage</button>
+                  `
+                  : `
+                  <button id="episode-toggle-btn" class="btn btn--accent">Marquer comme vu</button>
+                  `
+              }
+            </div>
+            </div>
+            </div>
+
+            ${ratingHTML}
+            ${castHTML}
+
+          </div>
+
+        </div>
+
+      </div>
+    `;
+
+    if (typeof lucide !== "undefined") {
+      lucide.createIcons();
+    }
+
+    const episodeCtx = {
+      tmdb_id: Number(tvId),
+      title: show.name,
+      poster_path: show.poster_path,
+      genres: (show.genres || []).map((g) => String(g.id)),
+      season: Number(seasonNumber),
+      episode: Number(episodeNumber),
+      runtime_minutes: episode.runtime || null,
+      air_date: episode.air_date || null,
+    };
+
+    qs("#episode-toggle-btn")?.addEventListener("click", async () => {
+      await toggleEpisodeWatched(episodeCtx);
+    });
+
+    qs("#episode-undo-btn")?.addEventListener("click", async () => {
+      await undoLastEpisodeWatch(episodeCtx);
+    });
+
+    // Retire uniquement le DERNIER visionnage d'un film (le plus récent).
+async function undoLastMovieWatch(ctx) {
+  const existing = App.diary
+    .filter((e) => String(e.tmdb_id) === String(ctx.tmdb_id) && e.media_type === "movie")
+    .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+
+  if (existing.length === 0) return;
+
+  try {
+    await DB.deleteDiaryEntries([existing[0].id]);
+    toast(existing.length > 1 ? "Dernier visionnage annulé." : "Marqué comme non vu.", "success");
+    await App.refresh();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+    qs("#episode-rewatch-btn")?.addEventListener("click", async () => {
+      await addEpisodeRewatch(episodeCtx);
+    });
+
+    if (watched) {
+      const widget = qs("#episode-rating-widget");
+      const starEls = qsa(".rating-star", widget);
+      const applyPreview = (value) =>
+        starEls.forEach((s) => {
+          const filled = Number(s.dataset.value) <= value;
+          s.classList.toggle("rating-star--filled", filled);
+          s.textContent = filled ? "★" : "☆";
+        });
+      starEls.forEach((btn) => {
+        const value = Number(btn.dataset.value);
+        btn.addEventListener("mouseenter", () => applyPreview(value));
+        btn.addEventListener("click", async () => {
+          try {
+            await DB.setEpisodeRating(
+              App.session.user.id,
+              Number(tvId),
+              Number(seasonNumber),
+              Number(episodeNumber),
+              value * 2
+            );
+            toast("Note enregistrée 🎟️", "success");
+            await App.refresh();
+          } catch (err) {
+            toast(err.message, "error");
+          }
+        });
+      });
+      widget.addEventListener("mouseleave", () => applyPreview(userEpRating));
+    }
+  } catch (err) {
+    console.error(err);
+    view.innerHTML = emptyState("Impossible de charger cet épisode.");
   }
 }
 
@@ -780,6 +998,15 @@ if (typeof lucide !== "undefined") lucide.createIcons();
         });
       })
     );
+
+    qsa(".episode-row", container).forEach((row) =>
+  row.addEventListener("click", (e) => {
+    if (e.target.closest("button")) return;
+
+    location.hash = `#/episode/${tvId}-${row.dataset.season}-${row.dataset.episode}`;
+  })
+);
+
   } catch {
     container.innerHTML = emptyState("Impossible de charger les épisodes de cette saison.");
   }
@@ -825,6 +1052,33 @@ async function toggleEpisodeWatched(ctx) {
       }
     );
   }
+
+// Retire uniquement le DERNIER visionnage d'un épisode (contrairement à
+// toggleEpisodeWatched, utilisé par la coche rapide, qui efface tout).
+async function undoLastEpisodeWatch(ctx) {
+  const existing = App.diary
+    .filter(
+      (e) =>
+        String(e.tmdb_id) === String(ctx.tmdb_id) &&
+        e.media_type === "tv" &&
+        e.season === ctx.season &&
+        e.episode === ctx.episode
+    )
+    .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+
+  if (existing.length === 0) return;
+
+  try {
+    await DB.deleteDiaryEntries([existing[0].id]);
+    toast(
+      existing.length > 1 ? "Dernier visionnage annulé." : "Épisode marqué comme non vu.",
+      "success"
+    );
+    await App.refresh();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -949,13 +1203,18 @@ function showConfirm(message, { confirmLabel = "Oui", cancelLabel = "Non" } = {}
 // ---------- LIBRARY ----------
 let libraryFilter = "all"; // "all" | "movie" | "tv"
 
-function libraryTemplate(library) {
-  const filterBar = `
+function libraryNavBar(active) {
+  return `
     <div class="library-filters">
-      <button class="filter-btn ${libraryFilter === "all" ? "filter-btn--active" : ""}" data-filter="all">Tout</button>
-      <button class="filter-btn ${libraryFilter === "movie" ? "filter-btn--active" : ""}" data-filter="movie">Films</button>
-      <button class="filter-btn ${libraryFilter === "tv" ? "filter-btn--active" : ""}" data-filter="tv">Séries</button>
+      <a href="#/library" class="filter-btn ${active === "all" ? "filter-btn--active" : ""}" data-filter="all">Tout</a>
+      <a href="#/library" class="filter-btn ${active === "movie" ? "filter-btn--active" : ""}" data-filter="movie">Films</a>
+      <a href="#/library" class="filter-btn ${active === "tv" ? "filter-btn--active" : ""}" data-filter="tv">Séries</a>
+      <a href="#/upcoming" class="filter-btn ${active === "upcoming" ? "filter-btn--active" : ""}">À venir</a>
     </div>`;
+}
+
+function libraryTemplate(library) {
+  const filterBar = libraryNavBar(libraryFilter);
 
   const filtered = libraryFilter === "all" ? library : library.filter((l) => l.media_type === libraryFilter);
 
@@ -1019,6 +1278,185 @@ function bindLibraryEvents() {
     const card = e.target.closest(".poster-card");
     if (card) location.hash = `#/show/${card.dataset.type}-${card.dataset.id}`;
   });
+}
+
+// ---------- À VENIR (calendrier) ----------
+async function renderUpcoming() {
+  const view = qs("#view");
+  view.innerHTML = `${libraryNavBar("upcoming")}<p class="loading">Chargement du calendrier…</p>`;
+
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const watchlistMovies = App.library.filter((l) => l.media_type === "movie" && l.status === "watchlist");
+    const watchingShows = App.library.filter((l) => l.media_type === "tv" && l.status === "watching");
+
+    // ---- Films ----
+    const movieDetails = await Promise.all(
+      watchlistMovies.map(async (m) => {
+        try {
+          const data = await TMDB.getMovie(m.tmdb_id);
+          return { ...m, release_date: data.release_date || null };
+        } catch {
+          return { ...m, release_date: null };
+        }
+      })
+    );
+    const moviesToWatch = movieDetails
+      .filter((m) => m.release_date && m.release_date <= today)
+      .sort((a, b) => b.release_date.localeCompare(a.release_date));
+    const moviesUpcoming = movieDetails
+      .filter((m) => m.release_date && m.release_date > today)
+      .sort((a, b) => a.release_date.localeCompare(b.release_date));
+
+    // ---- Séries ----
+    const showResults = await Promise.all(
+      watchingShows.map(async (show) => {
+        try {
+          const data = await TMDB.getTv(show.tmdb_id);
+          const showEntries = App.diary.filter(
+            (e) => String(e.tmdb_id) === String(show.tmdb_id) && e.media_type === "tv"
+          );
+          const watchedKeys = new Set(showEntries.map((e) => `${e.season}x${e.episode}`));
+          const watchedSeasons = showEntries.map((e) => e.season || 1);
+          const startSeason = watchedSeasons.length ? Math.max(...watchedSeasons) : 1;
+
+          let nextEpisode = null;
+          const lastSeasonToCheck = Math.min(startSeason + 1, data.number_of_seasons || startSeason);
+          for (let s = startSeason; s <= lastSeasonToCheck; s++) {
+            const season = await TMDB.getSeason(show.tmdb_id, s);
+            const found = (season.episodes || []).find(
+              (ep) => !watchedKeys.has(`${s}x${ep.episode_number}`) && ep.air_date && ep.air_date <= today
+            );
+            if (found) {
+              nextEpisode = { ...found, season_number: s };
+              break;
+            }
+          }
+
+          return { show, toWatch: nextEpisode, upcoming: data.next_episode_to_air || null };
+        } catch {
+          return { show, toWatch: null, upcoming: null };
+        }
+      })
+    );
+
+    const showsToWatch = showResults
+      .filter((r) => r.toWatch)
+      .map((r) => ({ show: r.show, episode: r.toWatch, genres: r.genres }))
+      .sort((a, b) => (a.episode.air_date || "").localeCompare(b.episode.air_date || ""));
+    const showsUpcoming = showResults
+      .filter((r) => r.upcoming)
+      .map((r) => ({ show: r.show, episode: r.upcoming, genres: r.genres }))
+      .sort((a, b) => (a.episode.air_date || "").localeCompare(b.episode.air_date || ""));
+
+    view.innerHTML = `
+      ${libraryNavBar("upcoming")}
+      <div class="upcoming-view">
+        <section class="upcoming-section">
+          <h2>Films à voir</h2>
+          ${
+            moviesToWatch.length
+              ? `<div class="upcoming-list">${moviesToWatch.map((m) => upcomingMovieCard(m, { showDate: false })).join("")}</div>`
+              : emptyState("Rien de sorti à voir pour l'instant dans ta watchlist.")
+          }
+        </section>
+
+        <section class="upcoming-section">
+          <h2>Films à venir</h2>
+          ${
+            moviesUpcoming.length
+              ? `<div class="upcoming-list">${moviesUpcoming.map(upcomingMovieCard).join("")}</div>`
+              : emptyState("Aucun film pas encore sorti dans ta watchlist.")
+          }
+        </section>
+
+        <section class="upcoming-section">
+          <h2>Épisodes à voir</h2>
+          ${
+            showsToWatch.length
+              ? `<div class="upcoming-list upcoming-list--episodes">${showsToWatch.map((item) => upcomingEpisodeCard(item, { showCheckbox: true, showDate: false })).join("")}</div>`
+              : emptyState("Tu es à jour sur toutes tes séries en cours.")
+          }
+        </section>
+
+        <section class="upcoming-section">
+          <h2>Épisodes à venir</h2>
+          ${
+            showsUpcoming.length
+              ? `<div class="upcoming-list upcoming-list--episodes">${showsUpcoming.map((item) => upcomingEpisodeCard(item)).join("")}</div>`
+              : emptyState("Aucun épisode annoncé pour tes séries en cours.")
+          }
+        </section>
+      </div>
+    `;
+
+    qsa(".upcoming-card", view).forEach((card) =>
+      card.addEventListener("click", () => {
+        location.hash = card.dataset.href;
+      })
+    );
+
+    qsa(".upcoming-check-toggle", view).forEach((btn) =>
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await toggleEpisodeWatched({
+          tmdb_id: Number(btn.dataset.tmdbId),
+          title: btn.dataset.title,
+          poster_path: btn.dataset.poster || null,
+          genres: (btn.dataset.genres || "").split(",").filter(Boolean),
+          season: Number(btn.dataset.season),
+          episode: Number(btn.dataset.episode),
+          runtime_minutes: Number(btn.dataset.runtime) || null,
+          air_date: btn.dataset.airDate || null,
+        });
+      })
+    );
+
+    if (typeof lucide !== "undefined") lucide.createIcons();
+  } catch (err) {
+    console.error(err);
+    view.innerHTML = libraryNavBar("upcoming") + emptyState("Impossible de charger le calendrier.");
+  }
+}
+
+function upcomingMovieCard(m, { showDate = true } = {}) {
+  return `
+    <div class="upcoming-card upcoming-card--movie" data-href="#/show/movie-${m.tmdb_id}">
+      ${showDate ? `<span class="upcoming-date">${m.release_date ? formatDate(m.release_date) : "Date inconnue"}</span>` : ""}
+      <div class="upcoming-card-media">
+        <img src="${TMDB.posterUrl(m.poster_path)}" alt="${escapeHtml(m.title)}" loading="lazy" />
+        <div class="upcoming-card-info">
+          <span class="upcoming-card-title">${escapeHtml(m.title)}</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+function upcomingEpisodeCard({ show, episode, genres = [] }, { showCheckbox = false, showDate = true } = {}) {
+  const seasonNum = episode.season_number;
+  const epNum = episode.episode_number;
+  const checkboxHTML = showCheckbox
+    ? `<button class="upcoming-check-toggle" title="Marquer comme vu"
+        data-tmdb-id="${show.tmdb_id}" data-title="${escapeHtml(show.title)}" data-poster="${show.poster_path || ""}"
+        data-season="${seasonNum}" data-episode="${epNum}" data-runtime="${episode.runtime || ""}"
+        data-air-date="${episode.air_date || ""}" data-genres="${genres.join(",")}">
+        <i data-lucide="circle-check-big"></i>
+      </button>`
+    : "";
+  return `
+    <div class="upcoming-card upcoming-card--episode" data-href="#/episode/${show.tmdb_id}-${seasonNum}-${epNum}">
+      ${showDate ? `<span class="upcoming-date">${episode.air_date ? formatDate(episode.air_date) : "Date inconnue"}</span>` : ""}
+      <div class="upcoming-card-media">
+        <img src="${TMDB.posterUrl(episode.still_path || show.poster_path, "w300")}" alt="" loading="lazy" />
+        <div class="upcoming-card-info">
+          <div class="upcoming-card-text">
+            <span class="upcoming-card-title">${escapeHtml(show.title)}</span>
+            <span class="upcoming-card-sub">S${seasonNum}E${epNum}${episode.name ? ` · ${escapeHtml(episode.name)}` : ""}</span>
+          </div>
+          ${checkboxHTML}
+        </div>
+      </div>
+    </div>`;
 }
 
 // ---------- DIARY (ticket display) ----------
@@ -1169,7 +1607,7 @@ function statsTemplate(diary, library) {
 
       ${
         s.topRated.length
-          ? `<section class="stats-section">
+          ? `<section class="stats-section-ratings">
         <h2>Tes meilleures notes</h2>
         <div class="ticket-list">${s.topRated.map(entryTicketCard).join("")}</div>
       </section>`

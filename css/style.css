@@ -58,7 +58,19 @@ button, input, select, textarea { font-family: inherit; }
   font-weight: 600;
   font-size: 0.9rem;
   transition: transform 0.15s ease, background 0.15s ease;
+  align-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
 }
+
+.btn svg {
+  width: .9rem;
+  height: .9rem;
+  stroke-width: 2.2;
+  flex-shrink: 0;}
+
 .btn:hover { transform: translateY(-1px); }
 .btn--primary { background: var(--mustard); color: var(--ink); border-color: var(--mustard); }
 .btn--accent { background: var(--coral); color: var(--ink); border-color: var(--coral); }
@@ -85,6 +97,11 @@ button, input, select, textarea { font-family: inherit; }
   gap: 0.4rem;
   align-items: center;
 }
+
+.brand img {
+  width: 50px;
+}
+
 .nav { display: flex; gap: 1.4rem; flex: 1; flex-wrap: wrap; }
 .nav-link {
   text-decoration: none;
@@ -190,6 +207,59 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
 .filter-btn:hover { color: var(--cream); border-color: var(--cream); }
 .filter-btn--active { background: var(--mustard); color: var(--ink); border-color: var(--mustard); }
 
+a.filter-btn { text-decoration: none; display: inline-flex; align-items: center; }
+
+.upcoming-view { display: flex; flex-direction: column; gap: 2.4rem; margin-top: 1.6rem; }
+.upcoming-section h2 { margin-bottom: 1rem; }
+.upcoming-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1.4rem;
+}
+.upcoming-card { cursor: pointer; display: flex; flex-direction: column; gap: 0.5rem; }
+.upcoming-date {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--mustard);
+  text-transform: uppercase;
+}
+.upcoming-card-media {
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  transition: transform 0.15s ease;
+}
+.upcoming-card:hover .upcoming-card-media { transform: translateY(-3px); }
+.upcoming-card-media img { width: 100%; display: block; background: var(--ink); }
+.upcoming-card--movie .upcoming-card-media img { aspect-ratio: 2 / 3; object-fit: cover; }
+.upcoming-card--episode .upcoming-card-media img { aspect-ratio: 16 / 9; object-fit: cover; }
+.upcoming-card-info { padding: 0.6em 0.7em; }
+.upcoming-card-title { font-size: 0.85rem; font-weight: 600; display: block; }
+.upcoming-card-sub { font-size: 0.75rem; color: var(--muted); font-family: var(--font-mono); display: block; margin-top: 0.2rem; }
+
+.upcoming-card--episode .upcoming-card-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.upcoming-card--episode .upcoming-card-text { display: flex; flex-direction: column; min-width: 0; }
+.upcoming-check-toggle {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--ink);
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.upcoming-check-toggle:hover { border-color: var(--sage); color: var(--sage); }
+.upcoming-check-toggle svg { width: .9rem; height: .9rem; }
 /* ---------- SHOW DETAIL ---------- */
 .show-detail-overlay {
   position: relative;
@@ -285,7 +355,7 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
     text-decoration: underline;
 }
 
-.show-detail-actions { display: flex; gap: 0.8rem; margin-top: 1.2rem; flex-wrap: wrap; }
+.show-detail-actions { display: flex; align-items: center; gap: 0.8rem; margin-top: 1.2rem; flex-wrap: wrap; }
 .show-detail-actions select {
   border-radius: 999px;
     border: 1px solid var(--border);
@@ -317,6 +387,7 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
     background-size: 0.9em;
 }
 .episode-list { display: flex; flex-direction: column; gap: 0.4rem; }
+.episode-airdate {color: var(--muted)}
 .episode-row {
   display: grid;
   grid-template-columns: 100px 1fr auto;
@@ -345,6 +416,13 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
   gap: 0.6rem;
   flex-wrap: wrap;
 }
+
+.episode-show-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dashed var(--mustard);
+}
+.episode-show-link:hover { color: var(--mustard); }
 
 .episode-thumb {
   width: 100px;
@@ -439,6 +517,8 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
   font-size: 0.85rem;
   display: flex; align-items: center; justify-content: center;
 }
+
+
 .episode-rewatch-btn:hover { border-color: var(--mustard); color: var(--mustard); }
 .episode-rewatch-badge {
   font-family: var(--font-mono);
@@ -457,6 +537,19 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
   border-radius: 999px;
   align-self: center;
 }
+
+.episode-watch-info {
+  font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--sage);
+    font-weight: 600;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: .5rem;
+}
+
 
 #quick-log-btn {
   display: inline-flex;
@@ -560,7 +653,12 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
 .ticket-perforation::before { top: -8px; }
 .ticket-perforation::after { bottom: -8px; }
 .ticket-body { padding: 1rem 1.2rem; display: flex; flex-direction: column; gap: 0.35rem; }
-.ticket-row { display: flex; justify-content: start; align-items: center; gap: 1rem; }
+.ticket-row { display: flex;
+    justify-content: start;
+    align-items: baseline;
+    gap: .5rem;
+    flex-direction: column;
+   }
 .ticket-title { font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; }
 .ticket-sub { font-family: var(--font-mono); color: var(--mustard); font-size: 0.82rem; white-space: nowrap; }
 .ticket-row--meta { font-size: 0.8rem; color: var(--muted); font-family: var(--font-mono); }
@@ -769,7 +867,7 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
 
   .topbar{
     padding:1rem;
-    justify-content:space-between;
+    justify-content:center;
     flex-wrap:nowrap;
   }
 
@@ -819,7 +917,13 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
 
   .show-detail-actions{
     justify-content:center;
+    margin-top: 0;
   }
+
+  .upcoming-list--episodes {
+    grid-template-columns: 1fr;
+  }
+
   .episode-row {
     display: grid;
     grid-template-columns: 72px 1fr auto;
@@ -835,6 +939,14 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
 .episode-row--watched {
     border-color: var(--sage);
     background: rgba(124, 152, 133, 0.1);
+}
+
+.episode-watch-info {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
 }
 
   .ticket{

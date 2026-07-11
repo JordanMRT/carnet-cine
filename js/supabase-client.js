@@ -111,6 +111,21 @@ async upsertLibraryItems(items) {
     if (error) throw error;
   },
 
+  // Note un épisode précis (contrairement à setWorkRating qui note toute
+  // l'œuvre) — s'applique à toutes les entrées de cet épisode précis
+  // (utile en cas de rewatch du même épisode).
+  async setEpisodeRating(userId, tmdbId, season, episode, rating) {
+    const { error } = await supabaseClient
+      .from("diary_entries")
+      .update({ rating })
+      .eq("user_id", userId)
+      .eq("tmdb_id", tmdbId)
+      .eq("media_type", "tv")
+      .eq("season", season)
+      .eq("episode", episode);
+    if (error) throw error;
+  },
+
   // ---------- DIARY (journal de visionnage) ----------
   async getDiary(userId) {
     return this._getAllPages("diary_entries", userId, [
