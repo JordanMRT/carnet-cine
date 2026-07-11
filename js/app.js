@@ -1610,10 +1610,10 @@ function openBannerPicker() {
   overlay.innerHTML = `
     <div class="modal modal--picker">
       <h2>Choisir une bannière</h2>
-      <p class="modal-subtitle">Cherche un film ou une série, son image de fond sera utilisée.</p>
-      <input type="search" id="banner-search-input" class="search-input" placeholder="Cherche un titre…" autofocus />
-      <div id="banner-search-results" class="picker-grid"></div>
+      <p class="modal-subtitle" id="banner-modal-subtitle">Cherche un film ou une série.</p>
+      <div id="banner-modal-body"></div>
       <div class="modal-actions">
+        <button id="banner-back" class="btn btn--ghost" hidden>Retour</button>
         <button id="banner-cancel" class="btn btn--ghost">Annuler</button>
       </div>
     </div>`;
@@ -1621,41 +1621,13 @@ function openBannerPicker() {
   overlay.querySelector("#banner-cancel").addEventListener("click", () => overlay.remove());
   overlay.addEventListener("click", (e) => e.target === overlay && overlay.remove());
 
-  const input = qs("#banner-search-input", overlay);
-  const results = qs("#banner-search-results", overlay);
+  const body = qs("#banner-modal-body", overlay);
+  const subtitle = qs("#banner-modal-subtitle", overlay);
+  const backBtn = qs("#banner-back", overlay);
 
-  input.addEventListener(
-    "input",
-    debounce(async () => {
-      const q = input.value.trim();
-      if (q.length < 2) {
-        results.innerHTML = "";
-        return;
-      }
-      try {
-        const items = await TMDB.searchMulti(q);
-        const withBackdrop = items.filter((it) => it.backdrop_path);
-        results.innerHTML =
-          withBackdrop
-            .map(
-              (it) => `
-          <div class="picker-item" data-backdrop="${it.backdrop_path}">
-            <img src="${TMDB.backdropUrl(it.backdrop_path, "w300")}" alt="" loading="lazy" />
-            <span>${escapeHtml(it.original_title || it.original_name || it.title || it.name)}</span>
-          </div>`
-            )
-            .join("") || emptyState("Aucun résultat avec une image disponible.");
-      } catch {
-        results.innerHTML = emptyState("Erreur TMDB.");
-      }
-    }, 400)
-  );
-
-  results.addEventListener("click", async (e) => {
-    const item = e.target.closest(".picker-item");
-    if (!item) return;
+  async function selectBanner(path) {
     try {
-      await DB.updateProfile({ banner_path: item.dataset.backdrop });
+      await DB.updateProfile({ banner_path: path });
       toast("Bannière mise à jour 🎟️", "success");
       overlay.remove();
       App.session = await DB.getSession();
@@ -1663,7 +1635,143 @@ function openBannerPicker() {
     } catch (err) {
       toast(err.message, "error");
     }
-  });
+  }
+
+  function renderSearchStep() {
+    backBtn.hidden = true;
+    backBtn.onclick = null;
+    subtitle.textContent = "Cherche un film ou une série.";
+    body.innerHTML = `
+      <input type="search" id="banner-search-input" class="search-input" placeholder="Cherche un titre…" autofocus />
+      <div id="banner-search-results" class="picker-grid"></div>
+    `;
+    const input = qs("#banner-search-input", body);
+    const results = qs("#banner-search-results", body);
+    input.addEventListener(
+      "input",
+      debounce(async () => {
+        const q = input.value.trim();
+        if (q.length < 2) {
+          results.innerHTML = "";
+          return;
+        }
+        try {
+          const items = await TMDB.searchMulti(q);
+          results.innerHTML =
+            items
+              .map((it) => {
+                const title = it.original_title || it.original_name || it.title || it.name;
+                return `
+              <div class="picker-item picker-item--show" data-id="${it.id}" data-type="${it.media_type}" data-title="${escapeHtml(title)}">
+                <img src="${TMDB.posterUrl(it.poster_path, "w185")}" alt="" loading="lazy" />
+                <span>${escapeHtml(title)}</span>
+              </div>`;
+              })
+              .join("") || emptyState("Aucun résultat.");
+        } catch {
+          results.innerHTML = emptyState("Erreur TMDB.");
+        }
+      }, 400)
+    );
+    results.addEventListener("click", (e) => {
+      const item = e.target.closest(".picker-item--show");
+      if (item) renderImageStep(item.dataset.type, item.dataset.id, item.dataset.title);
+    });
+  }
+
+  async function renderImageStep(mediaType, id, title) {
+    backBtn.hidden = false;
+    backBtn.onclick = renderSearchStep;
+    subtitle.textContent = title;
+
+    const hasEpisodes = mediaType === "tv";
+    body.innerHTML = `
+      <div class="picker-tabs">
+        <button class="picker-tab picker-tab--active" data-tab="backdrops">Fonds d'écran</button>
+        ${hasEpisodes ? `<button class="picker-tab" data-tab="episodes">Épisodes</button>` : ""}
+      </div>
+      <div id="banner-image-grid" class="picker-grid picker-grid--wide"><p class="loading">Chargement…</p></div>
+    `;
+    const grid = qs("#banner-image-grid", body);
+
+    // Un seul écouteur, valable pour tous les contenus qui seront
+    // injectés ensuite (fonds d'écran ou vignettes d'épisode).
+    grid.addEventListener("click", (e) => {
+      const item = e.target.closest(".picker-item--image");
+      if (item) selectBanner(item.dataset.path);
+    });
+
+    let numberOfSeasons = null;
+
+    async function loadBackdrops() {
+      grid.innerHTML = `<p class="loading">Chargement…</p>`;
+      try {
+        const images = await TMDB.getImages(mediaType, id);
+        const backdrops = (images.backdrops || []).slice(0, 30);
+        grid.innerHTML = backdrops.length
+          ? backdrops
+              .map(
+                (img) => `
+              <div class="picker-item picker-item--image" data-path="${img.file_path}">
+                <img src="${TMDB.backdropUrl(img.file_path, "w300")}" alt="" loading="lazy" />
+              </div>`
+              )
+              .join("")
+          : emptyState("Aucune image disponible pour ce titre.");
+      } catch {
+        grid.innerHTML = emptyState("Erreur TMDB.");
+      }
+    }
+
+    async function loadEpisodes(season) {
+      grid.innerHTML = `<p class="loading">Chargement…</p>`;
+      try {
+        if (numberOfSeasons === null) {
+          const show = await TMDB.getTv(id);
+          numberOfSeasons = show.number_of_seasons || 1;
+        }
+        const seasonData = await TMDB.getSeason(id, season);
+        const episodes = (seasonData.episodes || []).filter((ep) => ep.still_path);
+        const seasonOptions = Array.from({ length: numberOfSeasons }, (_, i) => i + 1)
+          .map((n) => `<option value="${n}" ${n === season ? "selected" : ""}>Saison ${n}</option>`)
+          .join("");
+        grid.innerHTML = `
+          <select id="banner-season-select" class="banner-season-select">${seasonOptions}</select>
+          <div class="picker-grid picker-grid--wide">
+            ${
+              episodes.length
+                ? episodes
+                    .map(
+                      (ep) => `
+                  <div class="picker-item picker-item--image" data-path="${ep.still_path}">
+                    <img src="${TMDB.backdropUrl(ep.still_path, "w300")}" alt="" loading="lazy" />
+                    <span>S${season}E${ep.episode_number}</span>
+                  </div>`
+                    )
+                    .join("")
+                : emptyState("Pas de vignettes disponibles pour cette saison.")
+            }
+          </div>
+        `;
+        qs("#banner-season-select", grid).addEventListener("change", (e) => loadEpisodes(Number(e.target.value)));
+      } catch {
+        grid.innerHTML = emptyState("Erreur TMDB.");
+      }
+    }
+
+    qsa(".picker-tab", body).forEach((tab) =>
+      tab.addEventListener("click", () => {
+        qsa(".picker-tab", body).forEach((t) => t.classList.remove("picker-tab--active"));
+        tab.classList.add("picker-tab--active");
+        if (tab.dataset.tab === "backdrops") loadBackdrops();
+        else loadEpisodes(1);
+      })
+    );
+
+    await loadBackdrops();
+  }
+
+  renderSearchStep();
 }
 
 function openAvatarPicker() {

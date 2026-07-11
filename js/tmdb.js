@@ -45,6 +45,10 @@ const TMDB = {
     return tmdbFetch(`/tv/${tvId}/season/${seasonNumber}`);
   },
 
+  async getImages(mediaType, id) {
+    return tmdbFetch(`/${mediaType}/${id}/images`, { include_image_language: "en,fr,null" });
+  },
+
   async getTrending(mediaType = "all", window = "week") {
     const data = await tmdbFetch(`/trending/${mediaType}/${window}`);
     return data.results;
