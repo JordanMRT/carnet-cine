@@ -1447,7 +1447,7 @@ function upcomingEpisodeCard({ show, episode, genres = [] }, { showCheckbox = fa
     <div class="upcoming-card upcoming-card--episode" data-href="#/episode/${show.tmdb_id}-${seasonNum}-${epNum}">
       ${showDate ? `<span class="upcoming-date">${episode.air_date ? formatDate(episode.air_date) : "Date inconnue"}</span>` : ""}
       <div class="upcoming-card-media">
-        <img src="${TMDB.posterUrl(episode.still_path || show.poster_path, "w300")}" alt="" loading="lazy" />
+        <img src="${TMDB.posterUrl(episode.still_path || show.poster_path, "w500")}" alt="" loading="lazy" />
         <div class="upcoming-card-info">
           <div class="upcoming-card-text">
             <span class="upcoming-card-title">${escapeHtml(show.title)}</span>
