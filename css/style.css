@@ -951,6 +951,21 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   .ticket-poster img { width: 70px; }
 }
 
+@media (hover: none) and (pointer: coarse) {
+
+  .toast {
+    top: calc(env(safe-area-inset-top) + 4rem);
+    bottom: auto;
+    transform: translate(-50%, -20px);
+    z-index: 1000;
+  }
+
+  .toast--visible {
+    transform: translate(-50%, 0);
+  }
+
+}
+
 /* ==========================================================
    MOBILE APP NAVIGATION (PWA)
    ========================================================== */
