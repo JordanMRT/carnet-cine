@@ -32,8 +32,12 @@ function showUpdatePrompt(worker) {
   `;
 
   document.body.appendChild(card);
+  requestAnimationFrame(() => card.classList.add("install-prompt--visible"));
 
-  card.querySelector(".install-prompt-close").addEventListener("click", () => card.remove());
+  card.querySelector(".install-prompt-close").addEventListener("click", () => {
+    card.classList.remove("install-prompt--visible");
+    setTimeout(() => card.remove(), 300);
+  });
 
   qs("#update-app-btn").addEventListener("click", () => {
     swUpdateRequested = true;

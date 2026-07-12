@@ -1035,7 +1035,7 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 /* ==========================================================
    INSTALL PROMPT ON MOBILE
    ========================================================== */
-.install-prompt, #update-prompt {
+.install-prompt {
   position: fixed;
   left: 0; right: 0; bottom: 0;
   z-index: 300;
