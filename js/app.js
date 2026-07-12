@@ -32,27 +32,24 @@ const App = {
 // Service Worker
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js").then((registration) => {
-
     // Vérifie immédiatement si une mise à jour existe
     registration.update();
 
+    // Un worker était peut-être déjà en attente d'une session précédente
+    if (registration.waiting && navigator.serviceWorker.controller) {
+      showUpdatePrompt(registration.waiting);
+    }
+
     registration.addEventListener("updatefound", () => {
       const newWorker = registration.installing;
-        if (!newWorker) return;
+      if (!newWorker) return;
 
-        newWorker.addEventListener("statechange", () => {
-        if (
-          newWorker.state === "installed" &&
-          navigator.serviceWorker.controller
-        ) {
+      newWorker.addEventListener("statechange", () => {
+        if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
           showUpdatePrompt(newWorker);
-        }
-        if (registration.waiting) {
-        showUpdatePrompt(registration.waiting);
         }
       });
     });
-
   });
 }
 
@@ -477,7 +474,7 @@ async function renderShowDetail(param) {
 
     const rawCast =
       type === "tv" ? (await TMDB.getAggregateCredits(id)).cast || [] : data.credits?.cast || [];
-    const cast = rawCast.slice(0, 12);
+    const cast = (await getCastForDisplay(type === "movie" ? "movie" : "series", id, title, rawCast)).slice(0, 12);
     const castHTML = cast.length
       ? `
       <div class="cast-strip">
@@ -487,9 +484,9 @@ async function renderShowDetail(param) {
             .map(
               (actor) => `
             <div class="cast-card">
-              <img src="${TMDB.posterUrl(actor.profile_path, "w185")}" alt="${escapeHtml(actor.name)}" loading="lazy" />
+              <img src="${actor.image}" alt="${escapeHtml(actor.name)}" loading="lazy" />
               <span class="cast-name">${escapeHtml(actor.name)}</span>
-              <span class="cast-character">${escapeHtml(actor.character || "")}</span>
+              <span class="cast-character">${escapeHtml(actor.role)}</span>
             </div>`
             )
             .join("")}
@@ -724,13 +721,12 @@ async function renderEpisodeDetail(param) {
     const mainCast = aggregateCredits?.cast || show.credits?.cast || [];
     const guestStars = episode.guest_stars || [];
     const seenIds = new Set();
-    const episodeCast = [...mainCast, ...guestStars]
-      .filter((actor) => {
-        if (!actor.profile_path || seenIds.has(actor.id)) return false;
-        seenIds.add(actor.id);
-        return true;
-      })
-      .slice(0, 12);
+    const tmdbFallbackCast = [...mainCast, ...guestStars].filter((actor) => {
+      if (!actor.profile_path || seenIds.has(actor.id)) return false;
+      seenIds.add(actor.id);
+      return true;
+    });
+    const episodeCast = (await getCastForDisplay("series", tvId, show.name, tmdbFallbackCast)).slice(0, 12);
     const castHTML = episodeCast.length
       ? `
       <div class="cast-strip">
@@ -740,9 +736,9 @@ async function renderEpisodeDetail(param) {
             .map(
               (actor) => `
             <div class="cast-card">
-              <img src="${TMDB.posterUrl(actor.profile_path, "w185")}" alt="${escapeHtml(actor.name)}" loading="lazy" />
+              <img src="${actor.image}" alt="${escapeHtml(actor.name)}" loading="lazy" />
               <span class="cast-name">${escapeHtml(actor.name)}</span>
-              <span class="cast-character">${escapeHtml(actor.character || "")}</span>
+              <span class="cast-character">${escapeHtml(actor.role)}</span>
             </div>`
             )
             .join("")}
@@ -1621,7 +1617,7 @@ function profileHeaderHTML() {
   const meta = App.session.user.user_metadata || {};
   const username = meta.username || App.session.user.email?.split("@")[0] || "Toi";
   const bannerUrl = meta.banner_path ? TMDB.backdropUrl(meta.banner_path, "w1280") : null;
-  const avatarUrl = meta.avatar_path ? TMDB.posterUrl(meta.avatar_path, "w185") : null;
+  const avatarUrl = meta.avatar_url || (meta.avatar_path ? TMDB.posterUrl(meta.avatar_path, "w185") : null);
   const bannerStyle = bannerUrl ? `background-image: url('${bannerUrl}');` : "";
 
   return `
@@ -1813,6 +1809,8 @@ function openBannerPicker() {
   renderSearchStep();
 }
 
+// AVATAR PICKER
+
 function openAvatarPicker() {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
@@ -1845,13 +1843,14 @@ function openAvatarPicker() {
         const items = await TMDB.searchMulti(q);
         resultsEl.innerHTML =
           items
-            .map(
-              (it) => `
-          <div class="picker-item picker-item--show" data-id="${it.id}" data-type="${it.media_type}">
+            .map((it) => {
+              const title = it.original_title || it.original_name || it.title || it.name;
+              return `
+          <div class="picker-item picker-item--show" data-id="${it.id}" data-type="${it.media_type}" data-title="${escapeHtml(title)}">
             <img src="${TMDB.posterUrl(it.poster_path, "w185")}" alt="" loading="lazy" />
-            <span>${escapeHtml(it.original_title || it.original_name || it.title || it.name)}</span>
-          </div>`
-            )
+            <span>${escapeHtml(title)}</span>
+          </div>`;
+            })
             .join("") || emptyState("Aucun résultat.");
       } catch {
         resultsEl.innerHTML = emptyState("Erreur TMDB.");
@@ -1865,6 +1864,7 @@ function openAvatarPicker() {
       resultsEl.innerHTML = `<p class="loading">Chargement du casting…</p>`;
       try {
         const type = showItem.dataset.type;
+        const title = showItem.dataset.title;
         let rawCast;
         if (type === "movie") {
           const data = await TMDB.getMovie(showItem.dataset.id);
@@ -1873,13 +1873,17 @@ function openAvatarPicker() {
           const data = await TMDB.getAggregateCredits(showItem.dataset.id);
           rawCast = data.cast || [];
         }
-        const cast = rawCast.filter((a) => a.profile_path).slice(0, 20);
+
+        const cast = (
+          await getCastForDisplay(type === "movie" ? "movie" : "series", showItem.dataset.id, title, rawCast)
+        ).slice(0, 20);
+
         resultsEl.innerHTML = cast.length
           ? cast
               .map(
                 (actor) => `
-            <div class="picker-item picker-item--actor" data-profile="${actor.profile_path}">
-              <img src="${TMDB.posterUrl(actor.profile_path, "w185")}" alt="" loading="lazy" />
+            <div class="picker-item picker-item--actor" data-image="${actor.image}">
+              <img src="${actor.image}" alt="" loading="lazy" />
               <span>${escapeHtml(actor.name)}</span>
             </div>`
               )
@@ -1894,7 +1898,7 @@ function openAvatarPicker() {
     const actorItem = e.target.closest(".picker-item--actor");
     if (actorItem) {
       try {
-        await DB.updateProfile({ avatar_path: actorItem.dataset.profile });
+        await DB.updateProfile({ avatar_url: actorItem.dataset.image, avatar_path: null });
         toast("Avatar mis à jour 🎟️", "success");
         overlay.remove();
         App.session = await DB.getSession();
@@ -1955,6 +1959,18 @@ function statsTemplate(diary, library) {
           <button id="import-movies-btn" class="btn btn--ghost">Importer mes films</button>
         </div>
       </section>
+
+      <footer class="app-attribution">
+        <p>
+          Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB.<br />
+          Métadonnées et images de personnages fournies par TheTVDB.
+        </p>
+        <p class="app-attribution-links">
+          <a href="https://www.themoviedb.org" target="_blank" rel="noopener">TMDB</a>
+          ·
+          <a href="https://www.thetvdb.com" target="_blank" rel="noopener">TheTVDB</a>
+        </p>
+      </footer>
     </div>
   `;
 }

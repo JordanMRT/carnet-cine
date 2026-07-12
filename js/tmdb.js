@@ -56,6 +56,10 @@ const TMDB = {
     return tmdbFetch(`/tv/${tvId}/aggregate_credits`);
   },
 
+  async getExternalIds(mediaType, id) {
+    return tmdbFetch(`/${mediaType}/${id}/external_ids`);
+  },
+
   async getTrending(mediaType = "all", window = "week") {
     const data = await tmdbFetch(`/trending/${mediaType}/${window}`);
     return data.results;

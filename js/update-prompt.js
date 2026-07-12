@@ -3,12 +3,13 @@
 // (PWA uniquement)
 // ============================================
 
-function showUpdatePrompt(worker) {
+let swUpdateRequested = false; // évite de recharger au tout premier contrôle (première installation)
 
+function showUpdatePrompt(worker) {
   // uniquement dans la PWA
   if (!window.matchMedia("(display-mode: standalone)").matches) return;
 
-  if (document.querySelector(".update-card")) return;
+  if (document.getElementById("update-prompt")) return;
 
   const card = document.createElement("div");
   card.id = "update-prompt";
@@ -16,14 +17,15 @@ function showUpdatePrompt(worker) {
 
   card.innerHTML = `
     <div class="install-prompt-card">
-      <div class="install-card-icon">🎟️</div>
-
-      <div class="install-card-content">
-        <h3>Une mise à jour est disponible</h3>
-        <p>Profite immédiatement des dernières nouveautés de Time To Binge.</p>
+      <button class="install-prompt-close" aria-label="Plus tard">✕</button>
+      <div class="install-prompt-header">
+        <span class="install-prompt-emoji">🎟️</span>
+        <div>
+          <strong>Une mise à jour est disponible</strong>
+          <p>Profite immédiatement des dernières nouveautés de Time To Binge.</p>
+        </div>
       </div>
-
-      <button class="btn btn--accent" id="update-app-btn">
+      <button class="btn btn--accent" id="update-app-btn" style="width: 100%;">
         Mettre à jour
       </button>
     </div>
@@ -31,13 +33,16 @@ function showUpdatePrompt(worker) {
 
   document.body.appendChild(card);
 
+  card.querySelector(".install-prompt-close").addEventListener("click", () => card.remove());
+
   qs("#update-app-btn").addEventListener("click", () => {
-    worker.postMessage({
-      type: "SKIP_WAITING"
-    });
+    swUpdateRequested = true;
+    worker.postMessage({ type: "SKIP_WAITING" });
+    card.remove();
   });
 }
 
 navigator.serviceWorker?.addEventListener("controllerchange", () => {
+  if (!swUpdateRequested) return; // premier contrôle initial : rien à recharger
   window.location.reload();
 });

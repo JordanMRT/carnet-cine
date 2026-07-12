@@ -941,6 +941,26 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   .profile-identity { margin-top: -75px; padding: 0 1.2rem; }
 }
 
+/* ---------- API ATTRIBUTION (TheTVDB & TMDB) ---------- */
+
+.app-attribution {
+  margin-top: 2.4rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+.app-attribution p {
+  font-size: 0.65rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0 0 0.4rem;
+}
+.app-attribution-links a {
+  color: var(--muted);
+  text-decoration: underline;
+}
+.app-attribution-links a:hover { color: var(--mustard); }
+
 /* ---------- BADGES ---------- */
 .badges-grid {
   display: grid;
