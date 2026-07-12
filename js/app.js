@@ -28,7 +28,35 @@ const App = {
       await this.renderShell();
     }
     window.addEventListener("hashchange", () => this.route());
-    maybeShowInstallPrompt();
+
+// Service Worker
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./sw.js").then((registration) => {
+
+    // Vérifie immédiatement si une mise à jour existe
+    registration.update();
+
+    registration.addEventListener("updatefound", () => {
+      const newWorker = registration.installing;
+        if (!newWorker) return;
+
+        newWorker.addEventListener("statechange", () => {
+        if (
+          newWorker.state === "installed" &&
+          navigator.serviceWorker.controller
+        ) {
+          showUpdatePrompt(newWorker);
+        }
+        if (registration.waiting) {
+        showUpdatePrompt(registration.waiting);
+        }
+      });
+    });
+
+  });
+}
+
+maybeShowInstallPrompt();
   },
 
   async renderShell() {
