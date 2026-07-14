@@ -12,55 +12,14 @@ const LibraryBuilder = {
   // TMDB à chaque rebuild pour un show déjà résolu.
   _showMetaCache: new Map(),
 
-  // Cache persistant (localStorage) pour éviter de refaire les appels TMDB
-  // à CHAQUE ouverture de l'app — c'était le principal goulot d'étranglement
-  // au démarrage (un appel séquentiel par série du journal). TTL de 24h car
-  // total_episodes/total_seasons peuvent évoluer pour une série en cours.
-  _META_TTL_MS: 24 * 60 * 60 * 1000,
-  _metaStorageKey(tmdbId) {
-    return `ttb_show_meta_${tmdbId}`;
-  },
-
-  _readPersistedMeta(tmdbId) {
-    try {
-      const raw = localStorage.getItem(this._metaStorageKey(tmdbId));
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (!parsed || Date.now() - parsed.ts > this._META_TTL_MS) return null;
-      return { total_episodes: parsed.total_episodes, total_seasons: parsed.total_seasons };
-    } catch {
-      return null;
-    }
-  },
-
-  _writePersistedMeta(tmdbId, meta) {
-    try {
-      localStorage.setItem(
-        this._metaStorageKey(tmdbId),
-        JSON.stringify({ ...meta, ts: Date.now() })
-      );
-    } catch {
-      // Quota localStorage dépassé ou indisponible : pas bloquant, on
-      // retombera simplement sur un appel TMDB la prochaine fois.
-    }
-  },
-
   async _getShowMeta(tmdbId) {
     if (this._showMetaCache.has(tmdbId)) return this._showMetaCache.get(tmdbId);
-
-    const persisted = this._readPersistedMeta(tmdbId);
-    if (persisted) {
-      this._showMetaCache.set(tmdbId, persisted);
-      return persisted;
-    }
-
     const details = await TMDB.getTv(tmdbId);
     const meta = {
       total_episodes: details.number_of_episodes ?? 0,
       total_seasons: details.number_of_seasons ?? 0,
     };
     this._showMetaCache.set(tmdbId, meta);
-    this._writePersistedMeta(tmdbId, meta);
     return meta;
   },
 
@@ -133,23 +92,6 @@ const LibraryBuilder = {
       }
     }
 
-    // Résout les métadonnées TMDB (nb d'épisodes/saisons) de toutes les
-    // séries en parallèle plutôt qu'une par une : avec un journal de 50
-    // séries, ça remplace 50 allers-retours séquentiels par 1 seul batch,
-    // ce qui était le principal goulot d'étranglement au démarrage.
-    const tvWorks = [...works.values()].filter((w) => w.media_type !== "movie");
-    await Promise.all(
-      tvWorks.map(async (work) => {
-        try {
-          const meta = await this._getShowMeta(work.tmdb_id);
-          work.total_episodes = meta.total_episodes;
-          work.total_seasons = meta.total_seasons;
-        } catch {
-          // TMDB indisponible pour ce show : on garde les valeurs par défaut
-        }
-      })
-    );
-
     const library = [];
 
     for (const work of works.values()) {
@@ -158,11 +100,19 @@ const LibraryBuilder = {
       } else {
         work.status = work.watched_episodes > 0 ? "watching" : "watchlist";
 
-        if (work.total_episodes > 0) {
-          const cappedWatched = Math.min(work.watched_episodes, work.total_episodes);
-          work.progress = Number(((cappedWatched / work.total_episodes) * 100).toFixed(1));
-          work.status =
-            work.watched_episodes >= work.total_episodes ? "completed" : "watching";
+        try {
+          const meta = await this._getShowMeta(work.tmdb_id);
+          work.total_episodes = meta.total_episodes;
+          work.total_seasons = meta.total_seasons;
+
+          if (work.total_episodes > 0) {
+            const cappedWatched = Math.min(work.watched_episodes, work.total_episodes);
+            work.progress = Number(((cappedWatched / work.total_episodes) * 100).toFixed(1));
+            work.status =
+              work.watched_episodes >= work.total_episodes ? "completed" : "watching";
+          }
+        } catch {
+          // TMDB indisponible pour ce show : on garde les valeurs par défaut
         }
       }
 
