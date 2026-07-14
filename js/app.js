@@ -68,12 +68,16 @@ maybeShowInstallPrompt();
       }
       root.innerHTML = shellTemplate();
       if (typeof lucide !== "undefined") lucide.createIcons();
-      await this.loadGenreMaps();
+      // Les genres TMDB ne servent qu'à l'affichage des stats : on les charge
+      // en parallèle (sans attendre) plutôt qu'avant syncAndRoute, pour ne
+      // pas retarder le tout premier affichage du journal.
+      this.loadGenreMaps();
       await this.syncAndRoute();
       if (typeof lucide !== "undefined") lucide.createIcons();
       bindShellEvents();
     } finally {
       this._rendering = false;
+      hideSplash();
     }
   },
 
@@ -81,6 +85,9 @@ maybeShowInstallPrompt();
     try {
       const [movie, tv] = await Promise.all([TMDB.getGenreMap("movie"), TMDB.getGenreMap("tv")]);
       this.genreMaps = { movie, tv };
+      // Si l'utilisateur est déjà sur l'écran stats (arrivée directe via hash),
+      // on rafraîchit une fois les libellés de genre disponibles.
+      if ((location.hash.slice(2) || "diary").split("/")[0] === "stats") this.route();
     } catch {
       // Pas bloquant : les stats retomberont sur les ids bruts en libellé.
     }
@@ -108,15 +115,25 @@ maybeShowInstallPrompt();
         emptyState("Chargement impossible pour le moment (problème réseau ou Supabase).") +
         `<div style="text-align:center;margin-top:1rem;"><button id="retry-load" class="btn btn--accent">Réessayer</button></div>`;
       qs("#retry-load")?.addEventListener("click", () => this.syncAndRoute());
+      hideSplash();
       return;
     }
+    // Premier affichage immédiat avec les données déjà en base : l'utilisateur
+    // voit son journal tout de suite, sans attendre la reconstruction de la
+    // bibliothèque (qui peut faire des appels TMDB en arrière-plan). Le splash
+    // se retire ici, dès que ce premier contenu est visible.
+    this.route();
+    hideSplash();
+
     try {
-      await LibraryBuilder.rebuild(this.session.user.id, this.diary, this.library);
-      await this.loadData();
+      // rebuild() renvoie déjà la bibliothèque reconstruite : on l'utilise
+      // directement au lieu de la re-télécharger depuis Supabase juste après.
+      this.library = await LibraryBuilder.rebuild(this.session.user.id, this.diary, this.library);
+      this.earnedBadges = await evaluateBadges(this.diary, this.library, this.session.user.id);
+      this.route();
     } catch (err) {
       console.warn("Reconstruction de la bibliothèque impossible :", err);
     }
-    this.route();
 
     RuntimeEnrichment.run(this.diary, (msg) => toast(msg))
       .then((count) => {
