@@ -51,16 +51,13 @@
   .splash__logo-wrap {
     position: relative;
     width: 190px;
-    opacity: 0;
-    transform: translateY(10px) scale(0.95);
-    animation: splashLogoIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards;
   }
+
   .splash__logo {
     display: block;
     width: 100%;
     height: auto;
-    position: relative;
-    filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.45));
+    filter: drop-shadow(0 12px 22px rgba(0,0,0,.45));
   }
   /* Conteneur de découpe séparé de l'image : contient le reflet dans le
      cadre du logo sans rogner son ombre portée (qui déborde de la boîte).
@@ -77,18 +74,28 @@
   }
   .splash__logo-shine {
     position: absolute;
-    top: -60%;
-    left: -60%;
-    width: 220%;
-    height: 220%;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    -webkit-mask: url("ttb-logo-ticketcorn-flat.png") center / contain no-repeat;
+    mask: url("ttb-logo-ticketcorn-flat.png") center / contain no-repeat;
+  }
+.splash__logo-shine::before {
+   content: "";
+   position: absolute;
+   /* Grande bande diagonale */
+   width: 60%;
+   height: 250%;
+   left: -80%;
+   top: -75%;
     background: linear-gradient(
-      115deg,
-      transparent 42%,
-      rgba(255, 255, 255, 0.9) 50%,
-      transparent 58%
+     90deg,
+      transparent,
+     rgba(255,255,255,.95),
+     transparent
     );
-    mix-blend-mode: overlay;
-    animation: splashShine 2.4s ease-in-out 0.15s infinite;
+    transform: rotate(35deg);
+    animation: splashShine 2.4s ease-in-out infinite;
   }
   .splash__messages {
     position: relative;
@@ -121,9 +128,15 @@
     to { opacity: 1; transform: translateY(0) scale(1); }
   }
   @keyframes splashShine {
-    0% { transform: translate(-40%, -40%); }
-    30% { transform: translate(40%, 40%); }
-    100% { transform: translate(40%, 40%); }
+    0% {
+      transform: translateX(0) rotate(35deg);
+    }
+      30% {
+      transform: translateX(320%) rotate(35deg);
+    }
+      100% {
+      transform: translateX(320%) rotate(35deg);
+    }
   }
   @keyframes splashMsgIn {
     to { opacity: 1; }
@@ -150,15 +163,21 @@
 <div id="splash-screen">
   <div class="splash__inner">
     <div class="splash__logo-wrap">
-      <img src="ttb-logo-ticket.png" alt="Time To Binge" class="splash__logo" width="285" height="176" />
-      <div class="splash__logo-clip" aria-hidden="true">
-        <div class="splash__logo-shine"></div>
-      </div>
+      <img
+        src="ttb-logo-ticketcorn-flat.png"
+        alt="Time To Binge"
+        class="splash__logo"
+        width="285"
+        height="176"
+      />
+      <div class="splash__logo-shine" aria-hidden="true"></div>
     </div>
     <div class="splash__messages">
       <span class="splash__msg" id="splash-msg"></span>
     </div>
-    <div class="splash__dots" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div class="splash__dots" aria-hidden="true">
+      <span></span><span></span><span></span>
+    </div>
   </div>
 </div>
 <script>

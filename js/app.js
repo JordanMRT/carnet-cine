@@ -336,7 +336,7 @@ function authTemplate() {
   return `
     <div class="auth-screen">
       <div class="auth-card">
-        <div class="auth-ticket"><img src="brand-top.png"></div>
+        <div class="auth-ticket"><img src="ttb-logo-ticketcorn-shadow.png"></div>
         <h1>Time To Binge</h1>
         <p class="auth-sub">Ton journal de séries et de films, un ticket à la fois.</p>
 
