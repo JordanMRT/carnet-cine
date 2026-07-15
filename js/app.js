@@ -149,7 +149,7 @@ maybeShowInstallPrompt();
       console.warn("Reconstruction de la bibliothèque impossible :", err);
     }
 
-    RuntimeEnrichment.run(this.diary, (msg) => toast(msg))
+    RuntimeEnrichment.run(this.diary)
       .then((count) => {
         if (count > 0) {
           toast(`${count} durée(s) de visionnage récupérées sur TMDB.`, "success");
