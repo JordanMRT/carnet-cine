@@ -108,3 +108,24 @@ function qs(sel, ctx = document) {
 function qsa(sel, ctx = document) {
   return Array.from(ctx.querySelectorAll(sel));
 }
+
+// Durée minimale d'affichage du splash screen : évite un flash trop bref
+// et disgracieux quand tout charge très vite (session déjà en cache).
+// Calée pour laisser le temps à un premier passage complet du reflet sur
+// le logo (délai 0.15s + balayage ~0.7s, cf. keyframes splashShine dans
+// index.html) avant que le fondu de sortie ne démarre.
+const SPLASH_MIN_DISPLAY_MS = 1100;
+function hideSplash() {
+  const el = document.getElementById("splash-screen");
+  if (!el || el.dataset.hidden === "1") return;
+  el.dataset.hidden = "1";
+  const elapsed = Date.now() - (window.__splashShownAt || Date.now());
+  const remaining = Math.max(0, SPLASH_MIN_DISPLAY_MS - elapsed);
+  setTimeout(() => {
+    el.classList.add("splash--hide");
+    el.addEventListener("transitionend", () => el.remove(), { once: true });
+    // Filet de sécurité si la transition ne se déclenche pas (ex: onglet
+    // passé en arrière-plan, où les animations peuvent être suspendues).
+    setTimeout(() => el.remove(), 700);
+  }, remaining);
+}

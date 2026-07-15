@@ -9,6 +9,13 @@ const App = {
   earnedBadges: [],
   genreMaps: { movie: {}, tv: {} },
   _rendering: false, // évite les rendus concurrents (plusieurs événements d'auth d'affilée)
+  // Compteur incrémenté à chaque appel à route(). Les vues async (upcoming,
+  // show, episode) le capturent et vérifient qu'il n'a pas changé avant
+  // d'écrire dans le DOM, pour éviter qu'un rendu obsolète (déclenché par un
+  // appel précédent) n'écrase un rendu plus récent une fois sa requête TMDB
+  // enfin résolue — ça peut arriver car route() est maintenant appelée deux
+  // fois au chargement (affichage rapide, puis rafraîchi après rebuild).
+  _renderGen: 0,
 
   async init() {
     let initialRenderDone = false;
@@ -68,12 +75,16 @@ maybeShowInstallPrompt();
       }
       root.innerHTML = shellTemplate();
       if (typeof lucide !== "undefined") lucide.createIcons();
-      await this.loadGenreMaps();
+      // Les genres TMDB ne servent qu'à l'affichage des stats : on les charge
+      // en parallèle (sans attendre) plutôt qu'avant syncAndRoute, pour ne
+      // pas retarder le tout premier affichage du journal.
+      this.loadGenreMaps();
       await this.syncAndRoute();
       if (typeof lucide !== "undefined") lucide.createIcons();
       bindShellEvents();
     } finally {
       this._rendering = false;
+      hideSplash();
     }
   },
 
@@ -81,6 +92,9 @@ maybeShowInstallPrompt();
     try {
       const [movie, tv] = await Promise.all([TMDB.getGenreMap("movie"), TMDB.getGenreMap("tv")]);
       this.genreMaps = { movie, tv };
+      // Si l'utilisateur est déjà sur l'écran stats (arrivée directe via hash),
+      // on rafraîchit une fois les libellés de genre disponibles.
+      if ((location.hash.slice(2) || "diary").split("/")[0] === "stats") this.route();
     } catch {
       // Pas bloquant : les stats retomberont sur les ids bruts en libellé.
     }
@@ -108,15 +122,32 @@ maybeShowInstallPrompt();
         emptyState("Chargement impossible pour le moment (problème réseau ou Supabase).") +
         `<div style="text-align:center;margin-top:1rem;"><button id="retry-load" class="btn btn--accent">Réessayer</button></div>`;
       qs("#retry-load")?.addEventListener("click", () => this.syncAndRoute());
+      hideSplash();
       return;
     }
+    // Premier affichage immédiat avec les données déjà en base : l'utilisateur
+    // voit son journal tout de suite, sans attendre la reconstruction de la
+    // bibliothèque (qui peut faire des appels TMDB en arrière-plan). Le splash
+    // se retire ici, dès que ce premier contenu est visible.
+    this.route();
+    hideSplash();
+
     try {
-      await LibraryBuilder.rebuild(this.session.user.id, this.diary, this.library);
-      await this.loadData();
+      // rebuild() ne reconstruit que ce qui provient du JOURNAL : un film
+      // ajouté à la watchlist mais jamais visionné n'a aucune ligne de
+      // journal, donc rebuild() ne le renvoie pas. On fusionne son résultat
+      // avec les entrées de bibliothèque qu'il n'a pas touchées (watchlist
+      // pure, statut "dropped" mis à la main, etc.) au lieu de les perdre —
+      // tout en évitant un second aller-retour complet vers Supabase.
+      const rebuilt = await LibraryBuilder.rebuild(this.session.user.id, this.diary, this.library);
+      const rebuiltKeys = new Set(rebuilt.map((w) => `${w.media_type}_${w.tmdb_id}`));
+      const untouched = this.library.filter((l) => !rebuiltKeys.has(`${l.media_type}_${l.tmdb_id}`));
+      this.library = [...rebuilt, ...untouched];
+      this.earnedBadges = await evaluateBadges(this.diary, this.library, this.session.user.id);
+      this.route();
     } catch (err) {
       console.warn("Reconstruction de la bibliothèque impossible :", err);
     }
-    this.route();
 
     RuntimeEnrichment.run(this.diary, (msg) => toast(msg))
       .then((count) => {
@@ -131,6 +162,7 @@ maybeShowInstallPrompt();
   },
 
   route() {
+    const gen = ++this._renderGen;
     const hash = location.hash.slice(2) || "diary";
     const [view, param] = hash.split("/");
     qsa(".nav-link").forEach((a) => a.classList.toggle("active", a.dataset.view === view));
@@ -145,10 +177,10 @@ maybeShowInstallPrompt();
         bindLibraryEvents();
         break;
       case "upcoming":
-        renderUpcoming();
+        renderUpcoming(gen);
         break;
       case "show":
-        renderShowDetail(param);
+        renderShowDetail(param, gen);
         break;
       case "stats":
         view_el.innerHTML = statsTemplate(this.diary, this.library);
@@ -163,7 +195,7 @@ maybeShowInstallPrompt();
         bindDiaryEvents();
         break;
         case "episode":
-        renderEpisodeDetail(param);
+        renderEpisodeDetail(param, gen);
         break;
     }
     if (typeof lucide !== "undefined") lucide.createIcons();
@@ -459,7 +491,7 @@ function emptyState(msg) {
 const lastViewedSeason = {};
 
 // ---------- SHOW DETAIL ----------
-async function renderShowDetail(param) {
+async function renderShowDetail(param, gen) {
   const [type, id] = param.split("-");
   const view = qs("#view");
   view.innerHTML = `<p class="loading">Chargement…</p>`;
@@ -534,6 +566,10 @@ async function renderShowDetail(param) {
         </div>
         ${!canRate ? `<p class="rating-hint">Marque ${type === "movie" ? "le film" : "la série"} comme vu${type === "movie" ? "" : "e"} pour pouvoir ${type === "movie" ? "le" : "la"} noter.</p>` : ""}
       </div>`;
+
+    // Une navigation plus récente a eu lieu pendant ces appels TMDB : on
+    // n'écrase pas un rendu plus à jour avec ce résultat devenu obsolète.
+    if (gen !== App._renderGen) return;
 
     view.innerHTML = `
       <div class="show-detail" style="--backdrop:url('${TMDB.backdropUrl(data.backdrop_path)}')">
@@ -682,11 +718,12 @@ if (canRate) {
       await renderSeasonsInto(qs("#seasons-container"), id, data.number_of_seasons, title, data.poster_path, genreIds, initialSeason);
     }
   } catch (err) {
+    if (gen !== App._renderGen) return;
     view.innerHTML = emptyState("Erreur de chargement — vérifie ta clé TMDB.");
   }
 }
 
-async function renderEpisodeDetail(param) {
+async function renderEpisodeDetail(param, gen) {
   const [tvId, seasonNumber, episodeNumber] = param.split("-");
 
   const view = qs("#view");
@@ -762,6 +799,10 @@ async function renderEpisodeDetail(param) {
         </div>
         ${!watched ? `<p class="rating-hint">Marque l'épisode comme vu pour pouvoir le noter.</p>` : ""}
       </div>`;
+
+    // Une navigation plus récente a eu lieu pendant ces appels TMDB : on
+    // n'écrase pas un rendu plus à jour avec ce résultat devenu obsolète.
+    if (gen !== App._renderGen) return;
 
     view.innerHTML = `
       <div class="show-detail"
@@ -897,6 +938,7 @@ async function undoLastMovieWatch(ctx) {
     }
   } catch (err) {
     console.error(err);
+    if (gen !== App._renderGen) return;
     view.innerHTML = emptyState("Impossible de charger cet épisode.");
   }
 }
@@ -1316,7 +1358,7 @@ function bindLibraryEvents() {
 }
 
 // ---------- À VENIR (calendrier) ----------
-async function renderUpcoming() {
+async function renderUpcoming(gen) {
   const view = qs("#view");
   view.innerHTML = `${libraryNavBar("upcoming")}<p class="loading">Chargement du calendrier…</p>`;
 
@@ -1384,6 +1426,11 @@ async function renderUpcoming() {
       .map((r) => ({ show: r.show, episode: r.upcoming, genres: r.genres }))
       .sort((a, b) => (a.episode.air_date || "").localeCompare(b.episode.air_date || ""));
 
+    // Une navigation ou un rafraîchissement plus récent a eu lieu pendant
+    // ces appels TMDB (ex: double appel à route() au chargement) : on
+    // n'écrase pas un rendu plus à jour avec ce résultat devenu obsolète.
+    if (gen !== App._renderGen) return;
+
     view.innerHTML = `
       ${libraryNavBar("upcoming")}
       <div class="upcoming-view">
@@ -1450,6 +1497,7 @@ async function renderUpcoming() {
     if (typeof lucide !== "undefined") lucide.createIcons();
   } catch (err) {
     console.error(err);
+    if (gen !== App._renderGen) return;
     view.innerHTML = libraryNavBar("upcoming") + emptyState("Impossible de charger le calendrier.");
   }
 }
