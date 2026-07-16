@@ -263,8 +263,8 @@ function shellTemplate() {
 
 </nav>
 
-    <input type="file" id="import-shows-input" accept=".json,.csv" hidden />
-    <input type="file" id="import-movies-input" accept=".json,.csv" hidden />
+    <input type="file" id="import-shows-input" accept=".json" hidden />
+    <input type="file" id="import-movies-input" accept=".json" hidden />
   `;
 }
 
@@ -1999,14 +1999,9 @@ function statsTemplate(diary, library) {
           : ""
       }
 
-      <section class="stats-section-import">
+      <section class="stats-section stats-section-import">
         <h2>Importer mon historique</h2>
-        <p class="import-hint">
-          Depuis un export TV Time, séries et films séparément : au format JSON, ou au format CSV de ton export GDPR.<br />
-          <br><em>(CSV : Décompresse le ZIP et choisis
-          <code>tracking-prod-records-v2.csv</code> pour les séries et
-          <code>tracking-prod-records.csv</code> pour les films).</em>
-        </p>
+        <p class="import-hint">Depuis un export TV Time (JSON), séries et films séparément.</p>
         <div class="import-actions">
           <button id="import-shows-btn" class="btn btn--ghost">Importer mes séries</button>
           <button id="import-movies-btn" class="btn btn--ghost">Importer mes films</button>

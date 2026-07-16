@@ -33,31 +33,6 @@ const TMDB = {
     return data.results.filter((r) => r.media_type === "movie" || r.media_type === "tv");
   },
 
-  // Résolution par titre (± année) : utilisée pour l'import CSV (export GDPR
-  // TV Time), qui ne fournit aucun id externe (TheTVDB/IMDb), contrairement
-  // au JSON. On retente sans l'année si la recherche filtrée ne donne rien.
-  async searchMovieByTitle(title, year) {
-    if (year) {
-      const withYear = await tmdbFetch("/search/movie", { query: title, year, include_adult: false });
-      if (withYear.results?.[0]) return withYear.results[0];
-    }
-    const data = await tmdbFetch("/search/movie", { query: title, include_adult: false });
-    return data.results?.[0] ?? null;
-  },
-
-  async searchTvByTitle(title, year) {
-    if (year) {
-      const withYear = await tmdbFetch("/search/tv", {
-        query: title,
-        first_air_date_year: year,
-        include_adult: false,
-      });
-      if (withYear.results?.[0]) return withYear.results[0];
-    }
-    const data = await tmdbFetch("/search/tv", { query: title, include_adult: false });
-    return data.results?.[0] ?? null;
-  },
-
   async getMovie(id) {
     return tmdbFetch(`/movie/${id}`, { append_to_response: "credits" });
   },
