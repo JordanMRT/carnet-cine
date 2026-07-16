@@ -942,6 +942,12 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   .profile-identity { margin-top: -75px; padding: 0 1.2rem; }
 }
 
+code {
+  font-family: "Nunito Sans", sans-serif;
+  color: var(--sage);
+  font-weight: 600;
+}
+
 /* ---------- API ATTRIBUTION (TheTVDB & TMDB) ---------- */
 
 .app-attribution {
