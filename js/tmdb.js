@@ -17,6 +17,14 @@ async function tmdbFetch(path, params = {}) {
 const TMDB = {
   _genreCache: { movie: null, tv: null },
 
+  _movieCache: new Map(),
+  _tvCache: new Map(),
+  _seasonCache: new Map(),
+  _imagesCache: new Map(),
+  _externalIdsCache: new Map(),
+  _aggregateCreditsCache: new Map(),
+ _releaseDatesCache: new Map(),
+
   // Résout les ids de genre TMDB en noms lisibles (mis en cache).
   // mediaType: "movie" | "tv"
   async getGenreMap(mediaType) {
@@ -34,31 +42,153 @@ const TMDB = {
   },
 
   async getMovie(id) {
-    return tmdbFetch(`/movie/${id}`, { append_to_response: "credits" });
-  },
+
+  if (this._movieCache.has(id)) {
+    return this._movieCache.get(id);
+  }
+
+  const promise = (async () => {
+
+    const movie = await tmdbFetch(`/movie/${id}`, {
+      append_to_response: "credits"
+    });
+
+    try {
+
+      const releases = await this.getReleaseDates(id);
+
+// On privilégie les dates de sortie publiques dans les principaux pays
+// francophones puis anglophones afin d'ignorer les avant-premières,
+// festivals et sorties anticipées dans certains territoires.
+const preferredCountries = ["FR", "BE", "CH", "CA", "US", "GB"];
+
+let bestDate = null;
+
+for (const countryCode of preferredCountries) {
+
+  const country = releases.results.find(
+    r => r.iso_3166_1 === countryCode
+  );
+
+  if (!country) continue;
+
+  const publicRelease = country.release_dates.find(
+    rd => rd.type === 3 || rd.type === 4
+  );
+
+  if (publicRelease) {
+    bestDate = publicRelease.release_date.slice(0, 10);
+    break;
+  }
+}
+
+if (bestDate) {
+  movie.release_date = bestDate;
+}
+
+    } catch (e) {
+      console.warn("Impossible de déterminer la meilleure date de sortie :", e);
+    }
+
+    return movie;
+
+  })();
+
+  this._movieCache.set(id, promise);
+
+  return promise;
+},
+
+async getReleaseDates(id) {
+
+  if (this._releaseDatesCache.has(id)) {
+    return this._releaseDatesCache.get(id);
+  }
+
+  const promise = tmdbFetch(`/movie/${id}/release_dates`);
+
+  this._releaseDatesCache.set(id, promise);
+
+  return promise;
+},
 
   async getTv(id) {
-    return tmdbFetch(`/tv/${id}`, { append_to_response: "credits" });
-  },
+
+  if (this._tvCache.has(id)) {
+    return this._tvCache.get(id);
+  }
+
+  const promise = tmdbFetch(`/tv/${id}`, {
+    append_to_response: "credits"
+  });
+
+  this._tvCache.set(id, promise);
+
+  return promise;
+},
 
   async getSeason(tvId, seasonNumber) {
-    return tmdbFetch(`/tv/${tvId}/season/${seasonNumber}`);
-  },
+
+  const key = `${tvId}_${seasonNumber}`;
+
+  if (this._seasonCache.has(key)) {
+    return this._seasonCache.get(key);
+  }
+
+  const promise = tmdbFetch(`/tv/${tvId}/season/${seasonNumber}`);
+
+  this._seasonCache.set(key, promise);
+
+  return promise;
+},
 
   async getImages(mediaType, id) {
-    return tmdbFetch(`/${mediaType}/${id}/images`, { include_image_language: "en,fr,null" });
-  },
+
+  const key = `${mediaType}_${id}`;
+
+  if (this._imagesCache.has(key)) {
+    return this._imagesCache.get(key);
+  }
+
+  const promise = tmdbFetch(`/${mediaType}/${id}/images`, {
+    include_image_language: "en,fr,null"
+  });
+
+  this._imagesCache.set(key, promise);
+
+  return promise;
+},
 
   // Pour les séries : contrairement à /tv/{id}?append_to_response=credits
   // (qui renvoie un instantané limité), cet endpoint agrège le casting
   // sur l'ensemble des épisodes diffusés — plus complet.
   async getAggregateCredits(tvId) {
-    return tmdbFetch(`/tv/${tvId}/aggregate_credits`);
-  },
+
+  if (this._aggregateCreditsCache.has(tvId)) {
+    return this._aggregateCreditsCache.get(tvId);
+  }
+
+  const promise = tmdbFetch(`/tv/${tvId}/aggregate_credits`);
+
+  this._aggregateCreditsCache.set(tvId, promise);
+
+  return promise;
+},
 
   async getExternalIds(mediaType, id) {
-    return tmdbFetch(`/${mediaType}/${id}/external_ids`);
-  },
+
+  const key = `${mediaType}_${id}`;
+
+  if (this._externalIdsCache.has(key)) {
+    return this._externalIdsCache.get(key);
+  }
+
+  const promise = tmdbFetch(`/${mediaType}/${id}/external_ids`);
+
+  this._externalIdsCache.set(key, promise);
+
+  return promise;
+},
 
   async getTrending(mediaType = "all", window = "week") {
     const data = await tmdbFetch(`/trending/${mediaType}/${window}`);
