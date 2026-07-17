@@ -966,6 +966,23 @@ async function toggleWorkWatched({ tmdbId, type, title, posterPath, genreIds }) 
   }
 }
 
+// Retire uniquement le DERNIER visionnage d'un film (le plus récent).
+async function undoLastMovieWatch(ctx) {
+  const existing = App.diary
+    .filter((e) => String(e.tmdb_id) === String(ctx.tmdb_id) && e.media_type === "movie")
+    .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+
+  if (existing.length === 0) return;
+
+  try {
+    await DB.deleteDiaryEntries([existing[0].id]);
+    toast(existing.length > 1 ? "Dernier visionnage annulé." : "Marqué comme non vu.", "success");
+    await App.refresh();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
 async function renderEpisodeDetail(param, gen) {
   const [tvId, seasonNumber, episodeNumber] = param.split("-");
 
@@ -1127,23 +1144,6 @@ async function renderEpisodeDetail(param, gen) {
     qs("#episode-undo-btn")?.addEventListener("click", async () => {
       await undoLastEpisodeWatch(episodeCtx);
     });
-
-    // Retire uniquement le DERNIER visionnage d'un film (le plus récent).
-async function undoLastMovieWatch(ctx) {
-  const existing = App.diary
-    .filter((e) => String(e.tmdb_id) === String(ctx.tmdb_id) && e.media_type === "movie")
-    .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
-
-  if (existing.length === 0) return;
-
-  try {
-    await DB.deleteDiaryEntries([existing[0].id]);
-    toast(existing.length > 1 ? "Dernier visionnage annulé." : "Marqué comme non vu.", "success");
-    await App.refresh();
-  } catch (err) {
-    toast(err.message, "error");
-  }
-}
 
     qs("#episode-rewatch-btn")?.addEventListener("click", async () => {
       await addEpisodeRewatch(episodeCtx);
@@ -1344,34 +1344,103 @@ async function toggleEpisodeWatched(ctx) {
   );
   try {
     if (existing.length === 0) {
-  const watchedEpisodes = new Set(
-    App.diary
-      .filter(
-        (e) =>
-          String(e.tmdb_id) === String(ctx.tmdb_id) &&
-          e.media_type === "tv" &&
-          e.season === ctx.season
-      )
-      .map((e) => e.episode)
-  );
+      const watchedEpisodes = new Set(
+        App.diary
+          .filter(
+            (e) =>
+              String(e.tmdb_id) === String(ctx.tmdb_id) &&
+              e.media_type === "tv" &&
+              e.season === ctx.season
+          )
+          .map((e) => e.episode)
+      );
 
-  const missingEpisodes = (ctx.seasonEpisodes || []).filter(
-    (ep) =>
-      ep.episode_number < ctx.episode &&
-      !watchedEpisodes.has(ep.episode_number)
-  );
+      const missingEpisodes = (ctx.seasonEpisodes || []).filter(
+        (ep) =>
+          ep.episode_number < ctx.episode &&
+          !watchedEpisodes.has(ep.episode_number)
+      );
 
-  let markPrevious = false;
+      let markPrevious = false;
 
-  if (missingEpisodes.length > 0) {
-    markPrevious = await showConfirm(
-      `Marquer également les ${missingEpisodes.length} épisode${missingEpisodes.length > 1 ? "s" : ""} précédent${missingEpisodes.length > 1 ? "s" : ""} comme vus ?`,
-      {
-        confirmLabel: "Oui",
-        cancelLabel: "Non",
+      if (missingEpisodes.length > 0) {
+        markPrevious = await showConfirm(
+          `Marquer également les ${missingEpisodes.length} épisode${missingEpisodes.length > 1 ? "s" : ""} précédent${missingEpisodes.length > 1 ? "s" : ""} comme vus ?`,
+          {
+            confirmLabel: "Oui",
+            cancelLabel: "Non",
+          }
+        );
       }
-    );
+
+      const today = new Date().toISOString().slice(0, 10);
+
+      if (markPrevious) {
+        await DB.bulkInsertDiary([
+          ...missingEpisodes.map((ep) => ({
+            user_id: App.session.user.id,
+            tmdb_id: ctx.tmdb_id,
+            media_type: "tv",
+            title: ctx.title,
+            poster_path: ctx.poster_path,
+            season: ctx.season,
+            episode: ep.episode_number,
+            watched_date: today,
+            rating: null,
+            rewatch: false,
+            note: null,
+            genres: ctx.genres || [],
+            runtime_minutes: ep.runtime || null,
+            air_date: ep.air_date || null,
+          })),
+          {
+            user_id: App.session.user.id,
+            tmdb_id: ctx.tmdb_id,
+            media_type: "tv",
+            title: ctx.title,
+            poster_path: ctx.poster_path,
+            season: ctx.season,
+            episode: ctx.episode,
+            watched_date: today,
+            rating: null,
+            rewatch: false,
+            note: null,
+            genres: ctx.genres || [],
+            runtime_minutes: ctx.runtime_minutes,
+            air_date: ctx.air_date || null,
+          },
+        ]);
+
+        toast(`${missingEpisodes.length + 1} épisodes marqués comme vus 🎟️`, "success");
+      } else {
+        await DB.addDiaryEntry({
+          user_id: App.session.user.id,
+          tmdb_id: ctx.tmdb_id,
+          media_type: "tv",
+          title: ctx.title,
+          poster_path: ctx.poster_path,
+          season: ctx.season,
+          episode: ctx.episode,
+          watched_date: today,
+          rating: null,
+          rewatch: false,
+          note: null,
+          genres: ctx.genres || [],
+          runtime_minutes: ctx.runtime_minutes,
+          air_date: ctx.air_date || null,
+        });
+
+        toast("Épisode marqué comme vu 🎟️", "success");
+      }
+    } else {
+      await DB.deleteDiaryEntries(existing.map((e) => e.id));
+      toast("Épisode marqué comme non vu.", "success");
+    }
+    await App.refresh();
+  } catch (err) {
+    toast(err.message, "error");
   }
+}
 
 // Retire uniquement le DERNIER visionnage d'un épisode (contrairement à
 // toggleEpisodeWatched, utilisé par la coche rapide, qui efface tout).
@@ -1394,75 +1463,6 @@ async function undoLastEpisodeWatch(ctx) {
       existing.length > 1 ? "Dernier visionnage annulé." : "Épisode marqué comme non vu.",
       "success"
     );
-    await App.refresh();
-  } catch (err) {
-    toast(err.message, "error");
-  }
-}
-
-  const today = new Date().toISOString().slice(0, 10);
-
-  if (markPrevious) {
-    await DB.bulkInsertDiary([
-      ...missingEpisodes.map((ep) => ({
-        user_id: App.session.user.id,
-        tmdb_id: ctx.tmdb_id,
-        media_type: "tv",
-        title: ctx.title,
-        poster_path: ctx.poster_path,
-        season: ctx.season,
-        episode: ep.episode_number,
-        watched_date: today,
-        rating: null,
-        rewatch: false,
-        note: null,
-        genres: ctx.genres || [],
-        runtime_minutes: ep.runtime || null,
-        air_date: ep.air_date || null,
-      })),
-      {
-        user_id: App.session.user.id,
-        tmdb_id: ctx.tmdb_id,
-        media_type: "tv",
-        title: ctx.title,
-        poster_path: ctx.poster_path,
-        season: ctx.season,
-        episode: ctx.episode,
-        watched_date: today,
-        rating: null,
-        rewatch: false,
-        note: null,
-        genres: ctx.genres || [],
-        runtime_minutes: ctx.runtime_minutes,
-        air_date: ctx.air_date || null,
-      },
-    ]);
-
-    toast(`${missingEpisodes.length + 1} épisodes marqués comme vus 🎟️`, "success");
-  } else {
-    await DB.addDiaryEntry({
-      user_id: App.session.user.id,
-      tmdb_id: ctx.tmdb_id,
-      media_type: "tv",
-      title: ctx.title,
-      poster_path: ctx.poster_path,
-      season: ctx.season,
-      episode: ctx.episode,
-      watched_date: today,
-      rating: null,
-      rewatch: false,
-      note: null,
-      genres: ctx.genres || [],
-      runtime_minutes: ctx.runtime_minutes,
-      air_date: ctx.air_date || null,
-    });
-
-    toast("Épisode marqué comme vu 🎟️", "success");
-  }
-    } else {
-      await DB.deleteDiaryEntries(existing.map((e) => e.id));
-      toast("Épisode marqué comme non vu.", "success");
-    }
     await App.refresh();
   } catch (err) {
     toast(err.message, "error");

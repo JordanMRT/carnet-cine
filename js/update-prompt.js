@@ -22,9 +22,7 @@ function showUpdatePrompt(worker) {
         <span class="install-prompt-emoji">🎟️</span>
         <div>
           <strong>Une mise à jour est disponible</strong>
-          <p>Profite immédiatement des dernières nouveautés de Time To Binge :</p>
-          <br>
-          <p>Les acteurs/actrices ont maintenant leurs pages dédiées avec leur filmographie depuis leur photo dans le casting d'un film ou d'une série. ✨</p>
+          <p>Profite immédiatement des dernières nouveautés de Time To Binge.</p>
         </div>
       </div>
       <button class="btn btn--accent" id="update-app-btn" style="width: 100%;">
