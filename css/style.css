@@ -485,6 +485,46 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   line-height: 1.2;
 }
 
+.cast-card--linked { cursor: pointer; }
+.cast-card--linked img { transition: border-color 0.15s ease; }
+.cast-card--linked:hover img { border-color: var(--mustard); }
+.cast-card--linked:hover .cast-name { color: var(--mustard); }
+
+/* ---------- Fiche comédien ---------- */
+/* La page comédien réutilise directement .show-detail / .show-detail-overlay
+   / .show-detail-poster / .overview-wrapper / .show-progress (déjà stylés
+   plus haut) pour rester visuellement identique à la fiche film/série. */
+
+.filmography-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
+.filmography-item {
+  display: grid;
+  grid-template-columns: 60px 1fr auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.6em 1em;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.filmography-item:hover { border-color: var(--mustard); }
+.filmography-item--watched { border-color: var(--sage); background: rgba(124, 152, 133, 0.1); }
+.filmography-poster {
+  width: 60px;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--ink);
+}
+.filmography-info { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.filmography-title { font-weight: 600; font-size: 0.92rem; }
+.filmography-meta { font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); }
+
 .rating-widget-block { margin: 1.4rem 0; }
 .rating-title { margin-bottom: 0.6rem; }
 .rating-widget { display: flex; gap: 0.3rem; }

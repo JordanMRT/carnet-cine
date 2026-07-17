@@ -36,6 +36,13 @@ const App = {
     }
     window.addEventListener("hashchange", () => this.route());
 
+    // Un seul listener délégué pour tous les cast-cards de l'appli (fiche
+    // film, fiche série, fiche épisode...) : ouvre la page du comédien.
+    document.addEventListener("click", (e) => {
+      const castCard = e.target.closest(".cast-card[data-person-id]");
+      if (castCard) location.hash = `#/person/${castCard.dataset.personId}`;
+    });
+
 // Service Worker
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js").then((registration) => {
@@ -196,6 +203,9 @@ maybeShowInstallPrompt();
         break;
         case "episode":
         renderEpisodeDetail(param, gen);
+        break;
+      case "person":
+        renderPersonDetail(param, gen);
         break;
     }
     if (typeof lucide !== "undefined") lucide.createIcons();
@@ -515,10 +525,10 @@ async function renderShowDetail(param, gen) {
           ${cast
             .map(
               (actor) => `
-            <div class="cast-card">
+            <div class="cast-card${actor.tmdbPersonId ? " cast-card--linked" : ""}"${actor.tmdbPersonId ? ` data-person-id="${actor.tmdbPersonId}"` : ""}>
               <img src="${actor.image}" alt="${escapeHtml(actor.name)}" loading="lazy" />
-              <span class="cast-name">${escapeHtml(actor.name)}</span>
-              <span class="cast-character">${escapeHtml(actor.role)}</span>
+              <span class="cast-name">${escapeHtml(actor.role)}</span>
+              <span class="cast-character">${escapeHtml(actor.name)}</span>
             </div>`
             )
             .join("")}
@@ -723,6 +733,239 @@ if (canRate) {
   }
 }
 
+// ---------- PERSON DETAIL ----------
+// Genres TMDB à traiter comme du "guest" plutôt qu'un vrai rôle : talk-show,
+// actualités, télé-réalité. Combiné à un test sur le nom du personnage
+// ("Self", "Lui-même"...), ça filtre la plupart des passages plateau tout
+// en gardant les vraies apparitions dans des fictions.
+const GUEST_TV_GENRE_IDS = [10767, 10763, 10764];
+function isGuestAppearance(w) {
+  if (w.media_type !== "tv") return false;
+  if ((w.genre_ids || []).some((g) => GUEST_TV_GENRE_IDS.includes(g))) return true;
+  const character = (w.character || "").trim().toLowerCase();
+  return /^(self|lui-m[eê]me|elle-m[eê]me|narrator|narrateur)\b/.test(character);
+}
+
+// Fiche comédien : filmographie complète (films + séries), ouverte au
+// clic sur un cast-card depuis une fiche film/série/épisode. Reprend la
+// mise en page de show-detail (backdrop, fondu du synopsis) pour rester
+// cohérent visuellement avec les fiches film/série.
+async function renderPersonDetail(id, gen) {
+  const view = qs("#view");
+  view.innerHTML = `<p class="loading">Chargement…</p>`;
+  try {
+    const person = await TMDB.getPerson(id);
+    const credits = person.combined_credits?.cast || [];
+
+    // Une même œuvre peut apparaître plusieurs fois dans combined_credits
+    // (plusieurs rôles) : on ne garde qu'une entrée par œuvre. On écarte
+    // aussi les apparitions "guest" (talk-shows, plateaux...).
+    const byWork = new Map();
+    credits.forEach((c) => {
+      if (!c.title && !c.name) return;
+      if (isGuestAppearance(c)) return;
+      const key = `${c.media_type}_${c.id}`;
+      if (!byWork.has(key)) byWork.set(key, c);
+    });
+    const works = [...byWork.values()].sort((a, b) => {
+      const dateA = a.release_date || a.first_air_date || "";
+      const dateB = b.release_date || b.first_air_date || "";
+      return dateB.localeCompare(dateA);
+    });
+
+    // Backdrop : celui de l'œuvre la plus populaire de la filmo, à
+    // défaut de photo de plateau propre au comédien côté TMDB.
+    const backdropSource = [...works]
+      .filter((w) => w.backdrop_path)
+      .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))[0];
+
+    // Une navigation plus récente a eu lieu pendant l'appel TMDB.
+    if (gen !== App._renderGen) return;
+
+    const rowsData = works.map((w) => {
+      const type = w.media_type === "movie" ? "movie" : "tv";
+      const title = w.title || w.name || "Sans titre";
+      const date = w.release_date || w.first_air_date || "";
+      const inLibrary = App.library.find(
+        (l) => String(l.tmdb_id) === String(w.id) && l.media_type === type
+      );
+      const seen =
+        type === "movie"
+          ? App.diary.some((e) => String(e.tmdb_id) === String(w.id) && e.media_type === "movie")
+          : inLibrary?.status === "completed";
+      return { w, type, title, date, seen };
+    });
+
+    const seenCount = rowsData.filter((r) => r.seen).length;
+    const totalWorks = rowsData.length;
+    const progressPct = totalWorks ? Math.round((seenCount / totalWorks) * 100) : 0;
+
+    const rows = rowsData
+      .map(({ w, type, title, date, seen }) => {
+        const genreIds = (w.genre_ids || []).join(",");
+        return `
+        <div class="filmography-item ${seen ? "filmography-item--watched" : ""}" data-id="${w.id}" data-type="${type}">
+          <img class="filmography-poster" src="${TMDB.posterUrl(w.poster_path)}" alt="${escapeHtml(title)}" loading="lazy" />
+          <div class="filmography-info">
+            <span class="filmography-title">${escapeHtml(title)}</span>
+            <span class="filmography-meta">${date ? date.slice(0, 4) : ""}${w.character ? " · " + escapeHtml(w.character) : ""}</span>
+          </div>
+          <button class="episode-check-toggle ${seen ? "is-watched" : ""}" title="${seen ? "Marquer comme non vu" : "Marquer comme vu"}" data-id="${w.id}" data-type="${type}" data-title="${escapeHtml(title)}" data-poster="${w.poster_path || ""}" data-genres="${genreIds}">${seen ? '<i data-lucide="circle-check-big"></i>' : ""}</button>
+        </div>`;
+      })
+      .join("");
+
+    const metaParts = [];
+    if (person.known_for_department) metaParts.push(escapeHtml(person.known_for_department));
+    if (person.deathday) metaParts.push(`Décédé(e) le ${formatDate(person.deathday)}`);
+    else if (person.birthday) metaParts.push(`Né(e) le ${formatDate(person.birthday)}`);
+
+    view.innerHTML = `
+      <div class="show-detail" style="--backdrop:url('${backdropSource ? TMDB.backdropUrl(backdropSource.backdrop_path) : ""}')">
+        <div class="show-detail-overlay">
+          <img class="show-detail-poster" src="${TMDB.posterUrl(person.profile_path)}" alt="${escapeHtml(person.name)}" />
+          <div class="show-detail-info">
+            <h1>${escapeHtml(person.name)}</h1>
+            ${metaParts.length ? `<p class="show-detail-meta">${metaParts.join(" · ")}</p>` : ""}
+            <div class="overview-wrapper">
+              <p class="show-detail-overview">${escapeHtml(person.biography || "Pas de biographie disponible.")}</p>
+              <button class="overview-toggle" hidden>Afficher plus</button>
+            </div>
+            ${
+              totalWorks > 0
+                ? `<div class="show-progress">
+                     <div class="progress-bar"><div class="progress-bar-fill" style="width:${progressPct}%"></div></div>
+                     <span class="progress-label">${seenCount}/${totalWorks} œuvres vues — ${progressPct}%</span>
+                   </div>`
+                : ""
+            }
+          </div>
+        </div>
+        <h2 class="cast-title">Filmographie</h2>
+        <div class="filmography-grid">${rows || emptyState("Aucune filmographie disponible.")}</div>
+      </div>
+    `;
+
+    if (typeof lucide !== "undefined") lucide.createIcons();
+
+    // Fondu + "Afficher plus" sur la biographie, identique à show-detail.
+    const overview = qs(".show-detail-overview");
+    const overviewWrapper = qs(".overview-wrapper");
+    const overviewToggle = qs(".overview-toggle");
+
+    if (overview && overviewWrapper && overviewToggle) {
+      requestAnimationFrame(() => {
+        if (overview.scrollHeight > overview.clientHeight) {
+          overviewWrapper.classList.add("is-truncated");
+          overviewToggle.hidden = false;
+        }
+      });
+
+      overviewToggle.addEventListener("click", () => {
+        const expanded = overview.classList.toggle("expanded");
+        overviewWrapper.classList.toggle("is-truncated", !expanded);
+        overviewToggle.textContent = expanded ? "Réduire" : "Afficher plus";
+      });
+    }
+
+    qsa(".filmography-item", view).forEach((item) =>
+      item.addEventListener("click", (e) => {
+        if (e.target.closest("button")) return;
+        location.hash = `#/show/${item.dataset.type}-${item.dataset.id}`;
+      })
+    );
+
+    qsa(".filmography-item .episode-check-toggle", view).forEach((btn) =>
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await toggleWorkWatched({
+          tmdbId: btn.dataset.id,
+          type: btn.dataset.type,
+          title: btn.dataset.title,
+          posterPath: btn.dataset.poster,
+          genreIds: btn.dataset.genres ? btn.dataset.genres.split(",") : [],
+        });
+      })
+    );
+  } catch (err) {
+    console.error(err);
+    if (gen !== App._renderGen) return;
+    view.innerHTML = emptyState("Impossible de charger cette fiche comédien.");
+  }
+}
+
+// Coche rapide sur la filmographie d'un comédien : marque un film comme vu
+// (ajoute une entrée journal, comme le bouton "Marquer comme vu" de sa
+// fiche) ou décoche (retire tout l'historique de ce film). Pour une
+// série, la coche/décoche marque ou retire tous les épisodes — une
+// confirmation est demandée dans les deux sens vu l'ampleur de l'action.
+async function toggleWorkWatched({ tmdbId, type, title, posterPath, genreIds }) {
+  try {
+    if (type === "movie") {
+      const alreadySeen = App.diary.some(
+        (e) => String(e.tmdb_id) === String(tmdbId) && e.media_type === "movie"
+      );
+      if (alreadySeen) {
+        await DB.deleteAllEntriesForWork(App.session.user.id, Number(tmdbId), "movie");
+        toast("Marqué comme non vu.", "success");
+      } else {
+        await DB.addDiaryEntry({
+          user_id: App.session.user.id,
+          tmdb_id: Number(tmdbId),
+          media_type: "movie",
+          title,
+          poster_path: posterPath || null,
+          season: null,
+          episode: null,
+          watched_date: new Date().toISOString().slice(0, 10),
+          rating: null,
+          rewatch: false,
+          note: null,
+          genres: genreIds,
+          runtime_minutes: null,
+        });
+        toast("Marqué comme vu 🎟️", "success");
+      }
+    } else {
+      const inLibrary = App.library.find(
+        (l) => String(l.tmdb_id) === String(tmdbId) && l.media_type === "tv"
+      );
+      const alreadyCompleted = inLibrary?.status === "completed";
+
+      if (alreadyCompleted) {
+        const confirmUndo = await showConfirm(
+          "Retirer tout l'historique de visionnage de cette série ?",
+          { confirmLabel: "Oui, tout retirer", cancelLabel: "Annuler" }
+        );
+        if (!confirmUndo) return;
+        await DB.deleteAllEntriesForWork(App.session.user.id, Number(tmdbId), "tv");
+        await DB.upsertLibraryItem({
+          user_id: App.session.user.id,
+          tmdb_id: Number(tmdbId),
+          media_type: "tv",
+          title,
+          poster_path: posterPath || null,
+          status: "watchlist",
+          updated_at: new Date().toISOString(),
+        });
+        toast("Historique retiré.", "success");
+      } else {
+        const markAll = await showConfirm(
+          "Marquer tous les épisodes de cette série comme vus ?",
+          { confirmLabel: "Oui, tout marquer", cancelLabel: "Annuler" }
+        );
+        if (!markAll) return;
+        const show = await TMDB.getTv(tmdbId);
+        toast("Marquage de tous les épisodes en cours…");
+        await markAllEpisodesWatched(tmdbId, show.number_of_seasons, title, posterPath, genreIds);
+      }
+    }
+    await App.refresh();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
 async function renderEpisodeDetail(param, gen) {
   const [tvId, seasonNumber, episodeNumber] = param.split("-");
 
@@ -772,10 +1015,10 @@ async function renderEpisodeDetail(param, gen) {
           ${episodeCast
             .map(
               (actor) => `
-            <div class="cast-card">
+            <div class="cast-card${actor.tmdbPersonId ? " cast-card--linked" : ""}"${actor.tmdbPersonId ? ` data-person-id="${actor.tmdbPersonId}"` : ""}>
               <img src="${actor.image}" alt="${escapeHtml(actor.name)}" loading="lazy" />
-              <span class="cast-name">${escapeHtml(actor.name)}</span>
-              <span class="cast-character">${escapeHtml(actor.role)}</span>
+              <span class="cast-name">${escapeHtml(actor.role)}</span>
+              <span class="cast-character">${escapeHtml(actor.name)}</span>
             </div>`
             )
             .join("")}
@@ -1932,6 +2175,8 @@ function openAvatarPicker() {
                 (actor) => `
             <div class="picker-item picker-item--actor" data-image="${actor.image}">
               <img src="${actor.image}" alt="" loading="lazy" />
+              <span class="cast-name">${escapeHtml(actor.role)}</span>
+              <br>
               <span>${escapeHtml(actor.name)}</span>
             </div>`
               )

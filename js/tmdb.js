@@ -24,6 +24,7 @@ const TMDB = {
   _externalIdsCache: new Map(),
   _aggregateCreditsCache: new Map(),
  _releaseDatesCache: new Map(),
+  _personCache: new Map(),
 
   // Résout les ids de genre TMDB en noms lisibles (mis en cache).
   // mediaType: "movie" | "tv"
@@ -196,6 +197,23 @@ async getReleaseDates(id) {
   const promise = tmdbFetch(`/tv/${tvId}/aggregate_credits`);
 
   this._aggregateCreditsCache.set(tvId, promise);
+
+  return promise;
+},
+
+  // Fiche comédien + filmographie complète (films + séries), utilisée
+  // par la page acteur ouverte depuis un cast-card.
+  async getPerson(id) {
+
+  if (this._personCache.has(id)) {
+    return this._personCache.get(id);
+  }
+
+  const promise = tmdbFetch(`/person/${id}`, {
+    append_to_response: "combined_credits"
+  });
+
+  this._personCache.set(id, promise);
 
   return promise;
 },

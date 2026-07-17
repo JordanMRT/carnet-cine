@@ -57,6 +57,19 @@ async function resolveTvdbId(mediaType, tmdbId, title) {
 // en repli) si disponibles, sinon casting TMDB classique.
 // mediaType attendu ici : "movie" | "series"
 async function getCastForDisplay(mediaType, tmdbId, title, tmdbCastFallback) {
+  // Normalise un nom pour matcher "Jean Dujardin" côté TVDB avec le même
+  // acteur côté TMDB, malgré d'éventuels accents/espaces différents.
+  const normalizeName = (n) =>
+    (n || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim();
+
+  const fallbackByName = new Map(
+    (tmdbCastFallback || []).map((a) => [normalizeName(a.name), a.id])
+  );
+
   try {
     const tvdbId = await resolveTvdbId(mediaType, tmdbId, title);
     if (tvdbId) {
@@ -68,6 +81,10 @@ async function getCastForDisplay(mediaType, tmdbId, title, tmdbCastFallback) {
             image: c.characterImage || c.personImage,
             name: c.personName || "?",
             role: c.characterName || "",
+            // Pas d'id TMDB natif côté TheTVDB : on retrouve l'acteur par
+            // nom dans le casting TMDB. Si aucune correspondance, le
+            // cast-card reste affiché mais non cliquable.
+            tmdbPersonId: fallbackByName.get(normalizeName(c.personName)) || null,
           }));
       }
     }
@@ -80,5 +97,6 @@ async function getCastForDisplay(mediaType, tmdbId, title, tmdbCastFallback) {
       image: TMDB.posterUrl(a.profile_path, "w185"),
       name: a.name,
       role: a.character || "",
+      tmdbPersonId: a.id,
     }));
 }
