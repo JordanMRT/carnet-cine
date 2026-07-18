@@ -309,7 +309,10 @@ function bindStatsEvents() {
       } catch (err) {
         toast(err.message, "error");
       }
-      qs("#delete-account-btn")?.addEventListener("click", async () => {
+    }
+  });
+
+  qs("#delete-account-btn")?.addEventListener("click", async () => {
     const confirmed = await showConfirm(
       "Cette action supprimera définitivement toutes tes données (journal, bibliothèque, badges) ainsi que ton compte. C'est irréversible. Confirmer ?",
       { confirmLabel: "Oui, supprimer", cancelLabel: "Non" }
@@ -324,8 +327,7 @@ function bindStatsEvents() {
       toast(err.message, "error");
     }
   });
-    }
-  });
+
   if (typeof lucide !== "undefined") lucide.createIcons();
 }
 
