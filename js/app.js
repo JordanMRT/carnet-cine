@@ -309,6 +309,21 @@ function bindStatsEvents() {
       } catch (err) {
         toast(err.message, "error");
       }
+      qs("#delete-account-btn")?.addEventListener("click", async () => {
+    const confirmed = await showConfirm(
+      "Cette action supprimera définitivement toutes tes données (journal, bibliothèque, badges) ainsi que ton compte. C'est irréversible. Confirmer ?",
+      { confirmLabel: "Oui, supprimer", cancelLabel: "Non" }
+    );
+    if (!confirmed) return;
+    try {
+      await DB.deleteAccount();
+      toast("Compte supprimé.", "success");
+      location.hash = "#/";
+      location.reload();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
     }
   });
   if (typeof lucide !== "undefined") lucide.createIcons();
@@ -2256,6 +2271,11 @@ function statsTemplate(diary, library) {
           <button id="import-shows-btn" class="btn btn--ghost">Importer mes séries</button>
           <button id="import-movies-btn" class="btn btn--ghost">Importer mes films</button>
         </div>
+      </section>
+
+      <section class="stats-section-danger">
+      <h2 class="danger-h2">Zone de danger</h2>
+        <button id="delete-account-btn" class="btn btn--danger">Supprimer mon compte</button>
       </section>
 
       <footer class="app-attribution">

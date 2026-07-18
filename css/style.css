@@ -36,6 +36,8 @@ p { line-height: 1.5; }
 a { color: inherit; }
 button, input, select, textarea { font-family: inherit; }
 
+.danger-h2 {color: var(--coral)}
+
 :focus-visible {
   outline: 2px solid var(--mustard);
   outline-offset: 2px;
@@ -74,6 +76,15 @@ button, input, select, textarea { font-family: inherit; }
 
 .btn:hover { transform: translateY(-1px); }
 .btn--primary { background: var(--mustard); color: var(--ink); border-color: var(--mustard); }
+.btn--danger {
+  background: transparent;
+  color: var(--coral);
+  border-color: var(--coral);
+}
+.btn--danger:hover {
+  background: var(--coral);
+  color: var(--ink);
+}
 .btn--accent { background: var(--coral); color: var(--ink); border-color: var(--coral); }
 .btn--ghost { background: transparent; }
 .btn--primary-log {background: var(--mustard);
@@ -776,10 +787,11 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 .stat-label { font-size: 0.7rem; color: var(--muted); }
 
 .stats-section { margin-bottom: 2.4rem; }
-.stats-section-import { margin-top: 0.6rem; }
 .import-hint { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.8rem; }
 .import-actions { display: flex; gap: 0.8rem; flex-wrap: wrap; }
 .stats-section-genres { margin-bottom: 2.4rem; }
+.stats-section-danger, .stats-section-import, .stats-section-ratings { margin-bottom: 2.4rem; }
+.stats-section-danger {border-top: 1px dashed var(--coral); padding-top: 1.4rem;}
 .chart--monthly{
     display: flex;
     align-items: flex-end;

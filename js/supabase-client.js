@@ -47,6 +47,12 @@ async updateProfile(fields) {
     if (error) throw error;
   },
 
+  async deleteAccount() {
+    const { data, error } = await supabaseClient.functions.invoke("delete-account");
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+  },
+
   async getSession() {
     const { data } = await supabaseClient.auth.getSession();
     return data.session;
