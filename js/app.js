@@ -195,6 +195,13 @@ maybeShowInstallPrompt();
       case "stats":
         view_el.innerHTML = statsTemplate(this.diary, this.library);
         bindStatsEvents();
+        DB.getPendingRequests(this.session.user.id).then((reqs) => {
+          this.pendingRequests = reqs;
+          if ((location.hash.slice(2) || "diary").split("/")[0] === "stats") {
+            view_el.innerHTML = statsTemplate(this.diary, this.library);
+            bindStatsEvents();
+          }
+        });
         break;
       case "badges":
         view_el.innerHTML = badgesTemplate(this.earnedBadges);
@@ -216,6 +223,10 @@ maybeShowInstallPrompt();
         case "settings":
         view_el.innerHTML = settingsTemplate();
         bindSettingsEvents();
+        break;
+        case "social":
+        view_el.innerHTML = socialTemplate();
+        bindSocialEvents();
         break;
     }
     if (typeof lucide !== "undefined") lucide.createIcons();
@@ -347,11 +358,11 @@ function bindStatsEvents() {
   });
 
   qs(".stats-section-following")?.addEventListener("click", async (e) => {
-    const unfollowBtn = e.target.closest(".unfollow-btn");
+    const unfollowBtn = e.target.closest(".other-profile-unfollow-btn");
     if (unfollowBtn) {
       unfollowBtn.disabled = true;
       try {
-        await DB.unfollow(unfollowBtn.dataset.followId);
+        await DB.unfollow(App.session.user.id, userId);
         toast("Désabonnement effectué.", "success");
         App.following = await DB.getMyFollowingList(App.session.user.id);
         App.route();
@@ -657,6 +668,88 @@ function bindSearchEvents() {
   });
 }
 
+function socialTemplate() {
+  return `
+    <div class="stats-view social-view">
+      <a href="#/stats" class="settings-back">← Retour au profil</a>
+      <h1>Abonnements &amp; abonnés</h1>
+      <div class="picker-tabs social-tabs">
+        <button class="picker-tab search-tab--active" data-tab="following">Abonnements</button>
+        <button class="picker-tab" data-tab="followers">Abonnés</button>
+      </div>
+      <div id="social-list"></div>
+    </div>
+  `;
+}
+
+function followerCard(f) {
+  const p = f.profile;
+  const username = p?.username || "Utilisateur inconnu";
+  const avatarUrl = p?.avatar_url || (p?.avatar_path ? TMDB.posterUrl(p.avatar_path, "w185") : null);
+  return `
+    <div class="user-result-card" data-user-id="${f.follower_id}">
+      <div class="user-result-avatar" style="${avatarUrl ? `background-image:url('${avatarUrl}')` : ""}">
+        ${avatarUrl ? "" : `<span class="profile-avatar-fallback">${escapeHtml(username[0]?.toUpperCase() || "?")}</span>`}
+      </div>
+      <span class="user-result-name">${escapeHtml(username)}</span>
+    </div>
+  `;
+}
+
+function bindSocialEvents() {
+  const list = qs("#social-list");
+  const tabs = qsa(".social-tabs .picker-tab");
+  let activeTab = "following";
+
+  async function render() {
+    list.innerHTML = `<p class="loading">Chargement…</p>`;
+    try {
+      if (activeTab === "following") {
+        App.following = await DB.getMyFollowingList(App.session.user.id);
+        list.innerHTML = App.following.length
+          ? App.following.map(followingCard).join("")
+          : emptyState("Tu ne suis personne pour l'instant.");
+      } else {
+        const followers = await DB.getMyFollowers(App.session.user.id);
+        list.innerHTML = followers.length
+          ? followers.map(followerCard).join("")
+          : emptyState("Personne ne te suit pour l'instant.");
+      }
+      if (typeof lucide !== "undefined") lucide.createIcons();
+    } catch (err) {
+      list.innerHTML = emptyState("Erreur lors du chargement.");
+    }
+  }
+
+  tabs.forEach((t) =>
+    t.addEventListener("click", () => {
+      activeTab = t.dataset.tab;
+      tabs.forEach((x) => x.classList.toggle("search-tab--active", x === t));
+      render();
+    })
+  );
+
+  list.addEventListener("click", async (e) => {
+    const unfollowBtn = e.target.closest(".unfollow-btn");
+    if (unfollowBtn) {
+      unfollowBtn.disabled = true;
+      try {
+        await DB.unfollow(App.session.user.id, unfollowBtn.dataset.userId);
+        toast("Désabonnement effectué.", "success");
+        render();
+      } catch (err) {
+        unfollowBtn.disabled = false;
+        toast(err.message, "error");
+      }
+      return;
+    }
+    const card = e.target.closest(".user-result-card[data-user-id]");
+    if (card) location.hash = `#/u/${card.dataset.userId}`;
+  });
+
+  render();
+}
+
 function posterCard(item) {
   const title = item.original_title || item.original_name || item.title || item.name;
   const date = item.release_date || item.first_air_date || "";
@@ -714,7 +807,7 @@ function followingCard(f) {
         ${avatarUrl ? "" : `<span class="profile-avatar-fallback">${escapeHtml(username[0]?.toUpperCase() || "?")}</span>`}
       </div>
       <span class="user-result-name">${escapeHtml(username)}${statusLabel}</span>
-      <button class="btn btn--ghost unfollow-btn" data-follow-id="${f.id}">Se désabonner</button>
+      <button class="btn btn--ghost unfollow-btn" data-user-id="${f.followed_id}">Se désabonner</button>
     </div>
   `;
 }
@@ -2329,6 +2422,7 @@ function profileHeaderHTML() {
           <button id="edit-avatar-btn" class="profile-avatar-edit" title="Modifier l'avatar"><i data-lucide="pencil"></i></button>
         </div>
         <button id="profile-username-btn" class="profile-username" title="Modifier ton pseudo">${escapeHtml(username)}</button>
+        <a href="#/social" class="profile-social-btn" title="Abonnements et abonnés"><i data-lucide="users"></i></a>
       </div>
     </div>`;
 }
@@ -2634,15 +2728,6 @@ function statsTemplate(diary, library) {
           : ""
       }
 
-      ${
-        App.following?.length
-          ? `<section class="stats-section-following">
-        <h2>Abonnements</h2>
-        <div class="request-list">${App.following.map(followingCard).join("")}</div>
-      </section>`
-          : ""
-      }
-
       <section class="stats-section">
         <h2>Activité (12 derniers mois)</h2>
         ${Stats.renderMonthlyChart(s.monthly)}
@@ -2702,9 +2787,9 @@ function settingsTemplate() {
         <div class="privacy-visibility">
           <label for="privacy-visibility">Qui peut voir tes stats et ta bibliothèque ?</label>
           <select id="privacy-visibility">
-            <option value="public" ${App.profile?.visibility === "public" ? "selected" : ""}>Public — tout le monde</option>
+            <option value="public" ${App.profile?.visibility === "public" ? "selected" : ""}>Public (tout le monde)</option>
             <option value="followers" ${!App.profile || App.profile.visibility === "followers" ? "selected" : ""}>Abonnés acceptés uniquement</option>
-            <option value="private" ${App.profile?.visibility === "private" ? "selected" : ""}>Privé — personne</option>
+            <option value="private" ${App.profile?.visibility === "private" ? "selected" : ""}>Privé (personne)</option>
           </select>
         </div>
       </section>

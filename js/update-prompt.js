@@ -21,10 +21,9 @@ async function fetchChangelogHighlights() {
 }
 
 async function showUpdatePrompt(worker) {
-  // uniquement dans la PWA
   if (!window.matchMedia("(display-mode: standalone)").matches) return;
 
-  if (document.getElementById("update-prompt")) return;
+  document.getElementById("update-prompt")?.remove(); // remplace une éventuelle carte déjà affichée
 
   const highlights = await fetchChangelogHighlights();
 

@@ -188,13 +188,49 @@ async verifyOtp(email, code) {
   },
 
   async respondToRequest(requestId, accept) {
+    const { data: request, error: reqErr } = await supabaseClient
+      .from("follows")
+      .select("follower_id, followed_id")
+      .eq("id", requestId)
+      .single();
+    if (reqErr) throw reqErr;
+
     if (accept) {
       const { error } = await supabaseClient.from("follows").update({ status: "accepted" }).eq("id", requestId);
       if (error) throw error;
+
+      // Suivi mutuel automatique : accepter une demande me fait suivre la
+      // personne en retour, sans qu'elle ait besoin de demander à son tour.
+      const { error: reciprocalErr } = await supabaseClient
+        .from("follows")
+        .upsert(
+          { follower_id: request.followed_id, followed_id: request.follower_id, status: "accepted" },
+          { onConflict: "follower_id,followed_id" }
+        );
+      if (reciprocalErr) throw reciprocalErr;
     } else {
       const { error } = await supabaseClient.from("follows").delete().eq("id", requestId);
       if (error) throw error;
     }
+  },
+
+  async getMyFollowers(myId) {
+    const { data: rows, error } = await supabaseClient
+      .from("follows")
+      .select("id, follower_id, status, created_at")
+      .eq("followed_id", myId)
+      .eq("status", "accepted")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    if (!rows.length) return [];
+    const ids = rows.map((r) => r.follower_id);
+    const { data: profiles, error: pErr } = await supabaseClient
+      .from("profiles")
+      .select("id, username, avatar_path, avatar_url")
+      .in("id", ids);
+    if (pErr) throw pErr;
+    const byId = Object.fromEntries(profiles.map((p) => [p.id, p]));
+    return rows.map((r) => ({ ...r, profile: byId[r.follower_id] || null }));
   },
 
   async unfollow(followId) {
