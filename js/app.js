@@ -109,9 +109,12 @@ maybeShowInstallPrompt();
 
   async loadData() {
     const userId = this.session.user.id;
-    [this.library, this.diary] = await Promise.all([
+    [this.library, this.diary, this.profile, this.pendingRequests, this.following] = await Promise.all([
       DB.getLibrary(userId),
       DB.getDiary(userId),
+      DB.getMyProfile(userId),
+      DB.getPendingRequests(userId),
+      DB.getMyFollowingList(userId),
     ]);
     const earned = await evaluateBadges(this.diary, this.library, userId);
     this.earnedBadges = earned;
@@ -207,6 +210,13 @@ maybeShowInstallPrompt();
       case "person":
         renderPersonDetail(param, gen);
         break;
+        case "u":
+        renderUserProfile(param, gen);
+        break;
+        case "settings":
+        view_el.innerHTML = settingsTemplate();
+        bindSettingsEvents();
+        break;
     }
     if (typeof lucide !== "undefined") lucide.createIcons();
   },
@@ -293,8 +303,6 @@ function bindShellEvents() {
 }
 
 function bindStatsEvents() {
-  qs("#import-shows-btn")?.addEventListener("click", () => qs("#import-shows-input").click());
-  qs("#import-movies-btn")?.addEventListener("click", () => qs("#import-movies-input").click());
   qs("#edit-banner-btn")?.addEventListener("click", openBannerPicker);
   qs("#edit-avatar-btn")?.addEventListener("click", openAvatarPicker);
   qs("#profile-username-btn")?.addEventListener("click", async () => {
@@ -312,20 +320,50 @@ function bindStatsEvents() {
     }
   });
 
-  qs("#delete-account-btn")?.addEventListener("click", async () => {
-    const confirmed = await showConfirm(
-      "Cette action supprimera définitivement toutes tes données (journal, bibliothèque, badges) ainsi que ton compte. C'est irréversible. Confirmer ?",
-      { confirmLabel: "Oui, supprimer", cancelLabel: "Non" }
-    );
-    if (!confirmed) return;
-    try {
-      await DB.deleteAccount();
-      toast("Compte supprimé.", "success");
-      location.hash = "#/";
-      location.reload();
-    } catch (err) {
-      toast(err.message, "error");
+  qs("#open-settings-btn")?.addEventListener("click", () => {
+    location.hash = "#/settings";
+  });
+
+  qs(".stats-section-requests")?.addEventListener("click", async (e) => {
+    const acceptBtn = e.target.closest(".request-accept-btn");
+    const refuseBtn = e.target.closest(".request-refuse-btn");
+    const btn = acceptBtn || refuseBtn;
+    if (btn) {
+      btn.disabled = true;
+      try {
+        await DB.respondToRequest(btn.dataset.requestId, !!acceptBtn);
+        toast(acceptBtn ? "Demande acceptée." : "Demande refusée.", "success");
+        App.pendingRequests = await DB.getPendingRequests(App.session.user.id);
+        App.route();
+      } catch (err) {
+        btn.disabled = false;
+        toast(err.message, "error");
+      }
+      return;
     }
+
+    const card = e.target.closest(".user-result-card[data-user-id]");
+    if (card) location.hash = `#/u/${card.dataset.userId}`;
+  });
+
+  qs(".stats-section-following")?.addEventListener("click", async (e) => {
+    const unfollowBtn = e.target.closest(".unfollow-btn");
+    if (unfollowBtn) {
+      unfollowBtn.disabled = true;
+      try {
+        await DB.unfollow(unfollowBtn.dataset.followId);
+        toast("Désabonnement effectué.", "success");
+        App.following = await DB.getMyFollowingList(App.session.user.id);
+        App.route();
+      } catch (err) {
+        unfollowBtn.disabled = false;
+        toast(err.message, "error");
+      }
+      return;
+    }
+
+    const card = e.target.closest(".user-result-card[data-user-id]");
+    if (card) location.hash = `#/u/${card.dataset.userId}`;
   });
 
   if (typeof lucide !== "undefined") lucide.createIcons();
@@ -353,6 +391,70 @@ async function runImport(e, kind) {
     toast(err.message, "error");
   }
   e.target.value = "";
+}
+
+
+function bindSettingsEvents() {
+  qs("#import-shows-btn")?.addEventListener("click", () => qs("#import-shows-input").click());
+  qs("#import-movies-btn")?.addEventListener("click", () => qs("#import-movies-input").click());
+
+  qs("#privacy-searchable")?.addEventListener("click", async (e) => {
+    const el = e.currentTarget;
+    const checkIcon = el.querySelector(".episode-check-toggle");
+    const newValue = !App.profile?.is_searchable;
+
+    checkIcon.classList.toggle("is-watched", newValue);
+    checkIcon.innerHTML = newValue ? '<i data-lucide="circle-check-big"></i>' : "";
+    el.setAttribute("aria-checked", String(newValue));
+    if (typeof lucide !== "undefined") lucide.createIcons();
+
+    try {
+      await DB.updatePrivacySettings(App.session.user.id, {
+        is_searchable: newValue,
+        visibility: App.profile?.visibility || "followers",
+      });
+      App.profile = { ...(App.profile || {}), is_searchable: newValue };
+      toast("Réglage mis à jour.", "success");
+    } catch (err) {
+      checkIcon.classList.toggle("is-watched", !newValue);
+      checkIcon.innerHTML = !newValue ? '<i data-lucide="circle-check-big"></i>' : "";
+      el.setAttribute("aria-checked", String(!newValue));
+      if (typeof lucide !== "undefined") lucide.createIcons();
+      toast(err.message, "error");
+    }
+  });
+
+  qs("#privacy-visibility")?.addEventListener("change", async (e) => {
+    const visibility = e.target.value;
+    const previous = App.profile?.visibility || "followers";
+    try {
+      await DB.updatePrivacySettings(App.session.user.id, {
+        is_searchable: App.profile?.is_searchable || false,
+        visibility,
+      });
+      App.profile = { ...(App.profile || {}), visibility };
+      toast("Réglage mis à jour.", "success");
+    } catch (err) {
+      e.target.value = previous;
+      toast(err.message, "error");
+    }
+  });
+
+  qs("#delete-account-btn")?.addEventListener("click", async () => {
+    const confirmed = await showConfirm(
+      "Cette action supprimera définitivement toutes tes données (journal, bibliothèque, badges) ainsi que ton compte. C'est irréversible. Confirmer ?",
+      { confirmLabel: "Oui, supprimer", cancelLabel: "Non" }
+    );
+    if (!confirmed) return;
+    try {
+      await DB.deleteAccount();
+      toast("Compte supprimé.", "success");
+      location.hash = "#/";
+      location.reload();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
 }
 
 // ---------- AUTH ----------
@@ -464,6 +566,10 @@ function bindAuthEvents() {
 function searchTemplate() {
   return `
     <div class="search-view">
+      <div class="picker-tabs search-tabs">
+        <button class="picker-tab search-tab--active" data-tab="content">Films &amp; séries</button>
+        <button class="picker-tab" data-tab="users">Utilisateurs</button>
+      </div>
       <input type="search" id="search-input" class="search-input" placeholder="Cherche une série ou un film…" autofocus />
       <div id="search-results" class="grid"></div>
     </div>
@@ -473,6 +579,21 @@ function searchTemplate() {
 function bindSearchEvents() {
   const input = qs("#search-input");
   const results = qs("#search-results");
+  const tabs = qsa(".search-tabs .picker-tab");
+  let activeTab = "content";
+  let myFollowing = {}; // { followedId: status } — chargé une fois, mis à jour localement ensuite
+
+  function setTab(tab) {
+    activeTab = tab;
+    tabs.forEach((t) => t.classList.toggle("search-tab--active", t.dataset.tab === tab));
+    input.placeholder = tab === "users" ? "Cherche un pseudo…" : "Cherche une série ou un film…";
+    results.innerHTML = "";
+    input.value = "";
+    input.focus();
+  }
+
+  tabs.forEach((t) => t.addEventListener("click", () => setTab(t.dataset.tab)));
+
   input.addEventListener(
     "input",
     debounce(async () => {
@@ -481,17 +602,58 @@ function bindSearchEvents() {
         results.innerHTML = "";
         return;
       }
+
+      if (activeTab === "content") {
+        try {
+          const items = await TMDB.searchMulti(q);
+          results.innerHTML = items.map(posterCard).join("") || emptyState("Aucun résultat.");
+        } catch (err) {
+          results.innerHTML = emptyState("Erreur TMDB — vérifie ta clé API dans js/config.js.");
+        }
+        return;
+      }
+
       try {
-        const items = await TMDB.searchMulti(q);
-        results.innerHTML = items.map(posterCard).join("") || emptyState("Aucun résultat.");
+        if (!Object.keys(myFollowing).length) {
+          const following = await DB.getMyFollowing(App.session.user.id);
+          following.forEach((f) => (myFollowing[f.followed_id] = f.status));
+        }
+        const users = await DB.searchUsers(q, App.session.user.id);
+        results.innerHTML =
+          users.map((u) => userResultCard(u, myFollowing[u.id])).join("") ||
+          emptyState("Aucun utilisateur trouvé.");
       } catch (err) {
-        results.innerHTML = emptyState("Erreur TMDB — vérifie ta clé API dans js/config.js.");
+        results.innerHTML = emptyState("Erreur lors de la recherche.");
       }
     }, 400)
   );
-  results.addEventListener("click", (e) => {
+
+  results.addEventListener("click", async (e) => {
     const card = e.target.closest(".poster-card");
-    if (card) location.hash = `#/show/${card.dataset.type}-${card.dataset.id}`;
+    if (card) {
+      location.hash = `#/show/${card.dataset.type}-${card.dataset.id}`;
+      return;
+    }
+
+    const followBtn = e.target.closest(".user-follow-btn");
+    if (followBtn && !followBtn.disabled) {
+      const targetId = followBtn.dataset.userId;
+      followBtn.disabled = true;
+      followBtn.textContent = "Envoi…";
+      try {
+        await DB.sendFollowRequest(App.session.user.id, targetId);
+        myFollowing[targetId] = "pending";
+        followBtn.textContent = "Demande envoyée";
+      } catch (err) {
+        followBtn.disabled = false;
+        followBtn.textContent = "Suivre";
+        toast(err.message, "error");
+      }
+      return;
+    }
+
+    const userCard = e.target.closest(".user-result-card[data-user-id]");
+    if (userCard) location.hash = `#/u/${userCard.dataset.userId}`;
   });
 }
 
@@ -505,6 +667,54 @@ function posterCard(item) {
         <span class="poster-card-title">${escapeHtml(title)}</span>
         <span class="poster-card-year">${date ? date.slice(0, 4) : ""}</span>
       </div>
+    </div>
+  `;
+}
+
+function userResultCard(profile, status) {
+  const avatarUrl = profile.avatar_url || (profile.avatar_path ? TMDB.posterUrl(profile.avatar_path, "w185") : null);
+  const label = status === "accepted" ? "Abonné" : status === "pending" ? "Demande envoyée" : "Suivre";
+  return `
+    <div class="user-result-card" data-user-id="${profile.id}">
+      <div class="user-result-avatar" style="${avatarUrl ? `background-image:url('${avatarUrl}')` : ""}">
+        ${avatarUrl ? "" : `<span class="profile-avatar-fallback">${escapeHtml(profile.username[0]?.toUpperCase() || "?")}</span>`}
+      </div>
+      <span class="user-result-name">${escapeHtml(profile.username)}</span>
+      <button class="btn btn--ghost user-follow-btn" data-user-id="${profile.id}" ${status ? "disabled" : ""}>${label}</button>
+    </div>
+  `;
+}
+
+function requestCard(req) {
+  const p = req.profile;
+  const username = p?.username || "Utilisateur inconnu";
+  const avatarUrl = p?.avatar_url || (p?.avatar_path ? TMDB.posterUrl(p.avatar_path, "w185") : null);
+  return `
+    <div class="user-result-card" data-user-id="${req.follower_id}">
+      <div class="user-result-avatar" style="${avatarUrl ? `background-image:url('${avatarUrl}')` : ""}">
+        ${avatarUrl ? "" : `<span class="profile-avatar-fallback">${escapeHtml(username[0]?.toUpperCase() || "?")}</span>`}
+      </div>
+      <span class="user-result-name">${escapeHtml(username)}</span>
+      <div class="request-actions">
+        <button class="btn btn--accent request-accept-btn" data-request-id="${req.id}">Accepter</button>
+        <button class="btn btn--ghost request-refuse-btn" data-request-id="${req.id}">Refuser</button>
+      </div>
+    </div>
+  `;
+}
+
+function followingCard(f) {
+  const p = f.profile;
+  const username = p?.username || "Utilisateur inconnu";
+  const avatarUrl = p?.avatar_url || (p?.avatar_path ? TMDB.posterUrl(p.avatar_path, "w185") : null);
+  const statusLabel = f.status === "pending" ? " · en attente" : "";
+  return `
+    <div class="user-result-card" data-user-id="${f.followed_id}">
+      <div class="user-result-avatar" style="${avatarUrl ? `background-image:url('${avatarUrl}')` : ""}">
+        ${avatarUrl ? "" : `<span class="profile-avatar-fallback">${escapeHtml(username[0]?.toUpperCase() || "?")}</span>`}
+      </div>
+      <span class="user-result-name">${escapeHtml(username)}${statusLabel}</span>
+      <button class="btn btn--ghost unfollow-btn" data-follow-id="${f.id}">Se désabonner</button>
     </div>
   `;
 }
@@ -748,6 +958,183 @@ if (canRate) {
     if (gen !== App._renderGen) return;
     view.innerHTML = emptyState("Erreur de chargement — vérifie ta clé TMDB.");
   }
+}
+
+// ---------- PROFIL PUBLIC (autre utilisateur) ----------
+async function renderUserProfile(userId, gen) {
+  const view = qs("#view");
+  view.innerHTML = `<p class="loading">Chargement…</p>`;
+  try {
+    const profile = await DB.getProfileById(userId);
+    if (gen !== App._renderGen) return;
+
+    if (!profile) {
+      view.innerHTML = emptyState("Ce profil n'existe pas ou n'est pas accessible.");
+      return;
+    }
+
+    const myFollow = App.following.find((f) => f.followed_id === userId);
+    const followStatus = myFollow?.status || null;
+    const canViewContent =
+      profile.visibility === "public" || (profile.visibility === "followers" && followStatus === "accepted");
+
+    let library = [];
+    let diary = [];
+    if (canViewContent) {
+      [library, diary] = await Promise.all([DB.getLibrary(userId), DB.getDiary(userId)]);
+    }
+    if (gen !== App._renderGen) return;
+
+    view.innerHTML = otherUserProfileTemplate(profile, library, diary, followStatus, canViewContent);
+    bindOtherUserProfileEvents(userId);
+    if (typeof lucide !== "undefined") lucide.createIcons();
+  } catch (err) {
+    if (gen !== App._renderGen) return;
+    view.innerHTML = emptyState("Erreur lors du chargement du profil.");
+  }
+}
+
+function otherProfileHeaderHTML(profile, followStatus) {
+  const username = profile.username || "Utilisateur";
+  const bannerUrl = profile.banner_path ? TMDB.backdropUrl(profile.banner_path, "w1280") : null;
+  const avatarUrl = profile.avatar_url || (profile.avatar_path ? TMDB.posterUrl(profile.avatar_path, "w185") : null);
+  const bannerStyle = bannerUrl ? `background-image: url('${bannerUrl}');` : "";
+
+  const followActionHTML =
+    followStatus === "accepted"
+      ? `<button class="btn btn--ghost profile-banner-follow-btn other-profile-unfollow-btn">Se désabonner</button>`
+      : followStatus === "pending"
+      ? `<button class="btn btn--ghost profile-banner-follow-btn" disabled>Demande envoyée</button>`
+      : `<button class="btn btn--accent profile-banner-follow-btn other-profile-follow-btn">Suivre</button>`;
+
+  return `
+    <div class="profile-header">
+      <div class="profile-banner-wrap">
+        <div class="profile-banner" style="${bannerStyle}"></div>
+        ${followActionHTML}
+      </div>
+      <div class="profile-identity">
+        <div class="profile-avatar-wrap">
+          <div class="profile-avatar" style="${avatarUrl ? `background-image:url('${avatarUrl}')` : ""}">
+            ${avatarUrl ? "" : `<span class="profile-avatar-fallback">${escapeHtml(username[0]?.toUpperCase() || "?")}</span>`}
+          </div>
+        </div>
+        <span class="profile-username profile-username--readonly">${escapeHtml(username)}</span>
+      </div>
+    </div>`;
+}
+
+function otherUserProfileTemplate(profile, library, diary, followStatus, canViewContent) {
+  if (!canViewContent) {
+    const reason =
+      profile.visibility === "private"
+        ? "Ce profil est privé."
+        : "Ce profil n'est visible que par ses abonnés. Envoie une demande pour voir ses stats et sa bibliothèque.";
+    return `
+      ${otherProfileHeaderHTML(profile, followStatus)}
+      <div class="stats-view"><p class="empty-state">${reason}</p></div>
+    `;
+  }
+
+  const s = Stats.compute(diary, library, App.genreMaps);
+  const recent = library
+    .filter((l) => l.status === "completed")
+    .sort((a, b) => (b.last_watched_date || "").localeCompare(a.last_watched_date || ""))
+    .slice(0, 20);
+
+  return `
+    ${otherProfileHeaderHTML(profile, followStatus)}
+    <div class="stats-view">
+      <section class="stats-section-intro">
+        <h2>Stats</h2>
+        <div class="stats-cards">
+          <div class="stat-card"><span class="stat-num">${s.episodesCount}</span><span class="stat-label">Épisodes</span></div>
+          <div class="stat-card"><span class="stat-num">${s.moviesCount}</span><span class="stat-label">Films</span></div>
+          <div class="stat-card"><span class="stat-num">${formatWatchDuration(s.totalTvMinutes)}</span><span class="stat-label">passés devant des séries</span></div>
+          <div class="stat-card"><span class="stat-num">${formatWatchDuration(s.totalMovieMinutes)}</span><span class="stat-label">passés devant des films</span></div>
+          <div class="stat-card"><span class="stat-num">${s.avgRating ? s.avgRating.toFixed(1) : "—"}</span><span class="stat-label">Note moyenne</span></div>
+          <div class="stat-card"><span class="stat-num">${s.showsCompleted}</span><span class="stat-label">Séries terminées</span></div>
+        </div>
+      </section>
+
+      <section class="stats-section">
+        <h2>Derniers visionnages</h2>
+        ${recent.length ? `<div class="ticket-list">${recent.map(otherUserTicketCard).join("")}</div>` : emptyState("Rien à afficher pour l'instant.")}
+      </section>
+    </div>
+  `;
+}
+
+// Comme journalTicketCard, mais sans les actions réservées au
+// propriétaire (suppression, partage) — juste cliquable vers la fiche.
+function otherUserTicketCard(item) {
+  const sub =
+    item.media_type === "tv"
+      ? `Série · ${item.total_episodes || item.watched_episodes} épisode${(item.total_episodes || item.watched_episodes) > 1 ? "s" : ""}`
+      : "Film";
+  const rewatchCount = item.media_type === "movie" ? item.watch_count : 0;
+  const ticketId = `${item.media_type}-${item.tmdb_id}`;
+
+  return `
+    <div class="ticket" data-type="${item.media_type}" data-tmdb-id="${item.tmdb_id}">
+      <div class="ticket-poster">
+        <img src="${TMDB.posterUrl(item.poster_path, "w185")}" alt="" loading="lazy" />
+      </div>
+      <div class="ticket-perforation"></div>
+      <div class="ticket-body">
+        <div class="ticket-row">
+          <span class="ticket-title">${escapeHtml(item.title)}</span>
+          <span class="ticket-sub">${sub}</span>
+        </div>
+        <div class="ticket-row ticket-row--meta">
+          <span class="ticket-date">${formatDate(item.last_watched_date)}</span>
+          ${rewatchCount > 1 ? `<span class="ticket-tag">×${rewatchCount}</span>` : ""}
+        </div>
+        ${item.avg_rating != null ? `<div class="ticket-stars">${stars(item.avg_rating)}</div>` : ""}
+        ${item.last_note ? `<p class="ticket-note">${escapeHtml(item.last_note)}</p>` : ""}
+        <div class="ticket-barcode">${barcodeSVG(ticketId + item.last_watched_date)}</div>
+      </div>
+    </div>
+  `;
+}
+
+function bindOtherUserProfileEvents(userId) {
+  qs("#view").addEventListener("click", async (e) => {
+    const followBtn = e.target.closest(".other-profile-follow-btn");
+    if (followBtn && !followBtn.disabled) {
+      followBtn.disabled = true;
+      try {
+        await DB.sendFollowRequest(App.session.user.id, userId);
+        toast("Demande envoyée.", "success");
+        App.following = await DB.getMyFollowingList(App.session.user.id);
+        App.route();
+      } catch (err) {
+        followBtn.disabled = false;
+        toast(err.message, "error");
+      }
+      return;
+    }
+
+    const unfollowBtn = e.target.closest(".other-profile-unfollow-btn");
+    if (unfollowBtn) {
+      unfollowBtn.disabled = true;
+      const myFollow = App.following.find((f) => f.followed_id === userId);
+      if (!myFollow) return;
+      try {
+        await DB.unfollow(myFollow.id);
+        toast("Désabonnement effectué.", "success");
+        App.following = await DB.getMyFollowingList(App.session.user.id);
+        App.route();
+      } catch (err) {
+        unfollowBtn.disabled = false;
+        toast(err.message, "error");
+      }
+      return;
+    }
+
+    const ticket = e.target.closest(".ticket[data-tmdb-id]");
+    if (ticket) location.hash = `#/show/${ticket.dataset.type}-${ticket.dataset.tmdbId}`;
+  });
 }
 
 // ---------- PERSON DETAIL ----------
@@ -2238,6 +2625,24 @@ function statsTemplate(diary, library) {
       </div>
      </section>
 
+     ${
+        App.pendingRequests?.length
+          ? `<section class="stats-section-requests">
+        <h2>Demandes reçues</h2>
+        <div class="request-list">${App.pendingRequests.map(requestCard).join("")}</div>
+      </section>`
+          : ""
+      }
+
+      ${
+        App.following?.length
+          ? `<section class="stats-section-following">
+        <h2>Abonnements</h2>
+        <div class="request-list">${App.following.map(followingCard).join("")}</div>
+      </section>`
+          : ""
+      }
+
       <section class="stats-section">
         <h2>Activité (12 derniers mois)</h2>
         ${Stats.renderMonthlyChart(s.monthly)}
@@ -2261,6 +2666,49 @@ function statsTemplate(diary, library) {
           : ""
       }
 
+      <button id="open-settings-btn" class="btn btn--ghost settings-entry-btn">
+        <i data-lucide="settings"></i>
+        Paramètres généraux
+      </button>
+      
+      <footer class="app-attribution">
+        <p>
+          Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB.<br />
+          Métadonnées et images de personnages fournies par TheTVDB.
+        </p>
+        <p class="app-attribution-links">
+          <a href="https://www.themoviedb.org" target="_blank" rel="noopener">TMDB</a>
+          ·
+          <a href="https://www.thetvdb.com" target="_blank" rel="noopener">TheTVDB</a>
+        </p>
+      </footer>
+    </div>
+  `;
+}
+
+// ---------- SETTINGS ----------
+function settingsTemplate() {
+  return `
+    <div class="stats-view settings-view">
+      <a href="#/stats" class="settings-back">← Retour au profil</a>
+      <h1>Paramètres</h1>
+
+      <section class="stats-section-privacy">
+        <h2>Confidentialité</h2>
+        <div class="privacy-toggle" id="privacy-searchable" role="switch" aria-checked="${App.profile?.is_searchable ? "true" : "false"}">
+          <span class="episode-check-toggle ${App.profile?.is_searchable ? "is-watched" : ""}">${App.profile?.is_searchable ? '<i data-lucide="circle-check-big"></i>' : ""}</span>
+          <span>Trouvable dans la recherche d'utilisateurs</span>
+        </div>
+        <div class="privacy-visibility">
+          <label for="privacy-visibility">Qui peut voir tes stats et ta bibliothèque ?</label>
+          <select id="privacy-visibility">
+            <option value="public" ${App.profile?.visibility === "public" ? "selected" : ""}>Public — tout le monde</option>
+            <option value="followers" ${!App.profile || App.profile.visibility === "followers" ? "selected" : ""}>Abonnés acceptés uniquement</option>
+            <option value="private" ${App.profile?.visibility === "private" ? "selected" : ""}>Privé — personne</option>
+          </select>
+        </div>
+      </section>
+
       <section class="stats-section-import">
         <h2>Importer mon historique</h2>
         <p class="import-hint">
@@ -2276,21 +2724,9 @@ function statsTemplate(diary, library) {
       </section>
 
       <section class="stats-section-danger">
-      <h2 class="danger-h2">Zone de danger</h2>
+        <h2 class="danger-h2">Zone de danger</h2>
         <button id="delete-account-btn" class="btn btn--danger">Supprimer mon compte</button>
       </section>
-
-      <footer class="app-attribution">
-        <p>
-          Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB.<br />
-          Métadonnées et images de personnages fournies par TheTVDB.
-        </p>
-        <p class="app-attribution-links">
-          <a href="https://www.themoviedb.org" target="_blank" rel="noopener">TMDB</a>
-          ·
-          <a href="https://www.thetvdb.com" target="_blank" rel="noopener">TheTVDB</a>
-        </p>
-      </footer>
     </div>
   `;
 }

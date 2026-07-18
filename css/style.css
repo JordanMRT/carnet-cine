@@ -181,6 +181,34 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
   font-size: 1rem;
   margin-bottom: 1.6rem;
 }
+
+.search-tab--active { background: var(--mustard); color: var(--ink); border-color: var(--mustard); }
+
+.user-result-card {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 0.6rem;
+}
+.user-result-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.user-result-name { flex: 1; font-weight: 600; }
+.user-result-card .user-follow-btn { flex-shrink: 0; }
+.user-result-card .user-follow-btn:disabled { opacity: 0.6; cursor: default; }
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -790,7 +818,7 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 .import-hint { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.8rem; }
 .import-actions { display: flex; gap: 0.8rem; flex-wrap: wrap; }
 .stats-section-genres { margin-bottom: 2.4rem; }
-.stats-section-danger, .stats-section-import, .stats-section-ratings { margin-bottom: 2.4rem; }
+.stats-section-danger, .stats-section-import, .stats-section-ratings, .stats-section-following { margin-bottom: 2.4rem; }
 .stats-section-danger {border-top: 1px dashed var(--coral); padding-top: 1.4rem;}
 .chart--monthly{
     display: flex;
@@ -806,6 +834,59 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
     border-radius: var(--radius);
     background-color: var(--bg-elevated);
 }
+
+/* STATS&PRIVACY */
+
+.stats-section-privacy { margin-bottom: 2.4rem; border-top: 1px dashed var(--muted); padding-top: 1.4rem; }
+.stats-section-import {border-top: 1px dashed var(--muted); padding-top: 1.4rem;}
+.privacy-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  cursor: pointer;
+}
+.privacy-visibility { display: flex; flex-direction: column; gap: 0.5rem; }
+.privacy-visibility label { font-size: 0.9rem; color: var(--muted, inherit); }
+.privacy-visibility select {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--ink);
+  color: var(--cream);
+  appearance: none;
+  padding: 0.6em 2.5em 0.6em 1em;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.8em center;
+  background-size: 1em;
+  width: fit-content;
+}
+
+.request-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+.profile-username--readonly { cursor: default; }
+.profile-username--readonly:hover { color: inherit; }
+.user-result-card[data-user-id] { cursor: pointer; }
+.profile-banner-follow-btn {
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  backdrop-filter: blur(2px);
+}
+
+/* SETTINGS*/
+
+.settings-view { max-width: 640px; }
+.settings-back {
+  display: inline-block;
+  margin-bottom: 1rem;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.settings-back:hover { color: var(--mustard); }
+.settings-entry-btn { width: 100%; margin-bottom: 1.6rem; }
+
+/* CHART STYLE*/
 
 .chart--monthly::-webkit-scrollbar{
     display:none;
@@ -1003,7 +1084,6 @@ code {
 /* ---------- API ATTRIBUTION (TheTVDB & TMDB) ---------- */
 
 .app-attribution {
-  margin-top: 2.4rem;
   padding-top: 1.4rem;
   border-top: 1px solid var(--border);
   text-align: center;

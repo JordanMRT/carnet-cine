@@ -35,10 +35,59 @@ async verifyOtp(email, code) {
   async updateUsername(username) {
     const { error } = await supabaseClient.auth.updateUser({ data: { username } });
     if (error) throw error;
+    await this._syncProfile({ username });
   },
 
-async updateProfile(fields) {
+  async updateProfile(fields) {
     const { error } = await supabaseClient.auth.updateUser({ data: fields });
+    if (error) throw error;
+    // Seuls avatar/bannière concernent la table publique `profiles`
+    // (le username a sa propre méthode dédiée ci-dessus).
+    const profileFields = {};
+    if ("avatar_path" in fields) profileFields.avatar_path = fields.avatar_path;
+    if ("avatar_url" in fields) profileFields.avatar_url = fields.avatar_url;
+    if ("banner_path" in fields) profileFields.banner_path = fields.banner_path;
+    if (Object.keys(profileFields).length) await this._syncProfile(profileFields);
+  },
+
+  // Répercute un changement dans la table publique `profiles`, utilisée
+  // pour la recherche et les profils consultés par d'autres utilisateurs.
+  // Inclut toujours un username de secours : la colonne est NOT NULL, et
+  // un utilisateur pourrait en théorie changer son avatar avant d'avoir
+  // jamais choisi de pseudo (première ligne du profil pas encore créée).
+  async _syncProfile(fields) {
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if (!user) return;
+    const fallbackUsername = user.user_metadata?.username || user.email?.split("@")[0] || "user";
+    const { error } = await supabaseClient
+      .from("profiles")
+      .upsert(
+        { id: user.id, username: fallbackUsername, ...fields, updated_at: new Date().toISOString() },
+        { onConflict: "id" }
+      );
+    if (error) throw error;
+  },
+
+  // ---------- CONFIDENTIALITÉ ----------
+  async getMyProfile(userId) {
+    const { data, error } = await supabaseClient
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+
+  async updatePrivacySettings(userId, { is_searchable, visibility }) {
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    const fallbackUsername = user?.user_metadata?.username || user?.email?.split("@")[0] || "user";
+    const { error } = await supabaseClient
+      .from("profiles")
+      .upsert(
+        { id: userId, username: fallbackUsername, is_searchable, visibility, updated_at: new Date().toISOString() },
+        { onConflict: "id" }
+      );
     if (error) throw error;
   },
 
@@ -60,6 +109,97 @@ async updateProfile(fields) {
 
   onAuthChange(callback) {
     supabaseClient.auth.onAuthStateChange((_event, session) => callback(session));
+  },
+
+  // ---------- SOCIAL ----------
+  async searchUsers(query, myId) {
+    const { data, error } = await supabaseClient
+      .from("profiles")
+      .select("id, username, avatar_path, avatar_url")
+      .eq("is_searchable", true)
+      .neq("id", myId)
+      .ilike("username", `%${query}%`)
+      .limit(20);
+    if (error) throw error;
+    return data;
+  },
+
+  async getMyFollowing(myId) {
+    const { data, error } = await supabaseClient
+      .from("follows")
+      .select("followed_id, status")
+      .eq("follower_id", myId);
+    if (error) throw error;
+    return data;
+  },
+
+  async sendFollowRequest(followerId, followedId) {
+    const { error } = await supabaseClient
+      .from("follows")
+      .insert({ follower_id: followerId, followed_id: followedId, status: "pending" });
+    if (error) throw error;
+  },
+
+  async getPendingRequests(myId) {
+    const { data: requests, error } = await supabaseClient
+      .from("follows")
+      .select("id, follower_id, created_at")
+      .eq("followed_id", myId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    if (!requests.length) return [];
+    const ids = requests.map((r) => r.follower_id);
+    const { data: profiles, error: pErr } = await supabaseClient
+      .from("profiles")
+      .select("id, username, avatar_path, avatar_url")
+      .in("id", ids);
+    if (pErr) throw pErr;
+    const byId = Object.fromEntries(profiles.map((p) => [p.id, p]));
+    return requests.map((r) => ({ ...r, profile: byId[r.follower_id] || null }));
+  },
+
+  async getProfileById(userId) {
+    const { data, error } = await supabaseClient
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+
+  async getMyFollowingList(myId) {
+    const { data: rows, error } = await supabaseClient
+      .from("follows")
+      .select("id, followed_id, status, created_at")
+      .eq("follower_id", myId)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    if (!rows.length) return [];
+    const ids = rows.map((r) => r.followed_id);
+    const { data: profiles, error: pErr } = await supabaseClient
+      .from("profiles")
+      .select("id, username, avatar_path, avatar_url")
+      .in("id", ids);
+    if (pErr) throw pErr;
+    const byId = Object.fromEntries(profiles.map((p) => [p.id, p]));
+    return rows.map((r) => ({ ...r, profile: byId[r.followed_id] || null }));
+  },
+
+  async respondToRequest(requestId, accept) {
+    if (accept) {
+      const { error } = await supabaseClient.from("follows").update({ status: "accepted" }).eq("id", requestId);
+      if (error) throw error;
+    } else {
+      const { error } = await supabaseClient.from("follows").delete().eq("id", requestId);
+      if (error) throw error;
+    }
+  },
+
+  async unfollow(followId) {
+    const { error } = await supabaseClient.from("follows").delete().eq("id", followId);
+    if (error) throw error;
   },
 
   // ---------- LIBRARY (bibliothèque : à voir / en cours / terminé) ----------
