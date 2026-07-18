@@ -112,7 +112,14 @@ const LibraryBuilder = {
       }
 
       if (entry.watched_date < work.first_watched_date) work.first_watched_date = entry.watched_date;
-      if (entry.watched_date > work.last_watched_date) work.last_watched_date = entry.watched_date;
+
+      // Un revisionnage d'épisode (rewatch: true) ne doit pas faire remonter
+      // ni changer la date du ticket série — contrairement aux films, où le
+      // rewatch met à jour intentionnellement le ticket (tag ×N).
+      const countsForLastWatched = entry.media_type === "movie" || !entry.rewatch;
+      if (countsForLastWatched && entry.watched_date > work.last_watched_date) {
+        work.last_watched_date = entry.watched_date;
+      }
 
       if (entry.rating != null) {
         work.ratingSum += entry.rating;
