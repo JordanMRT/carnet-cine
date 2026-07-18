@@ -1143,6 +1143,13 @@ code {
 }
 .install-prompt-forever:hover { color: var(--coral); }
 
+.update-prompt-highlights {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
 /* ==========================================================
    MOBILE APP NAVIGATION (PWA)
    ========================================================== */

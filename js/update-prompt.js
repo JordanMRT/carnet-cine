@@ -5,11 +5,32 @@
 
 let swUpdateRequested = false; // évite de recharger au tout premier contrôle (première installation)
 
-function showUpdatePrompt(worker) {
+async function fetchChangelogHighlights() {
+  try {
+    // Le paramètre anti-cache force une URL différente à chaque appel, donc
+    // le service worker (cache-first par URL) ne trouve jamais de
+    // correspondance et va systématiquement chercher la version fraîche —
+    // même si l'ancien SW est encore actif au moment de l'appel.
+    const res = await fetch(`./changelog.json?t=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return Array.isArray(data.highlights) && data.highlights.length ? data.highlights : null;
+  } catch {
+    return null;
+  }
+}
+
+async function showUpdatePrompt(worker) {
   // uniquement dans la PWA
   if (!window.matchMedia("(display-mode: standalone)").matches) return;
 
   if (document.getElementById("update-prompt")) return;
+
+  const highlights = await fetchChangelogHighlights();
+
+  const bodyHTML = highlights
+    ? `<p>${highlights.map((h, i) => (i === 0 ? escapeHtml(h) : `· ${escapeHtml(h)}`)).join("<br>")}</p>`
+    : `<p>Profite immédiatement des dernières nouveautés de Time To Binge.</p>`;
 
   const card = document.createElement("div");
   card.id = "update-prompt";
@@ -22,7 +43,7 @@ function showUpdatePrompt(worker) {
         <span class="install-prompt-emoji">🎟️</span>
         <div>
           <strong>Une mise à jour est disponible</strong>
-          <p>Profite immédiatement des dernières nouveautés de Time To Binge.</p>
+          ${bodyHTML}
         </div>
       </div>
       <button class="btn btn--accent" id="update-app-btn" style="width: 100%;">
