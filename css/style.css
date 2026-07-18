@@ -192,6 +192,7 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
   border: 1px solid var(--border);
   border-radius: 12px;
   margin-bottom: 0.6rem;
+  width: max-content;
 }
 .user-result-avatar {
   width: 42px;
@@ -871,6 +872,8 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   bottom: 1rem;
   right: 1rem;
   backdrop-filter: blur(2px);
+  background: rgba(14, 15, 20, 0.7);
+  color: var(--cream);
 }
 
 /* SETTINGS*/
@@ -884,7 +887,9 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   font-size: 0.9rem;
 }
 .settings-back:hover { color: var(--mustard); }
-.settings-entry-btn { width: 100%; margin-bottom: 1.6rem; }
+.settings-entry-btn { width: 100%; margin-bottom: 1.6rem; backdrop-filter: blur(2px);
+  background: rgba(14, 15, 20, 0.7);
+  color: var(--cream); }
 
 /* CHART STYLE*/
 
