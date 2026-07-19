@@ -53,10 +53,14 @@ async function resolveTvdbId(mediaType, tmdbId, title) {
   return tvdbId;
 }
 
+const _castDisplayCache = new Map();
 // Casting à afficher : personnages TheTVDB (image du personnage, acteur
 // en repli) si disponibles, sinon casting TMDB classique.
 // mediaType attendu ici : "movie" | "series"
 async function getCastForDisplay(mediaType, tmdbId, title, tmdbCastFallback) {
+  const cacheKey = `${mediaType}_${tmdbId}`;
+  if (_castDisplayCache.has(cacheKey)) return _castDisplayCache.get(cacheKey);
+
   // Normalise un nom pour matcher "Jean Dujardin" côté TVDB avec le même
   // acteur côté TMDB, malgré d'éventuels accents/espaces différents.
   const normalizeName = (n) =>
@@ -70,33 +74,35 @@ async function getCastForDisplay(mediaType, tmdbId, title, tmdbCastFallback) {
     (tmdbCastFallback || []).map((a) => [normalizeName(a.name), a.id])
   );
 
-  try {
-    const tvdbId = await resolveTvdbId(mediaType, tmdbId, title);
-    if (tvdbId) {
-      const characters = await TVDBProxy.getCharacters(mediaType, tvdbId);
-      if (characters.length) {
-        return characters
-          .filter((c) => c.characterImage || c.personImage)
-          .map((c) => ({
-            image: c.characterImage || c.personImage,
-            name: c.personName || "?",
-            role: c.characterName || "",
-            // Pas d'id TMDB natif côté TheTVDB : on retrouve l'acteur par
-            // nom dans le casting TMDB. Si aucune correspondance, le
-            // cast-card reste affiché mais non cliquable.
-            tmdbPersonId: fallbackByName.get(normalizeName(c.personName)) || null,
-          }));
+  const result = await (async () => {
+    try {
+      const tvdbId = await resolveTvdbId(mediaType, tmdbId, title);
+      if (tvdbId) {
+        const characters = await TVDBProxy.getCharacters(mediaType, tvdbId);
+        if (characters.length) {
+          return characters
+            .filter((c) => c.characterImage || c.personImage)
+            .map((c) => ({
+              image: c.characterImage || c.personImage,
+              name: c.personName || "?",
+              role: c.characterName || "",
+              tmdbPersonId: fallbackByName.get(normalizeName(c.personName)) || null,
+            }));
+        }
       }
+    } catch {
+      // TheTVDB indisponible pour ce titre : on retombe sur TMDB
     }
-  } catch {
-    // TheTVDB indisponible pour ce titre : on retombe sur TMDB
-  }
-  return (tmdbCastFallback || [])
-    .filter((a) => a.profile_path)
-    .map((a) => ({
-      image: TMDB.posterUrl(a.profile_path, "w185"),
-      name: a.name,
-      role: a.character || "",
-      tmdbPersonId: a.id,
-    }));
+    return (tmdbCastFallback || [])
+      .filter((a) => a.profile_path)
+      .map((a) => ({
+        image: TMDB.posterUrl(a.profile_path, "w185"),
+        name: a.name,
+        role: a.character || "",
+        tmdbPersonId: a.id,
+      }));
+  })();
+
+  _castDisplayCache.set(cacheKey, result);
+  return result;
 }

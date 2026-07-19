@@ -81,6 +81,7 @@ maybeShowInstallPrompt();
         return;
       }
       root.innerHTML = shellTemplate();
+      setupViewTransitions();
       if (typeof lucide !== "undefined") lucide.createIcons();
       // Les genres TMDB ne servent qu'à l'affichage des stats : on les charge
       // en parallèle (sans attendre) plutôt qu'avant syncAndRoute, pour ne
@@ -236,6 +237,21 @@ maybeShowInstallPrompt();
     await this.syncAndRoute();
   },
 };
+
+// ---------- ANIMATION VIEWTRANSITIONS ----------
+// Fondu léger à chaque changement de vue. Plutôt que de modifier chacune
+// des fonctions de rendu, on observe les mutations de #view et on relance
+// une micro-animation CSS à chaque remplacement de contenu.
+function setupViewTransitions() {
+  const view = qs("#view");
+  if (!view) return;
+  const observer = new MutationObserver(() => {
+    view.classList.remove("view-fade-in");
+    void view.offsetWidth; // force le reflow pour pouvoir relancer l'animation
+    view.classList.add("view-fade-in");
+  });
+  observer.observe(view, { childList: true });
+}
 
 // ---------- SHELL ----------
 function shellTemplate() {
@@ -894,14 +910,12 @@ async function renderShowDetail(param, gen) {
     );
 
     const friendIds = App.following.filter((f) => f.status === "accepted").map((f) => f.followed_id);
-    const [recommendations, watchProviders, friendsActivity] = await Promise.all([
+    const [recommendations, watchProviders, friendsActivity, rawCast] = await Promise.all([
       TMDB.getRecommendations(type, id).catch(() => []),
       TMDB.getWatchProviders(type, id).catch(() => null),
-      DB.getFriendsActivityForWork(friendIds, Number(id), type).catch(() => []),
+      friendIds.length ? DB.getFriendsActivityForWork(friendIds, Number(id), type).catch(() => []) : Promise.resolve([]),
+      type === "tv" ? TMDB.getAggregateCredits(id).then((r) => r.cast || []) : Promise.resolve(data.credits?.cast || []),
     ]);
-
-    const rawCast =
-      type === "tv" ? (await TMDB.getAggregateCredits(id)).cast || [] : data.credits?.cast || [];
     const cast = (await getCastForDisplay(type === "movie" ? "movie" : "series", id, title, rawCast)).slice(0, 12);
     const castHTML = cast.length
       ? `

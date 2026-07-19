@@ -8,7 +8,17 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+let cachedToken: string | null = null;
+let tokenExpiresAt = 0; // timestamp ms
+
 async function getToken(): Promise<string> {
+  // Les tokens TheTVDB v4 sont valides ~1 mois ; on les garde en mémoire
+  // pour la durée de vie de l'instance (chaude entre requêtes rapprochées),
+  // au lieu de se reconnecter à chaque appel.
+  if (cachedToken && Date.now() < tokenExpiresAt) {
+    return cachedToken;
+  }
+
   const body: Record<string, string> = { apikey: TVDB_API_KEY! };
   if (TVDB_PIN) body.pin = TVDB_PIN;
 
@@ -19,7 +29,10 @@ async function getToken(): Promise<string> {
   });
   if (!res.ok) throw new Error(`Connexion à TheTVDB échouée (${res.status})`);
   const json = await res.json();
-  return json.data.token;
+  cachedToken = json.data.token;
+  // Marge de sécurité : considéré expiré 1h avant l'échéance réelle.
+  tokenExpiresAt = Date.now() + 27 * 24 * 60 * 60 * 1000;
+  return cachedToken;
 }
 
 serve(async (req) => {

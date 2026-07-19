@@ -25,6 +25,8 @@ const TMDB = {
   _aggregateCreditsCache: new Map(),
  _releaseDatesCache: new Map(),
   _personCache: new Map(),
+  _recommendationsCache: new Map(),
+  _watchProvidersCache: new Map(),
 
   // Résout les ids de genre TMDB en noms lisibles (mis en cache).
   // mediaType: "movie" | "tv"
@@ -46,15 +48,33 @@ const TMDB = {
   // mediaType: "movie" | "tv"
 
   async getRecommendations(mediaType, id) {
+    const key = `${mediaType}_${id}`;
+
+    if (this._recommendationsCache.has(key)) {
+      return this._recommendationsCache.get(key);
+    }
+
     const path = mediaType === "movie" ? `/movie/${id}/recommendations` : `/tv/${id}/recommendations`;
-    const data = await tmdbFetch(path);
-    return data.results || [];
+    const promise = tmdbFetch(path).then((data) => data.results || []);
+
+    this._recommendationsCache.set(key, promise);
+
+    return promise;
   },
 
   async getWatchProviders(mediaType, id) {
+    const key = `${mediaType}_${id}`;
+
+    if (this._watchProvidersCache.has(key)) {
+      return this._watchProvidersCache.get(key);
+    }
+
     const path = mediaType === "movie" ? `/movie/${id}/watch/providers` : `/tv/${id}/watch/providers`;
-    const data = await tmdbFetch(path);
-    return data.results?.FR || null;
+    const promise = tmdbFetch(path).then((data) => data.results?.FR || null);
+
+    this._watchProvidersCache.set(key, promise);
+
+    return promise;
   },
 
   // Résolution par titre (± année) : utilisée pour l'import CSV (export GDPR
