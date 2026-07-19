@@ -420,6 +420,89 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
     background-size: 1em;
 }
 
+/* MOVIE/SHOW/EPISODES PAGE ENRICHMENTS */
+
+.tmdb-rating { display: flex; align-items: center; gap: 0.4rem; color: var(--muted); font-size: 0.9rem; margin: 0.3rem 0; }
+.tmdb-rating svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  color: var(--mustard);
+  position: relative;
+  top: -1px;
+}
+
+.show-detail-tagline { font-style: italic; color: var(--muted); margin: 0.2rem 0 0.4rem; }
+.episode-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.episode-meta-row-btn { flex-shrink: 0; }
+
+@media (max-width: 640px) {
+  .episode-meta-row { flex-direction: column; align-items: flex-start; }
+  .episode-meta-row-btn { width: 100%; }
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.2em 0.7em;
+  border-radius: 999px;
+  border: 1px solid var(--sage);
+  color: var(--sage);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.similar-strip { margin-top: 1.4rem; }
+.similar-title { margin-bottom: 0.8rem; }
+.similar-scroll {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: 0.6rem;
+  scrollbar-width: none;
+}
+.similar-scroll::-webkit-scrollbar { display: none; }
+.similar-scroll .poster-card { flex: 0 0 130px; }
+
+.watch-providers { margin-top: 1.4rem; }
+.watch-providers-title { margin-bottom: 0.6rem; }
+.watch-providers-list { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.watch-provider-logo { width: 42px; height: 42px; border-radius: 10px; }
+.watch-providers-attribution { display: block; margin-top: 0.5rem; font-size: 0.75rem; color: var(--muted); }
+
+.friends-activity { margin-top: 1.4rem; }
+.friends-activity-title { margin-bottom: 0.8rem; }
+.friends-activity-list { display: flex; gap: 1rem; flex-wrap: wrap; }
+.friend-activity-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  text-decoration: none;
+  color: inherit;
+  text-align: center;
+}
+.friend-activity-name { font-size: 0.82rem; font-weight: 600; font-family: var(--font-display);}
+.friend-activity-stars { font-size: 0.82rem; color: var(--mustard); }
+
+.user-result-avatar-activity {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* SEASONS & EPISODES LIST */
 .seasons-block h2 { display: flex; align-items: baseline; gap: 0.6rem; }
 .seasons-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
 .seasons-header h2 { margin: 0; }
@@ -1323,6 +1406,10 @@ code {
     justify-content:center;
     margin-top: 0;
   }
+
+.tmdb-rating {
+  justify-content: center;
+}
 
   .upcoming-list--episodes {
     grid-template-columns: 1fr;

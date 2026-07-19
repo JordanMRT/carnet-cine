@@ -233,6 +233,31 @@ async verifyOtp(email, code) {
     return rows.map((r) => ({ ...r, profile: byId[r.follower_id] || null }));
   },
 
+// ---------- FRIENDS ACTIVITY ----------
+
+  async getFriendsActivityForWork(friendIds, tmdbId, mediaType) {
+    if (!friendIds.length) return [];
+    const { data: rows, error } = await supabaseClient
+      .from("library")
+      .select("user_id, status, avg_rating")
+      .eq("tmdb_id", tmdbId)
+      .eq("media_type", mediaType)
+      .in("user_id", friendIds)
+      .in("status", ["watching", "completed"]);
+    if (error) throw error;
+    if (!rows.length) return [];
+    const ids = rows.map((r) => r.user_id);
+    const { data: profiles, error: pErr } = await supabaseClient
+      .from("profiles")
+      .select("id, username, avatar_path, avatar_url")
+      .in("id", ids);
+    if (pErr) throw pErr;
+    const byId = Object.fromEntries(profiles.map((p) => [p.id, p]));
+    return rows.map((r) => ({ ...r, profile: byId[r.user_id] || null }));
+  },
+
+  // ---------- UNFOLLOW ----------
+
   async unfollow(followId) {
     const { error } = await supabaseClient.from("follows").delete().eq("id", followId);
     if (error) throw error;

@@ -42,6 +42,21 @@ const TMDB = {
     return data.results.filter((r) => r.media_type === "movie" || r.media_type === "tv");
   },
 
+  // Affiche les recommandations + les service providers
+  // mediaType: "movie" | "tv"
+
+  async getRecommendations(mediaType, id) {
+    const path = mediaType === "movie" ? `/movie/${id}/recommendations` : `/tv/${id}/recommendations`;
+    const data = await tmdbFetch(path);
+    return data.results || [];
+  },
+
+  async getWatchProviders(mediaType, id) {
+    const path = mediaType === "movie" ? `/movie/${id}/watch/providers` : `/tv/${id}/watch/providers`;
+    const data = await tmdbFetch(path);
+    return data.results?.FR || null;
+  },
+
   // Résolution par titre (± année) : utilisée pour l'import CSV (export GDPR
   // TV Time), qui ne fournit aucun id externe (TheTVDB/IMDb), contrairement
   // au JSON. On retente sans l'année si la recherche filtrée ne donne rien.

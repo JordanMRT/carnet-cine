@@ -83,9 +83,9 @@ const LibraryBuilder = {
           title: entry.title,
           poster_path: entry.poster_path,
           first_watched_date: entry.watched_date,
-          last_watched_date: entry.watched_date,
-          watch_count: 0, // uniquement les films
-          watched_episodes: 0, // épisodes uniques vus (séries)
+          last_watched_date: null,
+          watch_count: 0,
+          watched_episodes: 0,
           seenEpisodeKeys: new Set(),
           total_episodes: 0,
           total_seasons: 0,
@@ -117,7 +117,7 @@ const LibraryBuilder = {
       // ni changer la date du ticket série — contrairement aux films, où le
       // rewatch met à jour intentionnellement le ticket (tag ×N).
       const countsForLastWatched = entry.media_type === "movie" || !entry.rewatch;
-      if (countsForLastWatched && entry.watched_date > work.last_watched_date) {
+      if (countsForLastWatched && (!work.last_watched_date || entry.watched_date > work.last_watched_date)) {
         work.last_watched_date = entry.watched_date;
       }
 
@@ -184,7 +184,7 @@ const LibraryBuilder = {
             ? "dropped"
             : work.status,
         first_watched_date: work.first_watched_date,
-        last_watched_date: work.last_watched_date,
+        last_watched_date: work.last_watched_date || work.first_watched_date,
         watch_count: work.watch_count,
         watched_episodes: work.watched_episodes,
         total_episodes: work.total_episodes,

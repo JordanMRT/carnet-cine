@@ -764,6 +764,65 @@ function posterCard(item) {
   `;
 }
 
+const TV_STATUS_LABELS = {
+  "Returning Series": "En cours de diffusion",
+  "Ended": "Terminée",
+  "Canceled": "Annulée",
+  "In Production": "En production",
+  "Planned": "Prévue",
+  "Pilot": "Pilote",
+};
+
+function similarStripHTML(items, type) {
+  if (!items.length) return "";
+  return `
+    <div class="similar-strip">
+      <h2 class="similar-title">Vous aimerez peut-être :</h2>
+      <div class="similar-scroll">
+        ${items.slice(0, 12).map((r) => posterCard({ ...r, media_type: type })).join("")}
+      </div>
+    </div>`;
+}
+
+function watchProvidersHTML(providers) {
+  const flatrate = providers?.flatrate || [];
+  if (!flatrate.length) return "";
+  return `
+    <div class="watch-providers">
+      <h2 class="watch-providers-title">Disponible sur</h2>
+      <div class="watch-providers-list">
+        ${flatrate.map((p) => `<img src="${TMDB.posterUrl(p.logo_path, "w45")}" alt="${escapeHtml(p.provider_name)}" title="${escapeHtml(p.provider_name)}" class="watch-provider-logo" />`).join("")}
+      </div>
+      <span class="watch-providers-attribution">Données JustWatch, via TMDB</span>
+    </div>`;
+}
+
+function friendsActivityHTML(activity) {
+  if (!activity.length) return "";
+  return `
+    <div class="friends-activity">
+      <h2 class="friends-activity-title">Vu par tes abonnements</h2>
+      <div class="friends-activity-list">
+        ${activity
+          .map((a) => {
+            const p = a.profile;
+            const username = p?.username || "Utilisateur";
+            const avatarUrl = p?.avatar_url || (p?.avatar_path ? TMDB.posterUrl(p.avatar_path, "w185") : null);
+            const starsLabel = a.avg_rating != null ? "★".repeat(Math.round(a.avg_rating / 2)) : "";
+            return `
+              <a href="#/u/${p?.id}" class="friend-activity-card">
+                <div class="user-result-avatar-activity" style="${avatarUrl ? `background-image:url('${avatarUrl}')` : ""}">
+                  ${avatarUrl ? "" : `<span class="profile-avatar-fallback">${escapeHtml(username[0]?.toUpperCase() || "?")}</span>`}
+                </div>
+                <span class="friend-activity-name">${escapeHtml(username)}</span>
+                ${starsLabel ? `<span class="friend-activity-stars">${starsLabel}</span>` : ""}
+              </a>`;
+          })
+          .join("")}
+      </div>
+    </div>`;
+}
+
 function userResultCard(profile, status) {
   const avatarUrl = profile.avatar_url || (profile.avatar_path ? TMDB.posterUrl(profile.avatar_path, "w185") : null);
   const label = status === "accepted" ? "Abonné" : status === "pending" ? "Demande envoyée" : "Suivre";
@@ -833,6 +892,13 @@ async function renderShowDetail(param, gen) {
     const inLibrary = App.library.find(
       (l) => String(l.tmdb_id) === String(id) && l.media_type === type
     );
+
+    const friendIds = App.following.filter((f) => f.status === "accepted").map((f) => f.followed_id);
+    const [recommendations, watchProviders, friendsActivity] = await Promise.all([
+      TMDB.getRecommendations(type, id).catch(() => []),
+      TMDB.getWatchProviders(type, id).catch(() => null),
+      DB.getFriendsActivityForWork(friendIds, Number(id), type).catch(() => []),
+    ]);
 
     const rawCast =
       type === "tv" ? (await TMDB.getAggregateCredits(id)).cast || [] : data.credits?.cast || [];
@@ -907,7 +973,14 @@ async function renderShowDetail(param, gen) {
           <img class="show-detail-poster" src="${TMDB.posterUrl(data.poster_path)}" alt="" />
           <div class="show-detail-info">
             <h1>${escapeHtml(title)}</h1>
-            <p class="show-detail-meta">${genreNames.join(" · ")}</p>
+            ${type === "movie" && data.tagline ? `<p class="show-detail-tagline">${escapeHtml(data.tagline)}</p>` : ""}
+            <p class="show-detail-meta">${genreNames.join(" · ")}${type === "movie" && formatRuntime(data.runtime) ? ` · ${formatRuntime(data.runtime)}` : ""}</p>
+            ${data.vote_average > 0 ? `<p class="tmdb-rating"><i data-lucide="star"></i> ${data.vote_average.toFixed(1)}/10 sur TMDB · ${data.vote_count.toLocaleString("fr-FR")} votes</p>` : ""}
+            ${
+              type === "tv"
+                ? `<p class="show-detail-status"><span class="status-badge">${TV_STATUS_LABELS[data.status] || data.status}</span>${data.next_episode_to_air ? ` · Prochain épisode le ${formatDate(data.next_episode_to_air.air_date)}` : ""}</p>`
+                : ""
+            }
             <div class="overview-wrapper">
              <p class="show-detail-overview">${escapeHtml(data.overview || "Pas de synopsis disponible.")}</p>
               <button class="overview-toggle" hidden>Afficher plus</button>
@@ -925,10 +998,15 @@ async function renderShowDetail(param, gen) {
             </div>
           </div>
         </div>
-        ${type === "tv" ? `<div id="seasons-container"></div>` : ""}${ratingHTML}${castHTML}
+        ${type === "tv" ? `<div id="seasons-container"></div>` : ""}${ratingHTML}${friendsActivityHTML(friendsActivity)}${watchProvidersHTML(watchProviders)}${castHTML}${similarStripHTML(recommendations, type)}
       </div>
     `;
 if (typeof lucide !== "undefined") lucide.createIcons();
+
+    qs(".similar-scroll")?.addEventListener("click", (e) => {
+      const card = e.target.closest(".poster-card");
+      if (card) location.hash = `#/show/${card.dataset.type}-${card.dataset.id}`;
+    });
 
     const overview = qs(".show-detail-overview");
     const overviewWrapper = qs(".overview-wrapper");
@@ -1590,6 +1668,8 @@ async function renderEpisodeDetail(param, gen) {
             <p class="episode-airdate">
               Diffusé le ${episode.air_date ? formatDate(episode.air_date) : "Date inconnue"}
             </p>
+            ${episode.vote_average > 0 ? `<p class="tmdb-rating"><i data-lucide="star"></i> ${episode.vote_average.toFixed(1)}/10 sur TMDB · ${episode.vote_count.toLocaleString("fr-FR")} votes</p>` : ""}
+            ${formatRuntime(episode.runtime) ? `<p class="show-detail-meta">${formatRuntime(episode.runtime)}</p>` : ""}
 
             <div class="show-detail-actions">
               ${

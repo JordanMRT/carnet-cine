@@ -46,6 +46,16 @@ function formatWatchDuration(mins) {
   return formatMinutes(mins);
 }
 
+// Convertit la durée d'un film/série/épisodes
+// Repères : 1 jour = 24h, 1 mois ≈ 30 jours (720h).
+
+function formatRuntime(minutes) {
+  if (!minutes) return null;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h > 0 ? `${h}h${m > 0 ? String(m).padStart(2, "0") : ""}` : `${m}min`;
+}
+
 function debounce(fn, delay = 350) {
   let timer;
   return (...args) => {

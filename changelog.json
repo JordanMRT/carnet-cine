@@ -1,6 +1,11 @@
 {
   "version": "2026-07-18",
   "highlights": [
-    "Tu peux maintenant suivre tes amis ! Rends-toi dans les paramètres (en bas du profil) pour activer les demandes et être trouvable dès maintenant avec ton pseudo."
+    "NOUVEAUTÉS :",
+    "Correction : Les rewatch ne font plus remonter le ticket du journal. Seul la première date de visionnage compte.",
+    "La durée d'un film/épisode s'affiche et le statut de la série (terminée/+ d'épisodes à venir) aussi.",
+    "Tu as aimé ? Des films et séries similaires te sont proposés maintenant en bas de la fiche.",
+    "Ne cherche plus sur quelle plateforme trouver ton contenu : Time To Bonge te le dit directement.",
+    "Un de tes followers a déjà vu ce film ou cette série ? Ça s'affiche dans la fiche (et la note qu'iel a donné aussi)."
   ]
 }
