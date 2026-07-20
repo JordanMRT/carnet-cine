@@ -200,8 +200,8 @@ maybeShowInstallPrompt();
         DB.getPendingRequests(this.session.user.id).then((reqs) => {
           this.pendingRequests = reqs;
           if ((location.hash.slice(2) || "diary").split("/")[0] === "stats") {
-            view_el.innerHTML = statsTemplate(this.diary, this.library);
-            bindStatsEvents();
+            const container = qs("#pending-requests-container");
+            if (container) container.innerHTML = pendingRequestsHTML();
           }
         });
         break;
@@ -277,8 +277,9 @@ function setupViewTransitions() {
   const view = qs("#view");
   if (!view) return;
   const observer = new MutationObserver(() => {
+    if (view.querySelector(":scope > .loading")) return;
     view.classList.remove("view-fade-in");
-    void view.offsetWidth; // force le reflow pour pouvoir relancer l'animation
+    void view.offsetWidth;
     view.classList.add("view-fade-in");
   });
   observer.observe(view, { childList: true });
@@ -381,6 +382,28 @@ function bindStatsEvents() {
 
   qs("#open-settings-btn")?.addEventListener("click", () => {
     location.hash = "#/settings";
+  });
+
+  qs("#pending-requests-container")?.addEventListener("click", async (e) => {
+    const acceptBtn = e.target.closest(".request-accept-btn");
+    const refuseBtn = e.target.closest(".request-refuse-btn");
+    const btn = acceptBtn || refuseBtn;
+    if (btn) {
+      btn.disabled = true;
+      try {
+        await DB.respondToRequest(btn.dataset.requestId, !!acceptBtn);
+        toast(acceptBtn ? "Demande acceptée." : "Demande refusée.", "success");
+        App.pendingRequests = await DB.getPendingRequests(App.session.user.id);
+        const container = qs("#pending-requests-container");
+        if (container) container.innerHTML = pendingRequestsHTML();
+      } catch (err) {
+        btn.disabled = false;
+        toast(err.message, "error");
+      }
+      return;
+    }
+    const card = e.target.closest(".user-result-card[data-user-id]");
+    if (card) location.hash = `#/u/${card.dataset.userId}`;
   });
 
   qs(".stats-section-requests")?.addEventListener("click", async (e) => {
@@ -514,6 +537,15 @@ function bindSettingsEvents() {
       toast(err.message, "error");
     }
   });
+}
+
+function pendingRequestsHTML() {
+  return App.pendingRequests?.length
+    ? `<section class="stats-section-requests">
+        <h2>Demandes reçues</h2>
+        <div class="request-list">${App.pendingRequests.map(requestCard).join("")}</div>
+      </section>`
+    : "";
 }
 
 // ---------- AUTH ----------
@@ -1193,7 +1225,12 @@ if (canRate) {
           } catch (err) {
             toast(err.message, "error");
           }
-          if (type === "movie" && canRate) {
+        });
+      });
+      widget.addEventListener("mouseleave", () => applyPreview(userRating));
+    }
+
+    if (type === "movie" && canRate) {
       qs("#save-note-btn")?.addEventListener("click", async () => {
         try {
           await DB.setWorkNote(App.session.user.id, Number(id), type, qs("#work-note").value.trim() || null);
@@ -1203,10 +1240,6 @@ if (canRate) {
           toast(err.message, "error");
         }
       });
-    }
-        });
-      });
-      widget.addEventListener("mouseleave", () => applyPreview(userRating));
     }
 
     if (type === "tv") {
@@ -2914,14 +2947,7 @@ function statsTemplate(diary, library) {
       </div>
      </section>
 
-     ${
-        App.pendingRequests?.length
-          ? `<section class="stats-section-requests">
-        <h2>Demandes reçues</h2>
-        <div class="request-list">${App.pendingRequests.map(requestCard).join("")}</div>
-      </section>`
-          : ""
-      }
+     <div id="pending-requests-container">${pendingRequestsHTML()}</div>
 
       <section class="stats-section">
         <h2>Activité (12 derniers mois)</h2>
