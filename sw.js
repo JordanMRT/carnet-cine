@@ -1,4 +1,4 @@
-const SW_VERSION = "2026-07-20-2"; // ⚠️ change cette valeur à chaque déploiement
+const SW_VERSION = "2026-07-20-3"; // ⚠️ change cette valeur à chaque déploiement
 const CACHE_NAME = `timetobinge-${SW_VERSION}`;
 
 // App shell : fichiers statiques du projet, mis en cache dès l'installation
