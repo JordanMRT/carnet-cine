@@ -2563,7 +2563,6 @@ function journalTicketCard(item) {
           ${rewatchCount > 1 ? `<span class="ticket-tag">×${rewatchCount}</span>` : ""}
         </div>
         ${item.avg_rating != null ? `<div class="ticket-stars">${stars(item.avg_rating)}</div>` : ""}
-        ${item.last_note ? `<p class="ticket-note">${escapeHtml(item.last_note)}</p>` : ""}
         <div class="ticket-barcode">${barcodeSVG(ticketId + item.last_watched_date)}</div>
       
       <div class="ticket-actions">
