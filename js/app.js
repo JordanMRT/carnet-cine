@@ -1391,12 +1391,17 @@ function otherUserTicketCard(item) {
 }
 
 function bindOtherUserProfileEvents(userId) {
-  qs("#view").addEventListener("click", async (e) => {
+  const view_el = qs("#view");
+  view_el.dataset.otherProfileUserId = userId;
+  if (view_el.dataset.otherProfileEventsBound) return;
+  view_el.dataset.otherProfileEventsBound = "1";
+  view_el.addEventListener("click", async (e) => {
+    const currentUserId = view_el.dataset.otherProfileUserId;
     const followBtn = e.target.closest(".other-profile-follow-btn");
     if (followBtn && !followBtn.disabled) {
       followBtn.disabled = true;
       try {
-        await DB.sendFollowRequest(App.session.user.id, userId);
+        await DB.sendFollowRequest(App.session.user.id, currentUserId);
         toast("Demande envoyée.", "success");
         App.following = await DB.getMyFollowingList(App.session.user.id);
         App.route();
@@ -1410,7 +1415,7 @@ function bindOtherUserProfileEvents(userId) {
     const unfollowBtn = e.target.closest(".other-profile-unfollow-btn");
     if (unfollowBtn) {
       unfollowBtn.disabled = true;
-      const myFollow = App.following.find((f) => f.followed_id === userId);
+      const myFollow = App.following.find((f) => f.followed_id === currentUserId);
       if (!myFollow) return;
       try {
         await DB.unfollow(myFollow.id);
@@ -2307,7 +2312,10 @@ function libraryTemplate(library) {
 }
 
 function bindLibraryEvents() {
-  qs("#view").addEventListener("click", async (e) => {
+  const view_el = qs("#view");
+  if (view_el.dataset.libraryEventsBound) return;
+  view_el.dataset.libraryEventsBound = "1";
+  view_el.addEventListener("click", async (e) => {
     const filterBtn = e.target.closest(".filter-btn");
     if (filterBtn) {
       libraryFilter = filterBtn.dataset.filter;
@@ -2592,7 +2600,10 @@ function entryTicketCard(entry) {
 }
 
 function bindDiaryEvents() {
-  qs("#view").addEventListener("click", async (e) => {
+  const view_el = qs("#view");
+  if (view_el.dataset.diaryEventsBound) return;
+  view_el.dataset.diaryEventsBound = "1";
+  view_el.addEventListener("click", async (e) => {
     const shareBtn = e.target.closest(".ticket-share");
     if (shareBtn) {
       e.stopPropagation();
