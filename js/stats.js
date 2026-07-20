@@ -26,21 +26,28 @@ const Stats = {
     ).length;
     const watchlistCount = library.filter((l) => l.status === "watchlist").length;
 
-    // Genres favoris — les entrées stockent des ids de genre TMDB (string),
-    // on les résout en noms lisibles via genreMaps.
+    // Genres favoris — chaque film/série ne doit compter qu'une seule
+    // fois (au moins commencée), pas une fois par épisode, sinon une
+    // série de 100 épisodes écraserait le classement face aux films.
+    // Affiché en nombre brut d'œuvres plutôt qu'en pourcentage : un %
+    // recalcule sa base à chaque nouveau visionnage (voir le badge
+    // "Spécialiste d'un genre"), donc ne représente jamais un vrai
+    // palier de progression pour l'utilisateur.
     const genreCount = {};
+    const seenWorksForGenres = new Set();
     entries.forEach((e) => {
+      const workKey = `${e.media_type}_${e.tmdb_id}`;
+      if (seenWorksForGenres.has(workKey)) return;
+      seenWorksForGenres.add(workKey);
       const map = genreMaps[e.media_type] || {};
       (e.genres || []).forEach((gid) => {
         const label = map[gid] || map[Number(gid)] || `Genre ${gid}`;
         genreCount[label] = (genreCount[label] || 0) + 1;
       });
     });
-    const genreTotal = Object.values(genreCount).reduce((a, b) => a + b, 0) || 1;
     const topGenres = Object.entries(genreCount)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 6)
-      .map(([label, count]) => [label, count, Math.round((count / genreTotal) * 100)]);
+      .slice(0, 6);
 
     // Entrées par mois (12 derniers mois)
     const monthly = {};
@@ -106,18 +113,18 @@ const Stats = {
     return `<div class="chart chart--monthly">${bars}</div>`;
   },
 
-  // topGenres: [[label, count, percent], ...]
+  // topGenres: [[label, count], ...]
   renderGenreChart(topGenres) {
-    const max = Math.max(...topGenres.map(([, , pct]) => pct), 1);
+    const max = Math.max(...topGenres.map(([, count]) => count), 1);
     return topGenres
       .map(
-        ([genre, , pct]) => `
+        ([genre, count]) => `
       <div class="genre-row">
         <span class="genre-row-label">${escapeHtml(genre)}</span>
         <div class="genre-row-track">
-          <div class="genre-row-fill" style="width:${(pct / max) * 100}%"></div>
+          <div class="genre-row-fill" style="width:${(count / max) * 100}%"></div>
         </div>
-        <span class="genre-row-count">${pct}%</span>
+        <span class="genre-row-count">${count}</span>
       </div>`
       )
       .join("");

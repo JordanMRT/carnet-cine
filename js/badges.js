@@ -224,32 +224,91 @@ const BADGES = [
     key: "genre_specialist",
     name: "Spécialiste d'un genre",
     icon: "🎯",
-    description: "Un genre représente une grande part de tes visionnages.",
-    tiers: [50, 65, 80, 90],
-    unit: "percent",
+    description: "Regarde beaucoup d'œuvres différentes d'un même genre.",
+    tiers: [10, 25, 50, 100],
     getValue: (entries) => {
       const counts = {};
-      let total = 0;
-      entries.forEach((e) =>
+      const seenWorks = new Set();
+      entries.forEach((e) => {
+        const workKey = `${e.media_type}_${e.tmdb_id}`;
+        if (seenWorks.has(workKey)) return;
+        seenWorks.add(workKey);
         (e.genres || []).forEach((g) => {
           counts[g] = (counts[g] || 0) + 1;
-          total++;
-        })
-      );
-      if (!total) return 0;
-      const max = Math.max(...Object.values(counts), 0);
-      return Math.round((max / total) * 100);
+        });
+      });
+      return Math.max(...Object.values(counts), 0);
     },
   },
   {
     key: "day_one",
-    name: "Le jour J",
+    name: "Jour de diffusion",
     icon: "📅",
     description: "Regarde un épisode le jour même de sa diffusion.",
     tiers: [1, 10, 25, 50],
     getValue: (entries) =>
       entries.filter((e) => e.media_type === "tv" && e.air_date && e.air_date === e.watched_date)
         .length,
+  },
+  {
+    key: "premiere_day",
+    name: "Jour de sortie",
+    icon: "🎟️",
+    description: "Regarde un film le jour même de sa sortie.",
+    tiers: [1, 5, 15, 30],
+    getValue: (entries) =>
+      entries.filter((e) => e.media_type === "movie" && e.air_date && e.air_date === e.watched_date)
+        .length,
+  },
+  {
+    key: "release_week",
+    name: "Sortie de la semaine",
+    icon: "🚀",
+    description: "Regarde un film ou démarre un épisode dans la semaine suivant sa sortie.",
+    tiers: [5, 20, 50, 100],
+    getValue: (entries) =>
+      entries.filter((e) => {
+        if (!e.air_date || !e.watched_date) return false;
+        const diff = daysBetween(e.watched_date, e.air_date);
+        return diff >= 0 && diff <= 6;
+      }).length,
+  },
+  {
+    key: "big_day",
+    name: "Grosse journée",
+    icon: "⏳",
+    description: "Bats ton record d'heures de visionnage en une journée, chaque mois.",
+    tiers: [180, 360, 540, 720], // en minutes : 3h, 6h, 9h, 12h
+    formatValue: (mins) => {
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return m > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
+    },
+    getValue: (entries) => {
+      const now = new Date();
+      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const byDay = {};
+      entries.forEach((e) => {
+        if (!e.watched_date || !e.runtime_minutes || !e.created_at) return;
+        if (!e.watched_date.startsWith(currentMonth)) return;
+        (byDay[e.watched_date] ||= []).push(e);
+      });
+
+      let maxMinutes = 0;
+      for (const dayEntries of Object.values(byDay)) {
+        // Des entrées créées exactement au même instant (à la microseconde
+        // près) viennent forcément d'un seul clic groupé — import ou "tout
+        // marquer comme vu" — jamais d'un vrai visionnage étalé sur la
+        // journée. On ne garde que les horodatages uniques ce jour-là.
+        const createdCounts = {};
+        dayEntries.forEach((e) => (createdCounts[e.created_at] = (createdCounts[e.created_at] || 0) + 1));
+        const realMinutes = dayEntries
+          .filter((e) => createdCounts[e.created_at] === 1)
+          .reduce((sum, e) => sum + e.runtime_minutes, 0);
+        if (realMinutes > maxMinutes) maxMinutes = realMinutes;
+      }
+      return maxMinutes;
+    },
   },
   {
     key: "holiday_binge",
@@ -264,6 +323,28 @@ const BADGES = [
         const day = d.getDate();
         return (m === 12 && day >= 24) || (m === 1 && day === 1);
       }).length,
+  },
+  {
+    key: "late_finisher",
+    name: "Mieux vaut tard",
+    icon: "🐌",
+    description: "Termine une série mise plus d'un an à finir.",
+    check: (_entries, library) =>
+      library.some(
+        (l) =>
+          l.media_type === "tv" &&
+          l.status === "completed" &&
+          l.first_watched_date &&
+          l.last_watched_date &&
+          daysBetween(l.last_watched_date, l.first_watched_date) >= 365
+      ),
+  },
+  {
+    key: "note_writer",
+    name: "Plume assidue",
+    icon: "✍️",
+    description: "Laisse un commentaire écrit sur au moins 20 entrées du journal.",
+    check: (entries) => entries.filter((e) => e.note && e.note.trim()).length >= 20,
   },
   {
     key: "resurrection",
@@ -292,13 +373,14 @@ const BADGES = [
 
 async function evaluateBadges(entries, library, userId) {
   const results = {};
+  const existingTiers = await DB.getBadgeTiers(userId);
   for (const badge of BADGES) {
     try {
       if (badge.tiers) {
         const value = badge.getValue(entries, library);
         const tier = tierReached(value, badge.tiers);
         results[badge.key] = { tier, value, maxTier: badge.tiers.length };
-        if (tier > 0) await DB.awardBadgeTier(userId, badge.key, tier);
+        if (tier > (existingTiers[badge.key] || 0)) await DB.awardBadgeTier(userId, badge.key, tier);
       } else {
         const ok = badge.check(entries, library);
         results[badge.key] = { tier: ok ? 1 : 0, maxTier: 1 };

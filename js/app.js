@@ -177,6 +177,7 @@ maybeShowInstallPrompt();
     const hash = location.hash.slice(2) || "diary";
     const [view, param] = hash.split("/");
     qsa(".nav-link").forEach((a) => a.classList.toggle("active", a.dataset.view === view));
+    updateMobileNavPill();
     const view_el = qs("#view");
     switch (view) {
       case "search":
@@ -238,6 +239,36 @@ maybeShowInstallPrompt();
   },
 };
 
+let _mobileNavPillReady = false;
+let _mobileNavResizeBound = false;
+
+function updateMobileNavPill() {
+  const nav = qs(".mobile-nav");
+  const pill = qs("#mobile-nav-pill");
+  const active = nav?.querySelector("a.active");
+  if (!nav || !pill || !active) return;
+
+  const navRect = nav.getBoundingClientRect();
+  const linkRect = active.getBoundingClientRect();
+  pill.style.width = `${linkRect.width}px`;
+  pill.style.transform = `translateX(${linkRect.left - navRect.left}px)`;
+
+  if (!_mobileNavPillReady) {
+    // Positionne d'abord sans transition, pour éviter un glissement
+    // depuis le coin au tout premier affichage — l'animation ne
+    // s'active qu'à partir du changement d'onglet suivant.
+    requestAnimationFrame(() => {
+      pill.classList.add("mobile-nav-pill--ready");
+      _mobileNavPillReady = true;
+    });
+  }
+
+  if (!_mobileNavResizeBound) {
+    window.addEventListener("resize", () => updateMobileNavPill());
+    _mobileNavResizeBound = true;
+  }
+}
+
 // ---------- ANIMATION VIEWTRANSITIONS ----------
 // Fondu léger à chaque changement de vue. Plutôt que de modifier chacune
 // des fonctions de rendu, on observe les mutations de #view et on relance
@@ -282,6 +313,7 @@ function shellTemplate() {
     <main id="view"></main>
 
 <nav class="mobile-nav">
+    <div class="mobile-nav-pill" id="mobile-nav-pill"></div>
 
     <a href="#/diary" class="nav-link" data-view="diary">
         <i data-lucide="ticket"></i>
@@ -793,7 +825,7 @@ function similarStripHTML(items, type) {
   if (!items.length) return "";
   return `
     <div class="similar-strip">
-      <h2 class="similar-title">Vous aimerez peut-être :</h2>
+      <h2 class="similar-title">Tu aimeras peut-être :</h2>
       <div class="similar-scroll">
         ${items.slice(0, 12).map((r) => posterCard({ ...r, media_type: type })).join("")}
       </div>
@@ -832,8 +864,31 @@ function friendsActivityHTML(activity) {
                 </div>
                 <span class="friend-activity-name">${escapeHtml(username)}</span>
                 ${starsLabel ? `<span class="friend-activity-stars">${starsLabel}</span>` : ""}
+                ${a.last_note ? `<p class="friend-activity-note">${escapeHtml(a.last_note)}</p>` : ""}
               </a>`;
           })
+          .join("")}
+      </div>
+    </div>`;
+}
+
+function seriesNotesHTML(tvId) {
+  const notedEpisodes = App.diary
+    .filter((e) => e.media_type === "tv" && String(e.tmdb_id) === String(tvId) && e.note)
+    .sort((a, b) => (a.season - b.season) || (a.episode - b.episode));
+  if (!notedEpisodes.length) return "";
+  return `
+    <div class="series-notes">
+      <h2 class="series-notes-title">Tes commentaires</h2>
+      <div class="series-notes-list">
+        ${notedEpisodes
+          .map(
+            (e) => `
+          <a href="#/episode/${tvId}-${e.season}-${e.episode}" class="series-note-item">
+            <span class="series-note-episode">S${e.season}E${e.episode}</span>
+            <p class="series-note-text">${escapeHtml(e.note)}</p>
+          </a>`
+          )
           .join("")}
       </div>
     </div>`;
@@ -976,6 +1031,12 @@ async function renderShowDetail(param, gen) {
         </div>
         ${!canRate ? `<p class="rating-hint">Marque ${type === "movie" ? "le film" : "la série"} comme vu${type === "movie" ? "" : "e"} pour pouvoir ${type === "movie" ? "le" : "la"} noter.</p>` : ""}
       </div>`;
+      const noteHTML = type === "movie" ? `
+      <div class="note-widget-block">
+        <h2 class="rating-title">Ton commentaire</h2>
+        <textarea id="work-note" class="note-textarea" placeholder="Ce que tu en as pensé, une scène marquante, une réplique qui t'est restée..." ${canRate ? "" : "disabled"}>${escapeHtml(inLibrary?.last_note || "")}</textarea>
+        <button id="save-note-btn" class="btn btn--ghost" ${canRate ? "" : "disabled"}>Enregistrer</button>
+      </div>` : "";
 
     // Une navigation plus récente a eu lieu pendant ces appels TMDB : on
     // n'écrase pas un rendu plus à jour avec ce résultat devenu obsolète.
@@ -989,6 +1050,7 @@ async function renderShowDetail(param, gen) {
             <h1>${escapeHtml(title)}</h1>
             ${type === "movie" && data.tagline ? `<p class="show-detail-tagline">${escapeHtml(data.tagline)}</p>` : ""}
             <p class="show-detail-meta">${genreNames.join(" · ")}${type === "movie" && formatRuntime(data.runtime) ? ` · ${formatRuntime(data.runtime)}` : ""}</p>
+            ${type === "movie" && data.release_date ? `<p class="show-detail-release">Sorti le ${formatDate(data.release_date)}</p>` : ""}
             ${data.vote_average > 0 ? `<p class="tmdb-rating"><i data-lucide="star"></i> ${data.vote_average.toFixed(1)}/10 sur TMDB · ${data.vote_count.toLocaleString("fr-FR")} votes</p>` : ""}
             ${
               type === "tv"
@@ -1012,7 +1074,7 @@ async function renderShowDetail(param, gen) {
             </div>
           </div>
         </div>
-        ${type === "tv" ? `<div id="seasons-container"></div>` : ""}${ratingHTML}${friendsActivityHTML(friendsActivity)}${watchProvidersHTML(watchProviders)}${castHTML}${similarStripHTML(recommendations, type)}
+       ${type === "tv" ? `<div id="seasons-container"></div>` : ""}${ratingHTML}${noteHTML}${type === "tv" ? seriesNotesHTML(id) : ""}${friendsActivityHTML(friendsActivity)}${watchProvidersHTML(watchProviders)}${castHTML}${similarStripHTML(recommendations, type)}
       </div>
     `;
 if (typeof lucide !== "undefined") lucide.createIcons();
@@ -1097,6 +1159,7 @@ if (typeof lucide !== "undefined") lucide.createIcons();
             note: null,
             genres: genreIds,
             runtime_minutes: data.runtime || null,
+            air_date: data.release_date || null,
           });
           toast(rewatch ? "Nouveau visionnage ajouté 🎟️" : "Marqué comme vu 🎟️", "success");
           await App.refresh();
@@ -1130,6 +1193,17 @@ if (canRate) {
           } catch (err) {
             toast(err.message, "error");
           }
+          if (type === "movie" && canRate) {
+      qs("#save-note-btn")?.addEventListener("click", async () => {
+        try {
+          await DB.setWorkNote(App.session.user.id, Number(id), type, qs("#work-note").value.trim() || null);
+          toast("Commentaire enregistré 🎟️", "success");
+          await App.refresh();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+    }
         });
       });
       widget.addEventListener("mouseleave", () => applyPreview(userRating));
@@ -1399,7 +1473,7 @@ async function renderPersonDetail(id, gen) {
             <span class="filmography-title">${escapeHtml(title)}</span>
             <span class="filmography-meta">${date ? date.slice(0, 4) : ""}${w.character ? " · " + escapeHtml(w.character) : ""}</span>
           </div>
-          <button class="episode-check-toggle ${seen ? "is-watched" : ""}" title="${seen ? "Marquer comme non vu" : "Marquer comme vu"}" data-id="${w.id}" data-type="${type}" data-title="${escapeHtml(title)}" data-poster="${w.poster_path || ""}" data-genres="${genreIds}">${seen ? '<i data-lucide="circle-check-big"></i>' : ""}</button>
+          <button class="episode-check-toggle ${seen ? "is-watched" : ""}" title="${seen ? "Marquer comme non vu" : "Marquer comme vu"}" data-id="${w.id}" data-type="${type}" data-title="${escapeHtml(title)}" data-poster="${w.poster_path || ""}" data-genres="${genreIds}" data-air-date="${date}">${seen ? '<i data-lucide="circle-check-big"></i>' : ""}</button>
         </div>`;
       })
       .join("");
@@ -1473,6 +1547,7 @@ async function renderPersonDetail(id, gen) {
           title: btn.dataset.title,
           posterPath: btn.dataset.poster,
           genreIds: btn.dataset.genres ? btn.dataset.genres.split(",") : [],
+          airDate: btn.dataset.airDate || null,
         });
       })
     );
@@ -1488,7 +1563,7 @@ async function renderPersonDetail(id, gen) {
 // fiche) ou décoche (retire tout l'historique de ce film). Pour une
 // série, la coche/décoche marque ou retire tous les épisodes — une
 // confirmation est demandée dans les deux sens vu l'ampleur de l'action.
-async function toggleWorkWatched({ tmdbId, type, title, posterPath, genreIds }) {
+async function toggleWorkWatched({ tmdbId, type, title, posterPath, genreIds, airDate }) {
   try {
     if (type === "movie") {
       const alreadySeen = App.diary.some(
@@ -1512,6 +1587,7 @@ async function toggleWorkWatched({ tmdbId, type, title, posterPath, genreIds }) 
           note: null,
           genres: genreIds,
           runtime_minutes: null,
+          air_date: airDate || null,
         });
         toast("Marqué comme vu 🎟️", "success");
       }
@@ -1648,6 +1724,13 @@ async function renderEpisodeDetail(param, gen) {
         </div>
         ${!watched ? `<p class="rating-hint">Marque l'épisode comme vu pour pouvoir le noter.</p>` : ""}
       </div>`;
+      const epNote = entries.find((e) => e.note)?.note || "";
+    const noteHTML = `
+      <div class="note-widget-block">
+        <h2 class="rating-title">Ton commentaire</h2>
+        <textarea id="episode-note" class="note-textarea" placeholder="Ce que tu en as pensé..." ${watched ? "" : "disabled"}>${escapeHtml(epNote)}</textarea>
+        <button id="save-episode-note-btn" class="btn btn--ghost" ${watched ? "" : "disabled"}>Enregistrer</button>
+      </div>`;
 
     // Une navigation plus récente a eu lieu pendant ces appels TMDB : on
     // n'écrase pas un rendu plus à jour avec ce résultat devenu obsolète.
@@ -1704,6 +1787,7 @@ async function renderEpisodeDetail(param, gen) {
             </div>
 
             ${ratingHTML}
+            ${noteHTML}
             ${castHTML}
 
           </div>
@@ -1768,6 +1852,23 @@ async function renderEpisodeDetail(param, gen) {
           }
         });
       });
+      if (watched) {
+      qs("#save-episode-note-btn")?.addEventListener("click", async () => {
+        try {
+          await DB.setEpisodeNote(
+            App.session.user.id,
+            Number(tvId),
+            Number(seasonNumber),
+            Number(episodeNumber),
+            qs("#episode-note").value.trim() || null
+          );
+          toast("Commentaire enregistré 🎟️", "success");
+          await App.refresh();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+    }
       widget.addEventListener("mouseleave", () => applyPreview(userEpRating));
     }
   } catch (err) {
@@ -2943,7 +3044,8 @@ function badgeCardHTML(badge, info) {
   const prevThreshold = tier > 0 ? badge.tiers[tier - 1] : 0;
   const fraction = tier >= maxTier ? 1 : (value - prevThreshold) / (nextThreshold - prevThreshold);
   const unit = badge.unit === "percent" ? "%" : "";
-  const counterText = nextThreshold != null ? `${value}${unit}/${nextThreshold}${unit}` : `${value}${unit}`;
+  const format = badge.formatValue || ((v) => `${v}${unit}`);
+  const counterText = nextThreshold != null ? `${format(value)}/${format(nextThreshold)}` : format(value);
 
   return `
     <div class="badge-card badge-card--tiered ${earned ? "badge-card--earned" : ""}">

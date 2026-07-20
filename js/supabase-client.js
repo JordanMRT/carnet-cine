@@ -239,7 +239,7 @@ async verifyOtp(email, code) {
     if (!friendIds.length) return [];
     const { data: rows, error } = await supabaseClient
       .from("library")
-      .select("user_id, status, avg_rating")
+      .select("user_id, status, avg_rating, last_note")
       .eq("tmdb_id", tmdbId)
       .eq("media_type", mediaType)
       .in("user_id", friendIds)
@@ -285,6 +285,29 @@ async verifyOtp(email, code) {
       .eq("user_id", userId)
       .eq("tmdb_id", tmdbId)
       .eq("media_type", mediaType);
+    if (error) throw error;
+  },
+
+  // Permet de laisser un commentaire
+  async setWorkNote(userId, tmdbId, mediaType, note) {
+    const { error } = await supabaseClient
+      .from("diary_entries")
+      .update({ note })
+      .eq("user_id", userId)
+      .eq("tmdb_id", tmdbId)
+      .eq("media_type", mediaType);
+    if (error) throw error;
+  },
+
+  async setEpisodeNote(userId, tmdbId, season, episode, note) {
+    const { error } = await supabaseClient
+      .from("diary_entries")
+      .update({ note })
+      .eq("user_id", userId)
+      .eq("tmdb_id", tmdbId)
+      .eq("media_type", "tv")
+      .eq("season", season)
+      .eq("episode", episode);
     if (error) throw error;
   },
 
@@ -335,6 +358,12 @@ async upsertLibraryItems(items) {
       .eq("media_type", "tv")
       .eq("season", season)
       .eq("episode", episode);
+    if (error) throw error;
+  },
+
+  // ---------- UPDATE DIARY ENTRY WITH AIR DATE ---------- 
+  async updateDiaryEntryFields(id, fields) {
+    const { error } = await supabaseClient.from("diary_entries").update(fields).eq("id", id);
     if (error) throw error;
   },
 
@@ -430,6 +459,16 @@ async upsertLibraryItems(items) {
         { onConflict: "user_id,badge_key", ignoreDuplicates: true }
       );
     if (error) throw error;
+  },
+
+    // ---------- BADGES PAR PALIER OBTENU ---------- 
+  async getBadgeTiers(userId) {
+    const { data, error } = await supabaseClient
+      .from("badges")
+      .select("badge_key, tier")
+      .eq("user_id", userId);
+    if (error) throw error;
+    return Object.fromEntries((data || []).map((b) => [b.badge_key, b.tier]));
   },
 
   // Pour les badges à paliers : met à jour le niveau à chaque évaluation

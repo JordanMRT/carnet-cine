@@ -359,6 +359,7 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 .show-detail-poster { width: 180px; border-radius: 10px; box-shadow: var(--shadow); }
 .show-detail-info { flex: 1; min-width: 240px; }
 .show-detail-meta { color: var(--mustard); font-family: var(--font-mono); font-size: 0.85rem; }
+.show-detail-release { color: var(--muted); font-size: 0.9rem; margin: 0.2rem 0; }
 
 .overview-wrapper {
     position: relative;
@@ -374,6 +375,37 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
     position: relative;
     margin-bottom: 0;
 }
+
+/* COMMENTAIRES */
+
+.note-widget-block { margin-top: 1rem; }
+.note-textarea {
+  width: 100%;
+  min-height: 80px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--ink);
+  color: var(--cream);
+  padding: 0.8rem;
+  font-family: inherit;
+  resize: vertical;
+  margin-bottom: 0.6rem;
+}
+.note-textarea:disabled { opacity: 0.5; }
+
+.series-notes { margin-top: 1.4rem; }
+.series-notes-title { margin-bottom: 0.8rem; }
+.series-note-item {
+  display: block;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 0.6rem;
+  text-decoration: none;
+  color: inherit;
+}
+.series-note-episode { font-weight: 700; color: var(--mustard); font-size: 0.85rem; }
+.series-note-text { margin: 0.3rem 0 0; font-size: 0.9rem; }
 
 /* Fondu uniquement visible quand le texte est coupé */
 
@@ -494,6 +526,21 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 }
 .friend-activity-name { font-size: 0.82rem; font-weight: 600; font-family: var(--font-display);}
 .friend-activity-stars { font-size: 0.82rem; color: var(--mustard); }
+
+.friend-activity-note {
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-style: italic;
+  max-width: 140px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+.friends-activity-list .friend-activity-card:has(.friend-activity-note) {
+  width: 140px;
+}
 
 .user-result-avatar-activity {
   width: 100px;
@@ -1350,6 +1397,23 @@ code {
   display:none;
 }
 
+.mobile-nav { position: relative; }
+
+.mobile-nav-pill {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  border-radius: 999px;
+  background: rgba(232, 163, 61, 0.15);
+  pointer-events: none;
+  z-index: 0;
+}
+.mobile-nav-pill--ready {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.mobile-nav a { position: relative; z-index: 1; }
+
 @media (max-width:768px){
 
   body{
@@ -1512,11 +1576,7 @@ code {
 
 }
 .mobile-nav a.active{
-
     color:var(--cream);
-
-    background:rgba(232,163,61,.15);
-
 }
 
 .mobile-nav a span{
