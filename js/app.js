@@ -871,7 +871,7 @@ function watchProvidersHTML(providers) {
     <div class="watch-providers">
       <h2 class="watch-providers-title">Disponible sur</h2>
       <div class="watch-providers-list">
-        ${flatrate.map((p) => `<img src="${TMDB.posterUrl(p.logo_path, "w45")}" alt="${escapeHtml(p.provider_name)}" title="${escapeHtml(p.provider_name)}" class="watch-provider-logo" />`).join("")}
+        ${flatrate.map((p) => `<img src="${TMDB.posterUrl(p.logo_path, "w154")}" alt="${escapeHtml(p.provider_name)}" title="${escapeHtml(p.provider_name)}" class="watch-provider-logo" />`).join("")}
       </div>
       <span class="watch-providers-attribution">Données JustWatch, via TMDB</span>
     </div>`;
@@ -900,6 +900,28 @@ function friendsActivityHTML(activity) {
               </a>`;
           })
           .join("")}
+      </div>
+    </div>`;
+}
+
+// Affiche le commentaire personnel déjà enregistré comme un commentaire "posté"
+// (avatar + pseudo + texte), avec des icônes pour l'éditer ou le supprimer.
+function myNoteCardHTML(text) {
+  const meta = App.session.user.user_metadata || {};
+  const username = meta.username || App.session.user.email?.split("@")[0] || "Toi";
+  const avatarUrl = meta.avatar_url || (meta.avatar_path ? TMDB.posterUrl(meta.avatar_path, "w185") : null);
+  return `
+    <div class="note-posted" id="note-posted-view">
+      <div class="note-posted-avatar" style="${avatarUrl ? `background-image:url('${avatarUrl}')` : ""}">
+        ${avatarUrl ? "" : `<span class="profile-avatar-fallback">${escapeHtml(username[0]?.toUpperCase() || "?")}</span>`}
+      </div>
+      <div class="note-posted-body">
+        <span class="note-posted-name">${escapeHtml(username)}</span>
+        <p class="note-posted-text">${escapeHtml(text)}</p>
+      </div>
+      <div class="note-posted-actions">
+        <button type="button" id="note-edit-btn" class="note-posted-edit-btn" title="Modifier le commentaire"><i data-lucide="pencil"></i></button>
+        <button type="button" id="note-delete-btn" class="note-posted-delete-btn" title="Supprimer le commentaire"><i data-lucide="x"></i></button>
       </div>
     </div>`;
 }
@@ -1042,9 +1064,11 @@ async function renderShowDetail(param, gen) {
           ? `
         <span class="episode-watch-info"><i data-lucide="circle-check-big"></i> vu${movieWatchCount > 1 ? ` • ${movieWatchCount} visionnages` : ""}</span>
         <button id="movie-rewatch-btn" class="btn btn--accent">
-          Rewatch <i data-lucide="rotate-ccw"></i>
+          Rewatch <i data-lucide="refresh-cw"></i>
         </button>
-        <button id="movie-undo-btn" class="btn btn--ghost">Annuler le dernier visionnage</button>`
+        <button id="movie-undo-btn" class="btn btn--ghost">
+        Annuler un visionnage <i data-lucide="refresh-cw-off"></i>
+        </button>`
           : `<button id="quick-log-btn" class="btn btn--accent">Marquer comme vu</button>`
         : "";
 
@@ -1063,11 +1087,18 @@ async function renderShowDetail(param, gen) {
         </div>
         ${!canRate ? `<p class="rating-hint">Marque ${type === "movie" ? "le film" : "la série"} comme vu${type === "movie" ? "" : "e"} pour pouvoir ${type === "movie" ? "le" : "la"} noter.</p>` : ""}
       </div>`;
+      const hasMovieNote = canRate && !!(inLibrary?.last_note);
       const noteHTML = type === "movie" ? `
       <div class="note-widget-block">
-        <h2 class="rating-title">Ton commentaire</h2>
-        <textarea id="work-note" class="note-textarea" placeholder="Ce que tu en as pensé, une scène marquante, une réplique qui t'est restée..." ${canRate ? "" : "disabled"}>${escapeHtml(inLibrary?.last_note || "")}</textarea>
-        <button id="save-note-btn" class="btn btn--ghost" ${canRate ? "" : "disabled"}>Enregistrer</button>
+        <h2 class="rating-title">Ton commentaire :</h2>
+        ${hasMovieNote ? myNoteCardHTML(inLibrary.last_note) : ""}
+        <div class="note-edit-view" id="note-edit-view" ${hasMovieNote ? "hidden" : ""}>
+          <textarea id="work-note" class="note-textarea" placeholder="Ce que tu en as pensé, une scène marquante, une réplique qui t'est restée..." ${canRate ? "" : "disabled"}>${escapeHtml(inLibrary?.last_note || "")}</textarea>
+          <div class="note-edit-actions">
+            <button id="save-note-btn" class="btn btn--ghost" ${canRate ? "" : "disabled"}>Enregistrer</button>
+            ${hasMovieNote ? `<button type="button" id="cancel-note-btn" class="btn btn--ghost">Annuler</button>` : ""}
+          </div>
+        </div>
       </div>` : "";
 
     // Une navigation plus récente a eu lieu pendant ces appels TMDB : on
@@ -1235,6 +1266,28 @@ if (canRate) {
         try {
           await DB.setWorkNote(App.session.user.id, Number(id), type, qs("#work-note").value.trim() || null);
           toast("Commentaire enregistré 🎟️", "success");
+          await App.refresh();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+
+      qs("#note-edit-btn")?.addEventListener("click", () => {
+        qs("#note-posted-view").hidden = true;
+        qs("#note-edit-view").hidden = false;
+        qs("#work-note")?.focus();
+      });
+
+      qs("#cancel-note-btn")?.addEventListener("click", () => {
+        qs("#note-edit-view").hidden = true;
+        qs("#note-posted-view").hidden = false;
+      });
+
+      qs("#note-delete-btn")?.addEventListener("click", async () => {
+        if (!confirm("Supprimer ce commentaire ?")) return;
+        try {
+          await DB.setWorkNote(App.session.user.id, Number(id), type, null);
+          toast("Commentaire supprimé", "success");
           await App.refresh();
         } catch (err) {
           toast(err.message, "error");
@@ -1716,6 +1769,11 @@ async function renderEpisodeDetail(param, gen) {
     const watched = entries.length > 0;
     const watchCount = entries.length;
 
+    const friendIds = App.following.filter((f) => f.status === "accepted").map((f) => f.followed_id);
+    const friendsActivity = friendIds.length
+      ? await DB.getFriendsActivityForEpisode(friendIds, Number(tvId), Number(seasonNumber), Number(episodeNumber)).catch(() => [])
+      : [];
+
     // Cast : le casting principal de la série (agrégé sur toute la
     // série) + les invités propres à cet épisode, sans doublons.
     const mainCast = aggregateCredits?.cast || show.credits?.cast || [];
@@ -1763,11 +1821,18 @@ async function renderEpisodeDetail(param, gen) {
         ${!watched ? `<p class="rating-hint">Marque l'épisode comme vu pour pouvoir le noter.</p>` : ""}
       </div>`;
       const epNote = entries.find((e) => e.note)?.note || "";
+      const hasEpisodeNote = watched && !!epNote;
     const noteHTML = `
       <div class="note-widget-block">
-        <h2 class="rating-title">Ton commentaire</h2>
-        <textarea id="episode-note" class="note-textarea" placeholder="Ce que tu en as pensé..." ${watched ? "" : "disabled"}>${escapeHtml(epNote)}</textarea>
-        <button id="save-episode-note-btn" class="btn btn--ghost" ${watched ? "" : "disabled"}>Enregistrer</button>
+        <h2 class="rating-title">Ton commentaire :</h2>
+        ${hasEpisodeNote ? myNoteCardHTML(epNote) : ""}
+        <div class="note-edit-view" id="note-edit-view" ${hasEpisodeNote ? "hidden" : ""}>
+          <textarea id="episode-note" class="note-textarea" placeholder="Ce que tu en as pensé..." ${watched ? "" : "disabled"}>${escapeHtml(epNote)}</textarea>
+          <div class="note-edit-actions">
+            <button id="save-episode-note-btn" class="btn btn--ghost" ${watched ? "" : "disabled"}>Enregistrer</button>
+            ${hasEpisodeNote ? `<button type="button" id="cancel-note-btn" class="btn btn--ghost">Annuler</button>` : ""}
+          </div>
+        </div>
       </div>`;
 
     // Une navigation plus récente a eu lieu pendant ces appels TMDB : on
@@ -1812,9 +1877,11 @@ async function renderEpisodeDetail(param, gen) {
                   ? `
                   <span class="episode-watch-info"><i data-lucide="circle-check-big"></i> vu${watchCount > 1 ? ` • ${watchCount} visionnages` : ""}</span>
                   <button id="episode-rewatch-btn" class="btn btn--accent">
-                    Rewatch <i data-lucide="rotate-ccw"></i>
+                    Rewatch <i data-lucide="refresh-cw"></i>
                   </button>
-                  <button id="episode-undo-btn" class="btn btn--ghost">Annuler le dernier visionnage</button>
+                  <button id="episode-undo-btn" class="btn btn--ghost">
+                  Annuler un visionnage <i data-lucide="refresh-cw-off"></i>
+                  </button>
                   `
                   : `
                   <button id="episode-toggle-btn" class="btn btn--accent">Marquer comme vu</button>
@@ -1826,6 +1893,7 @@ async function renderEpisodeDetail(param, gen) {
 
             ${ratingHTML}
             ${noteHTML}
+            ${friendsActivityHTML(friendsActivity)}
             ${castHTML}
 
           </div>
@@ -1901,6 +1969,34 @@ async function renderEpisodeDetail(param, gen) {
             qs("#episode-note").value.trim() || null
           );
           toast("Commentaire enregistré 🎟️", "success");
+          await App.refresh();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+
+      qs("#note-edit-btn")?.addEventListener("click", () => {
+        qs("#note-posted-view").hidden = true;
+        qs("#note-edit-view").hidden = false;
+        qs("#episode-note")?.focus();
+      });
+
+      qs("#cancel-note-btn")?.addEventListener("click", () => {
+        qs("#note-edit-view").hidden = true;
+        qs("#note-posted-view").hidden = false;
+      });
+
+      qs("#note-delete-btn")?.addEventListener("click", async () => {
+        if (!confirm("Supprimer ce commentaire ?")) return;
+        try {
+          await DB.setEpisodeNote(
+            App.session.user.id,
+            Number(tvId),
+            Number(seasonNumber),
+            Number(episodeNumber),
+            null
+          );
+          toast("Commentaire supprimé", "success");
           await App.refresh();
         } catch (err) {
           toast(err.message, "error");
@@ -1996,7 +2092,7 @@ async function renderSeasonsInto(container, tvId, numberOfSeasons, title, poster
           </div>
           <div class="episode-row-actions">
             ${count > 1 ? `<span class="episode-rewatch-badge">×${count}</span>` : ""}
-            ${watched ? `<button class="episode-rewatch-btn" title="Ajouter un revisionnage" data-season="${selectedSeason}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}" data-air-date="${ep.air_date || ""}"><i data-lucide="rotate-ccw"></i></button>` : ""}
+            ${watched ? `<button class="episode-rewatch-btn" title="Ajouter un revisionnage" data-season="${selectedSeason}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}" data-air-date="${ep.air_date || ""}"><i data-lucide="refresh-cw"></i></button>` : ""}
             <button class="episode-check-toggle ${watched ? "is-watched" : ""}" title="${watched ? "Marquer comme non vu" : "Marquer comme vu"}" data-season="${selectedSeason}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}" data-air-date="${ep.air_date || ""}">${watched ? '<i data-lucide="circle-check-big"></i>' : ""}</button>
           </div>
         </div>`;

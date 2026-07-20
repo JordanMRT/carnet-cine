@@ -394,6 +394,61 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 }
 .note-textarea:disabled { opacity: 0.5; }
 
+.note-posted {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.9rem;
+  margin-bottom: 0.6rem;
+}
+.note-posted-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--ink) center/cover no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.note-posted-avatar .profile-avatar-fallback { font-size: 1rem; }
+.note-posted-body { flex: 1; min-width: 0; }
+.note-posted-name {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+.note-posted-text {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--cream);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.note-posted-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
+.note-posted-edit-btn,
+.note-posted-delete-btn {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.note-posted-edit-btn svg,
+.note-posted-delete-btn svg { width: 14px; height: 14px; }
+.note-posted-edit-btn:hover { border-color: var(--mustard); color: var(--mustard); }
+.note-posted-delete-btn:hover { border-color: var(--coral); color: var(--coral); }
+
+.note-edit-actions { display: flex; gap: 0.6rem; }
+
 .series-notes { margin-top: 1.4rem; }
 .series-notes-title { margin-bottom: 0.8rem; }
 .series-note-item {
@@ -451,6 +506,7 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
     border: 1px solid var(--border);
     background: var(--ink);
     color: var(--cream);
+    font-size: 0.9rem;
     appearance: none;
     padding: 0.6em 2.5em 0.6em 1em;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");

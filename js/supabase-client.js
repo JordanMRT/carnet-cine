@@ -256,6 +256,44 @@ async verifyOtp(email, code) {
     return rows.map((r) => ({ ...r, profile: byId[r.user_id] || null }));
   },
 
+  // Même chose que getFriendsActivityForWork mais au niveau épisode
+  // (les notes/commentaires d'épisode vivent dans diary_entries, pas library).
+  async getFriendsActivityForEpisode(friendIds, tmdbId, season, episode) {
+    if (!friendIds.length) return [];
+    const { data: rows, error } = await supabaseClient
+      .from("diary_entries")
+      .select("user_id, rating, note")
+      .eq("tmdb_id", tmdbId)
+      .eq("media_type", "tv")
+      .eq("season", season)
+      .eq("episode", episode)
+      .in("user_id", friendIds);
+    if (error) throw error;
+    if (!rows.length) return [];
+    // Un ami peut avoir plusieurs visionnages (rewatch) du même épisode :
+    // on garde une seule ligne par ami, en priorité celle qui a un commentaire.
+    const byUser = {};
+    for (const r of rows) {
+      const existing = byUser[r.user_id];
+      if (!existing || (!existing.note && r.note)) byUser[r.user_id] = r;
+    }
+    const activityRows = Object.values(byUser);
+    const ids = activityRows.map((r) => r.user_id);
+    const { data: profiles, error: pErr } = await supabaseClient
+      .from("profiles")
+      .select("id, username, avatar_path, avatar_url")
+      .in("id", ids);
+    if (pErr) throw pErr;
+    const byId = Object.fromEntries(profiles.map((p) => [p.id, p]));
+    // On renomme rating/note en avg_rating/last_note pour rester compatible
+    // avec friendsActivityHTML(), déjà écrite pour la fiche film/série.
+    return activityRows.map((r) => ({
+      avg_rating: r.rating,
+      last_note: r.note,
+      profile: byId[r.user_id] || null,
+    }));
+  },
+
   // ---------- UNFOLLOW ----------
 
   async unfollow(followId) {

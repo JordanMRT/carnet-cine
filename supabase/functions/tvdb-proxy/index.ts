@@ -96,8 +96,12 @@ serve(async (req) => {
     }
     const json = await res.json();
 
+    // TheTVDB renvoie toutes les personnes créditées dans "characters"
+    // (comédiens, mais aussi réalisateurs, scénaristes, producteurs...),
+    // distinguées par le champ peopleType. On ne garde que les comédiens.
+    const ACTOR_TYPES = new Set(["Actor", "Guest Star"]);
     const characters = (json.data?.characters || [])
-      .filter((c: any) => c.image || c.personImgURL)
+      .filter((c: any) => (c.image || c.personImgURL) && (!c.peopleType || ACTOR_TYPES.has(c.peopleType)))
       .map((c: any) => ({
         characterName: c.name || null,
         characterImage: c.image || null,
