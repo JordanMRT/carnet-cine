@@ -1353,6 +1353,23 @@ code {
   color: var(--muted);
   margin-bottom: 0.3rem;
 }
+.badge-icon-img {
+  display: block;
+  width: 110px;
+  height: 110px;
+  margin: 0 auto 0.4rem;
+  object-fit: contain;
+      filter: drop-shadow(0px 0px 5px var(--ink));
+}
+.badge-icon-img.badge-icon--ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 44px;
+  margin: 0;
+}
 
 /* ---------- TOAST ---------- */
 .toast {

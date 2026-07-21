@@ -3157,12 +3157,19 @@ function progressRingSVG(fraction, size = 56, strokeWidth = 4) {
     </svg>`;
 }
 
+function badgeIconHTML(badge, extraClass = "") {
+  if (badge.iconImage) {
+    return `<img class="badge-icon-img ${extraClass}" src="${badge.iconImage}" alt="${badge.name}" loading="lazy">`;
+  }
+  return `<span class="badge-icon ${extraClass}">${badge.icon}</span>`;
+}
+
 function badgeCardHTML(badge, info) {
   if (!badge.tiers) {
     const earned = (info?.tier || 0) > 0;
     return `
       <div class="badge-card ${earned ? "badge-card--earned" : ""}">
-        <span class="badge-icon">${badge.icon}</span>
+        ${badgeIconHTML(badge)}
         <span class="badge-name">${badge.name}</span>
         <span class="badge-desc">${badge.description}</span>
       </div>`;
@@ -3183,7 +3190,7 @@ function badgeCardHTML(badge, info) {
     <div class="badge-card badge-card--tiered ${earned ? "badge-card--earned" : ""}">
       <div class="badge-ring-wrap">
         ${progressRingSVG(fraction)}
-        <span class="badge-icon badge-icon--ring">${badge.icon}</span>
+        ${badgeIconHTML(badge, "badge-icon--ring")}
       </div>
       <span class="badge-progress-counter">${counterText}</span>
       <span class="badge-name">${badge.name}</span>

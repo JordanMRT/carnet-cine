@@ -44,6 +44,7 @@ const BADGES = [
     key: "first_watch",
     name: "Premier ticket",
     icon: "🎬",
+    iconImage: "assets/badges/first_watch.png",
     description: "Enregistre ta première entrée dans le journal.",
     check: (entries) => entries.length >= 1,
   },
@@ -51,6 +52,7 @@ const BADGES = [
     key: "century",
     name: "Cinéphile centenaire",
     icon: "💯",
+    iconImage: "assets/badges/century.png",
     description: "Enregistre 100 entrées au journal.",
     check: (entries) => entries.length >= 100,
   },
@@ -58,6 +60,7 @@ const BADGES = [
     key: "movie_buff",
     name: "Habitué du grand écran",
     icon: "🍿",
+    iconImage: "assets/badges/movie_buff.png",
     description: "Enregistre 25 films.",
     check: (entries) => entries.filter((e) => e.media_type === "movie").length >= 25,
   },
@@ -65,6 +68,7 @@ const BADGES = [
     key: "binge_master",
     name: "Maître du binge",
     icon: "⚡",
+    iconImage: "assets/badges/binge_master.png",
     description: "Regarde 5 épisodes de la même série en une journée.",
     check: (entries) => {
       const byShowDay = {};
@@ -81,6 +85,7 @@ const BADGES = [
     key: "streak_7",
     name: "Une semaine assidue",
     icon: "🔥",
+    iconImage: "assets/badges/streak_7.png",
     description: "Enregistre au moins une entrée par jour pendant 7 jours d'affilée.",
     check: (entries) => longestStreak(entries) >= 7,
   },
@@ -88,6 +93,7 @@ const BADGES = [
     key: "streak_30",
     name: "Habitude bien ancrée",
     icon: "🔥",
+    iconImage: "assets/badges/streak_30.png",
     description: "Enregistre au moins une entrée par jour pendant 30 jours d'affilée.",
     check: (entries) => longestStreak(entries) >= 30,
   },
@@ -95,6 +101,7 @@ const BADGES = [
     key: "completionist",
     name: "Complétionniste",
     icon: "🏁",
+    iconImage: "assets/badges/completionist.png",
     description: "Termine 10 séries.",
     check: (_entries, library) =>
       library.filter((l) => l.media_type === "tv" && l.status === "completed").length >= 10,
@@ -103,6 +110,7 @@ const BADGES = [
     key: "marathon",
     name: "Marathon",
     icon: "🏃",
+    iconImage: "assets/badges/marathon.png",
     description: "Termine une saison entière en une seule journée.",
     check: (entries) => {
       const bySeasonDay = {};
@@ -120,6 +128,7 @@ const BADGES = [
     key: "genre_explorer",
     name: "Explorateur de genres",
     icon: "🧭",
+    iconImage: "assets/badges/genre_explorer.png",
     description: "Regarde des œuvres d'au moins 8 genres différents.",
     check: (entries) => {
       const genres = new Set();
@@ -328,6 +337,7 @@ const BADGES = [
     key: "late_finisher",
     name: "Mieux vaut tard",
     icon: "🐌",
+    iconImage: "assets/badges/late_finisher.png",
     description: "Termine une série mise plus d'un an à finir.",
     check: (_entries, library) =>
       library.some(
@@ -343,6 +353,7 @@ const BADGES = [
     key: "note_writer",
     name: "Plume assidue",
     icon: "✍️",
+    iconImage: "assets/badges/note_writer.png",
     description: "Laisse un commentaire écrit sur au moins 20 entrées du journal.",
     check: (entries) => entries.filter((e) => e.note && e.note.trim()).length >= 20,
   },
