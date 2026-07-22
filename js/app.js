@@ -3164,6 +3164,50 @@ function badgeIconHTML(badge, extraClass = "") {
   return `<span class="badge-icon ${extraClass}">${badge.icon}</span>`;
 }
 
+// Décalages (x, y en px depuis le centre, rotation en deg) pour faire suivre
+// aux étoiles la courbure du badge, du niveau 1 (1 étoile) au niveau 4 (4 étoiles).
+const STAR_ARC_OFFSETS = {
+  1: [{ x: 0, y: 0, r: 0 }],
+  2: [
+    { x: -12, y: 3, r: -12 },
+    { x: 12, y: 3, r: 12 },
+  ],
+  3: [
+    { x: -22, y: 8, r: -20 },
+    { x: 0, y: 0, r: 0 },
+    { x: 22, y: 8, r: 20 },
+  ],
+  4: [
+    { x: -32, y: 14, r: -28 },
+    { x: -11, y: 2, r: -10 },
+    { x: 11, y: 2, r: 10 },
+    { x: 32, y: 14, r: 28 },
+  ],
+};
+
+function starSVG(color) {
+  return `<svg class="badge-star" viewBox="0 0 24 24" style="--star-color:${color}">
+    <path d="M12 1.5l2.9 6.6 7.1.7-5.4 4.8 1.6 7-6.2-3.7-6.2 3.7 1.6-7-5.4-4.8 7.1-.7z" />
+  </svg>`;
+}
+
+function starArcHTML(tier, accentColor) {
+  const offsets = STAR_ARC_OFFSETS[tier];
+  if (!offsets) return "";
+  const color = accentColor || "var(--mustard)";
+  return `
+    <div class="badge-star-arc">
+      ${offsets
+        .map(
+          (o) => `
+        <span class="badge-star-slot" style="--sx:${o.x}px; --sy:${o.y}px; --srot:${o.r}deg;">
+          ${starSVG(color)}
+        </span>`
+        )
+        .join("")}
+    </div>`;
+}
+
 function badgeCardHTML(badge, info) {
   if (!badge.tiers) {
     const earned = (info?.tier || 0) > 0;
@@ -3186,15 +3230,24 @@ function badgeCardHTML(badge, info) {
   const format = badge.formatValue || ((v) => `${v}${unit}`);
   const counterText = nextThreshold != null ? `${format(value)}/${format(nextThreshold)}` : format(value);
 
-  return `
-    <div class="badge-card badge-card--tiered ${earned ? "badge-card--earned" : ""}">
+  const visualHTML = badge.iconImage
+    ? `
+      <div class="badge-coin-wrap">
+        ${badgeIconHTML(badge)}
+        ${starArcHTML(tier, badge.accentColor)}
+      </div>`
+    : `
       <div class="badge-ring-wrap">
         ${progressRingSVG(fraction)}
         ${badgeIconHTML(badge, "badge-icon--ring")}
-      </div>
+      </div>`;
+
+  return `
+    <div class="badge-card badge-card--tiered ${earned ? "badge-card--earned" : ""}">
+      ${visualHTML}
       <span class="badge-progress-counter">${counterText}</span>
       <span class="badge-name">${badge.name}</span>
-      <span class="badge-tier-label">${earned ? `Niveau ${tier}/${maxTier}` : "Pas encore débloqué"}</span>
+      <span class="badge-tier-label">${earned ? `Niveau ${tier}/${maxTier}` : "Pas encore débloqué"}</span><br>
       <span class="badge-desc">${badge.description}</span>
     </div>`;
 }

@@ -1371,6 +1371,38 @@ code {
   margin: 0;
 }
 
+.badge-coin-wrap {
+  position: relative;
+  width: 110px;
+  margin: 0 auto 0.4rem;
+  padding-top: 20px; /* réserve la place pour les étoiles qui débordent en haut */
+}
+.badge-coin-wrap .badge-icon-img {
+  width: 110px;
+  height: 110px;
+  margin: 0;
+}
+.badge-star-arc {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 0;
+  height: 0;
+}
+.badge-star-slot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(calc(-50% + var(--sx)), var(--sy)) rotate(var(--srot));
+}
+.badge-star {
+  width: 16px;
+  height: 16px;
+  fill: var(--star-color);
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+}
+
+
 /* ---------- TOAST ---------- */
 .toast {
   position: fixed; bottom: 1.4rem; left: 50%; transform: translate(-50%, 20px);

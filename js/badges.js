@@ -142,6 +142,8 @@ const BADGES = [
     key: "night_owl",
     name: "Oiseau de nuit",
     icon: "🦉",
+    iconImage: "assets/badges/night_owl.png",
+    accentColor: "var(--mustard)",
     description: "Enregistre des visionnages entre minuit et 5h du matin.",
     tiers: [10, 50, 150, 300],
     getValue: (entries) =>
@@ -155,6 +157,8 @@ const BADGES = [
     key: "rewatcher",
     name: "Sur un replay",
     icon: "🔁",
+    iconImage: "assets/badges/rewatcher.png",
+    accentColor: "var(--coral)",
     description: "Enregistre des rediffusions (rewatch).",
     tiers: [10, 50, 150, 300],
     getValue: (entries) => entries.filter((e) => e.rewatch).length,
@@ -163,14 +167,18 @@ const BADGES = [
     key: "critic",
     name: "Critique aguerri",
     icon: "⭐",
+    iconImage: "assets/badges/critic.png",
+    accentColor: "var(--mustard)",
     description: "Attribue une note à des entrées du journal.",
     tiers: [50, 150, 300, 600],
     getValue: (entries) => entries.filter((e) => e.rating != null).length,
   },
   {
     key: "weekend_binger",
-    name: "Marathonien de week-end",
+    name: "Marathonien du week-end",
     icon: "🛋️",
+    iconImage: "assets/badges/weekend_binger.png",
+    accentColor: "var(--mustard)",
     description: "Enregistre des visionnages un samedi ou un dimanche.",
     tiers: [10, 50, 150, 300],
     getValue: (entries) =>
@@ -183,6 +191,8 @@ const BADGES = [
     key: "double_feature",
     name: "Séance double",
     icon: "🎞️",
+    iconImage: "assets/badges/double_feature.png",
+    accentColor: "var(--coral)",
     description: "Regarde 2 films ou plus le même jour.",
     tiers: [1, 5, 15, 30],
     getValue: (entries) => {
@@ -197,6 +207,8 @@ const BADGES = [
     key: "harsh_critic",
     name: "Critique sévère",
     icon: "🥶",
+    iconImage: "assets/badges/harsh_critic.png",
+    accentColor: "var(--muted)",
     description: "Attribue une note de 3/10 ou moins.",
     tiers: [5, 25, 75, 150],
     getValue: (entries) => entries.filter((e) => e.rating != null && e.rating <= 3).length,
@@ -205,6 +217,8 @@ const BADGES = [
     key: "soft_heart",
     name: "Cœur tendre",
     icon: "🥰",
+    iconImage: "assets/badges/soft_heart.png",
+    accentColor: "var(--muted)",
     description: "Attribue une note de 9/10 ou plus.",
     tiers: [5, 25, 75, 150],
     getValue: (entries) => entries.filter((e) => e.rating != null && e.rating >= 9).length,
@@ -213,6 +227,8 @@ const BADGES = [
     key: "aficionado",
     name: "Aficionado",
     icon: "🎭",
+    iconImage: "assets/badges/aficionado.png",
+    accentColor: "var(--mustard)",
     description: "Revoit une série entière (autant de rewatchs que d'épisodes).",
     tiers: [1, 3, 5, 10],
     getValue: (entries, library) => {
@@ -233,6 +249,8 @@ const BADGES = [
     key: "genre_specialist",
     name: "Spécialiste d'un genre",
     icon: "🎯",
+    iconImage: "assets/badges/genre_specialist.png",
+    accentColor: "var(--coral)",
     description: "Regarde beaucoup d'œuvres différentes d'un même genre.",
     tiers: [10, 25, 50, 100],
     getValue: (entries) => {
@@ -253,6 +271,8 @@ const BADGES = [
     key: "day_one",
     name: "Jour de diffusion",
     icon: "📅",
+    iconImage: "assets/badges/day_one.png",
+    accentColor: "var(--mustard)",
     description: "Regarde un épisode le jour même de sa diffusion.",
     tiers: [1, 10, 25, 50],
     getValue: (entries) =>
@@ -263,6 +283,8 @@ const BADGES = [
     key: "premiere_day",
     name: "Jour de sortie",
     icon: "🎟️",
+    iconImage: "assets/badges/premiere_day.png",
+    accentColor: "var(--mustard)",
     description: "Regarde un film le jour même de sa sortie.",
     tiers: [1, 5, 15, 30],
     getValue: (entries) =>
@@ -273,6 +295,8 @@ const BADGES = [
     key: "release_week",
     name: "Sortie de la semaine",
     icon: "🚀",
+    iconImage: "assets/badges/release_week.png",
+    accentColor: "var(--mustard)",
     description: "Regarde un film ou démarre un épisode dans la semaine suivant sa sortie.",
     tiers: [5, 20, 50, 100],
     getValue: (entries) =>
@@ -286,6 +310,8 @@ const BADGES = [
     key: "big_day",
     name: "Grosse journée",
     icon: "⏳",
+    iconImage: "assets/badges/big_day.png",
+    accentColor: "var(--muted)",
     description: "Bats ton record d'heures de visionnage en une journée, chaque mois.",
     tiers: [180, 360, 540, 720], // en minutes : 3h, 6h, 9h, 12h
     formatValue: (mins) => {
@@ -323,6 +349,8 @@ const BADGES = [
     key: "holiday_binge",
     name: "Fêtes du visionnage",
     icon: "🎄",
+    iconImage: "assets/badges/holiday_binge.png",
+    accentColor: "var(--sage)",
     description: "Enregistre des visionnages entre le 24 décembre et le 1er janvier.",
     tiers: [5, 15, 40, 80],
     getValue: (entries) =>
@@ -361,6 +389,8 @@ const BADGES = [
     key: "resurrection",
     name: "Résurrection",
     icon: "🔮",
+    iconImage: "assets/badges/resurrection.png",
+    accentColor: "var(--mustard)",
     description: "Reprends un film ou une série après plus de 6 mois de pause.",
     tiers: [1, 3, 5, 10],
     getValue: (entries) => {
