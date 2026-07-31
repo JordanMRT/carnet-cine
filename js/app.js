@@ -640,9 +640,9 @@ function bindAuthEvents() {
         qs("#step-code").style.display = "block";
 
         // Cases du code : la saisie ET le collage du code reçu par email
-        // fonctionnent, avec validation automatique dès les 6 chiffres.
+        // fonctionnent, avec validation automatique dès les 8 chiffres.
         otpControl = createOtpInput(qs("#auth-otp"), {
-          length: 6,
+          length: 8,
           mode: "numeric",
           onComplete: () => form.requestSubmit(),
         });
