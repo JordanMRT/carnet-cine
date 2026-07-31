@@ -1093,27 +1093,26 @@ async function renderShowDetail(param, gen) {
         : "";
 
     // Films : bouton de log qui devient "revoir" une fois déjà vu, + badge ×N
-    const movieEntries =
-      type === "movie" ? App.diary.filter((e) => String(e.tmdb_id) === String(id) && e.media_type === "movie") : [];
-    const movieWatchCount = movieEntries.length;
-    const movieActionsHTML =
-      type === "movie"
-        ? movieWatchCount > 0
-          ? `
-        <span class="episode-watch-info"><i data-lucide="circle-check-big"></i> vu${movieWatchCount > 1 ? ` • ${movieWatchCount} visionnages` : ""}</span>
+    // Ces trois fonctions génèrent le HTML à partir de l'état courant : elles
+    // sont réutilisées au premier rendu ET pour patcher localement l'affichage
+    // après une action, sans re-fetch TMDB ni redessiner toute la page.
+    function movieActionsMarkup(watchCount) {
+      if (type !== "movie") return "";
+      return watchCount > 0
+        ? `
+        <span class="episode-watch-info"><i data-lucide="circle-check-big"></i> vu${watchCount > 1 ? ` • ${watchCount} visionnages` : ""}</span>
         <button id="movie-rewatch-btn" class="btn btn--accent">
           Rewatch <i data-lucide="refresh-cw"></i>
         </button>
         <button id="movie-undo-btn" class="btn btn--ghost">
         Annuler un visionnage <i data-lucide="refresh-cw-off"></i>
         </button>`
-          : `<button id="quick-log-btn" class="btn btn--accent">Marquer comme vu</button>`
-        : "";
+        : `<button id="quick-log-btn" class="btn btn--accent">Marquer comme vu</button>`;
+    }
 
-    const userRating = inLibrary?.avg_rating != null ? Math.round(inLibrary.avg_rating / 2) : 0;
-    const canRate = type === "movie" ? movieWatchCount > 0 : (inLibrary?.watched_episodes || 0) > 0;
-    const ratingHTML = `
-      <div class="rating-widget-block">
+    function ratingBlockMarkup(userRating, canRate) {
+      return `
+      <div class="rating-widget-block" id="rating-widget-block">
         <h2 class="rating-title">Ta note</h2>
         <div class="rating-widget ${canRate ? "" : "rating-widget--disabled"}" id="rating-widget">
           ${[1, 2, 3, 4, 5]
@@ -1125,19 +1124,37 @@ async function renderShowDetail(param, gen) {
         </div>
         ${!canRate ? `<p class="rating-hint">Marque ${type === "movie" ? "le film" : "la série"} comme vu${type === "movie" ? "" : "e"} pour pouvoir ${type === "movie" ? "le" : "la"} noter.</p>` : ""}
       </div>`;
-      const hasMovieNote = canRate && !!(inLibrary?.last_note);
-      const noteHTML = type === "movie" ? `
-      <div class="note-widget-block">
+    }
+
+    function noteBlockMarkup(inLib, canRate) {
+      if (type !== "movie") return "";
+      const hasNote = canRate && !!inLib?.last_note;
+      return `
+      <div class="note-widget-block" id="note-widget-block">
         <h2 class="rating-title">Ton commentaire :</h2>
-        ${hasMovieNote ? myNoteCardHTML(inLibrary.last_note) : ""}
-        <div class="note-edit-view" id="note-edit-view" ${hasMovieNote ? "hidden" : ""}>
-          <textarea id="work-note" class="note-textarea" placeholder="Ce que tu en as pensé, une scène marquante, une réplique qui t'est restée..." ${canRate ? "" : "disabled"}>${escapeHtml(inLibrary?.last_note || "")}</textarea>
+        ${hasNote ? myNoteCardHTML(inLib.last_note) : ""}
+        <div class="note-edit-view" id="note-edit-view" ${hasNote ? "hidden" : ""}>
+          <textarea id="work-note" class="note-textarea" placeholder="Ce que tu en as pensé, une scène marquante, une réplique qui t'est restée..." ${canRate ? "" : "disabled"}>${escapeHtml(inLib?.last_note || "")}</textarea>
           <div class="note-edit-actions">
             <button id="save-note-btn" class="btn btn--ghost" ${canRate ? "" : "disabled"}>Enregistrer</button>
-            ${hasMovieNote ? `<button type="button" id="cancel-note-btn" class="btn btn--ghost">Annuler</button>` : ""}
+            ${hasNote ? `<button type="button" id="cancel-note-btn" class="btn btn--ghost">Annuler</button>` : ""}
           </div>
         </div>
-      </div>` : "";
+      </div>`;
+    }
+
+    function progressBlockMarkup(inLib) {
+      return type === "tv" && inLib && inLib.total_episodes > 0
+        ? `<div class="show-progress">
+             <div class="progress-bar"><div class="progress-bar-fill" style="width:${inLib.progress}%"></div></div>
+             <span class="progress-label">${Math.min(inLib.watched_episodes, inLib.total_episodes)}/${inLib.total_episodes} épisodes vus — ${inLib.progress}%</span>
+           </div>`
+        : "";
+    }
+
+    const movieWatchCount = type === "movie" ? App.diary.filter((e) => String(e.tmdb_id) === String(id) && e.media_type === "movie").length : 0;
+    const userRating = inLibrary?.avg_rating != null ? Math.round(inLibrary.avg_rating / 2) : 0;
+    const canRate = type === "movie" ? movieWatchCount > 0 : (inLibrary?.watched_episodes || 0) > 0;
 
     // Une navigation plus récente a eu lieu pendant ces appels TMDB : on
     // n'écrase pas un rendu plus à jour avec ce résultat devenu obsolète.
@@ -1155,14 +1172,14 @@ async function renderShowDetail(param, gen) {
             ${data.vote_average > 0 ? `<p class="tmdb-rating"><i data-lucide="star"></i> ${data.vote_average.toFixed(1)}/10 sur TMDB · ${data.vote_count.toLocaleString("fr-FR")} votes</p>` : ""}
             ${
               type === "tv"
-                ? `<p class="show-detail-status"><span class="status-badge">${TV_STATUS_LABELS[data.status] || data.status}</span>${data.next_episode_to_air ? ` · Prochain épisode le ${formatDate(data.next_episode_to_air.air_date)}` : ""}</p>`
+                ? `<p class="show-detail-status"><span class="status-badge">${TV_STATUS_LABELS[data.status] || data.status}</span><br>${data.next_episode_to_air ? `Prochain épisode le ${formatDate(data.next_episode_to_air.air_date)}` : ""}</p>`
                 : ""
             }
             <div class="overview-wrapper">
              <p class="show-detail-overview">${escapeHtml(data.overview || "Pas de synopsis disponible.")}</p>
               <button class="overview-toggle" hidden>Afficher plus</button>
              </div>
-            ${progressHTML}
+            <div id="show-progress-wrap">${progressBlockMarkup(inLibrary)}</div>
             <div class="show-detail-actions">
               <select id="status-select">
                 <option value="">+ Ajouter à ma bibliothèque</option>
@@ -1171,11 +1188,11 @@ async function renderShowDetail(param, gen) {
                 <option value="completed" ${inLibrary?.status === "completed" ? "selected" : ""}>Terminé</option>
                 <option value="dropped" ${inLibrary?.status === "dropped" ? "selected" : ""}>Abandonné</option>
               </select>
-              ${movieActionsHTML}
+              <span id="movie-actions">${movieActionsMarkup(movieWatchCount)}</span>
             </div>
           </div>
         </div>
-       ${type === "tv" ? `<div id="seasons-container"></div>` : ""}${ratingHTML}${noteHTML}${type === "tv" ? seriesNotesHTML(id) : ""}${friendsActivityHTML(friendsActivity)}${watchProvidersHTML(watchProviders)}${castHTML}${similarStripHTML(recommendations, type)}
+       ${type === "tv" ? `<div id="seasons-container"></div>` : ""}${ratingBlockMarkup(userRating, canRate)}${noteBlockMarkup(inLibrary, canRate)}${type === "tv" ? seriesNotesHTML(id) : ""}${friendsActivityHTML(friendsActivity)}${watchProvidersHTML(watchProviders)}${castHTML}${similarStripHTML(recommendations, type)}
       </div>
     `;
 if (typeof lucide !== "undefined") lucide.createIcons();
@@ -1205,12 +1222,45 @@ if (typeof lucide !== "undefined") lucide.createIcons();
       });
     }
 
+    // Repatche localement la zone d'actions (progression, bouton film,
+    // notation, commentaire) à partir de App.diary/App.library à jour,
+    // sans re-fetch TMDB ni redessiner le reste de la fiche.
+    function refreshShowDetailUI() {
+      const inLibNow = App.library.find((l) => String(l.tmdb_id) === String(id) && l.media_type === type);
+      const watchCountNow = type === "movie" ? App.diary.filter((e) => String(e.tmdb_id) === String(id) && e.media_type === "movie").length : 0;
+      const canRateNow = type === "movie" ? watchCountNow > 0 : (inLibNow?.watched_episodes || 0) > 0;
+      const userRatingNow = inLibNow?.avg_rating != null ? Math.round(inLibNow.avg_rating / 2) : 0;
+
+      const progressWrap = qs("#show-progress-wrap");
+      if (progressWrap) progressWrap.innerHTML = progressBlockMarkup(inLibNow);
+
+      const actionsWrap = qs("#movie-actions");
+      if (actionsWrap) {
+        actionsWrap.innerHTML = movieActionsMarkup(watchCountNow);
+        bindMovieActionButtons();
+      }
+
+      const ratingWrap = qs("#rating-widget-block");
+      if (ratingWrap) {
+        ratingWrap.outerHTML = ratingBlockMarkup(userRatingNow, canRateNow);
+        bindRatingWidget();
+      }
+
+      if (type === "movie") {
+        const noteWrap = qs("#note-widget-block");
+        if (noteWrap) {
+          noteWrap.outerHTML = noteBlockMarkup(inLibNow, canRateNow);
+          bindNoteWidget();
+        }
+      }
+
+      if (typeof lucide !== "undefined") lucide.createIcons();
+    }
+
     qs("#status-select").addEventListener("change", async (e) => {
       const status = e.target.value;
       const select = e.target;
-      const previousStatus = App.library.find(
-        (l) => String(l.tmdb_id) === String(id) && l.media_type === type
-      )?.status || "";
+      const previousStatus = inLibrary?.status || "";
       if (!status) return;
 
       select.disabled = true;
@@ -1245,24 +1295,25 @@ if (typeof lucide !== "undefined") lucide.createIcons();
             updated_at: new Date().toISOString(),
           });
         }
-        // Patch local immédiat de App.library : les autres vues (bibliothèque,
-        // stats) verront le bon statut sans attendre un aller-retour réseau.
         const idx = App.library.findIndex((l) => String(l.tmdb_id) === String(id) && l.media_type === type);
         const entry = { user_id: App.session.user.id, tmdb_id: Number(id), media_type: type, title, poster_path: data.poster_path, status };
         if (idx >= 0) App.library[idx] = { ...App.library[idx], ...entry };
         else App.library.push(entry);
 
         toast("Bibliothèque mise à jour.", "success");
+        refreshShowDetailUI();
         App.refreshSilently();
       } catch (err) {
-        select.value = previousStatus; // on annule le changement optimiste du <select>
+        select.value = previousStatus;
         toast(err.message, "error");
       } finally {
         select.disabled = false;
       }
     });
 
-    if (type === "movie") {
+    function bindMovieActionButtons() {
+      if (type !== "movie") return;
+
       const logMovieEntry = async (rewatch) => {
         try {
           await DB.addDiaryEntry({
@@ -1282,7 +1333,8 @@ if (typeof lucide !== "undefined") lucide.createIcons();
             air_date: data.release_date || null,
           });
           toast(rewatch ? "Nouveau visionnage ajouté 🎟️" : "Marqué comme vu 🎟️", "success");
-          await App.refresh();
+          refreshShowDetailUI();
+          App.refreshSilently();
         } catch (err) {
           toast(err.message, "error");
         }
@@ -1290,11 +1342,17 @@ if (typeof lucide !== "undefined") lucide.createIcons();
 
       qs("#quick-log-btn")?.addEventListener("click", () => logMovieEntry(false));
       qs("#movie-rewatch-btn")?.addEventListener("click", () => logMovieEntry(true));
-      qs("#movie-undo-btn")?.addEventListener("click", () => undoLastMovieWatch({ tmdb_id: Number(id) }));
+      qs("#movie-undo-btn")?.addEventListener("click", () =>
+        undoLastMovieWatch({ tmdb_id: Number(id) }, () => {
+          refreshShowDetailUI();
+          App.refreshSilently();
+        })
+      );
     }
 
-if (canRate) {
+    function bindRatingWidget() {
       const widget = qs("#rating-widget");
+      if (!widget || widget.classList.contains("rating-widget--disabled")) return;
       const starEls = qsa(".rating-star", widget);
       const applyPreview = (value) =>
         starEls.forEach((s) => {
@@ -1302,55 +1360,75 @@ if (canRate) {
           s.classList.toggle("rating-star--filled", filled);
           s.textContent = filled ? "★" : "☆";
         });
+      const currentRating = starEls.filter((s) => s.classList.contains("rating-star--filled")).length;
       starEls.forEach((btn) => {
         const value = Number(btn.dataset.value);
         btn.addEventListener("mouseenter", () => applyPreview(value));
         btn.addEventListener("click", async () => {
+          applyPreview(value); // affichage immédiat, avant la réponse Supabase
           try {
             await DB.setWorkRating(App.session.user.id, Number(id), type, value * 2);
+            const idx = App.library.findIndex((l) => String(l.tmdb_id) === String(id) && l.media_type === type);
+            if (idx >= 0) App.library[idx] = { ...App.library[idx], avg_rating: value * 2 };
             toast("Note enregistrée 🎟️", "success");
-            await App.refresh();
+            App.refreshSilently();
           } catch (err) {
+            applyPreview(currentRating);
             toast(err.message, "error");
           }
         });
       });
-      widget.addEventListener("mouseleave", () => applyPreview(userRating));
+      widget.addEventListener("mouseleave", () => applyPreview(currentRating));
     }
 
-    if (type === "movie" && canRate) {
-      qs("#save-note-btn")?.addEventListener("click", async () => {
+    function bindNoteWidget() {
+      if (type !== "movie") return;
+      const widget = qs("#note-widget-block");
+      if (!widget || widget.querySelector("#work-note")?.disabled) return;
+
+      qs("#save-note-btn", widget)?.addEventListener("click", async () => {
+        const text = qs("#work-note", widget).value.trim() || null;
         try {
-          await DB.setWorkNote(App.session.user.id, Number(id), type, qs("#work-note").value.trim() || null);
+          await DB.setWorkNote(App.session.user.id, Number(id), type, text);
+          const idx = App.library.findIndex((l) => String(l.tmdb_id) === String(id) && l.media_type === type);
+          if (idx >= 0) App.library[idx] = { ...App.library[idx], last_note: text };
           toast("Commentaire enregistré 🎟️", "success");
-          await App.refresh();
+          refreshShowDetailUI();
+          App.refreshSilently();
         } catch (err) {
           toast(err.message, "error");
         }
       });
 
-      qs("#note-edit-btn")?.addEventListener("click", () => {
-        qs("#note-posted-view").hidden = true;
-        qs("#note-edit-view").hidden = false;
-        qs("#work-note")?.focus();
+      qs("#note-edit-btn", widget)?.addEventListener("click", () => {
+        qs("#note-posted-view", widget).hidden = true;
+        qs("#note-edit-view", widget).hidden = false;
+        qs("#work-note", widget)?.focus();
       });
 
-      qs("#cancel-note-btn")?.addEventListener("click", () => {
-        qs("#note-edit-view").hidden = true;
-        qs("#note-posted-view").hidden = false;
+      qs("#cancel-note-btn", widget)?.addEventListener("click", () => {
+        qs("#note-edit-view", widget).hidden = true;
+        qs("#note-posted-view", widget).hidden = false;
       });
 
-      qs("#note-delete-btn")?.addEventListener("click", async () => {
+      qs("#note-delete-btn", widget)?.addEventListener("click", async () => {
         if (!confirm("Supprimer ce commentaire ?")) return;
         try {
           await DB.setWorkNote(App.session.user.id, Number(id), type, null);
+          const idx = App.library.findIndex((l) => String(l.tmdb_id) === String(id) && l.media_type === type);
+          if (idx >= 0) App.library[idx] = { ...App.library[idx], last_note: null };
           toast("Commentaire supprimé", "success");
-          await App.refresh();
+          refreshShowDetailUI();
+          App.refreshSilently();
         } catch (err) {
           toast(err.message, "error");
         }
       });
     }
+
+    bindMovieActionButtons();
+    bindRatingWidget();
+    bindNoteWidget();
 
     if (type === "tv") {
       const initialSeason = lastViewedSeason[id] || 1;
@@ -1780,7 +1858,7 @@ async function toggleWorkWatched({ tmdbId, type, title, posterPath, genreIds, ai
 }
 
 // Retire uniquement le DERNIER visionnage d'un film (le plus récent).
-async function undoLastMovieWatch(ctx) {
+async function undoLastMovieWatch(ctx, onDone) {
   const existing = App.diary
     .filter((e) => String(e.tmdb_id) === String(ctx.tmdb_id) && e.media_type === "movie")
     .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
@@ -1789,8 +1867,9 @@ async function undoLastMovieWatch(ctx) {
 
   try {
     await DB.deleteDiaryEntries([existing[0].id]);
+    App.diary = App.diary.filter((e) => e.id !== existing[0].id);
     toast(existing.length > 1 ? "Dernier visionnage annulé." : "Marqué comme non vu.", "success");
-    await App.refresh();
+    onDone ? onDone() : App.refreshSilently();
   } catch (err) {
     toast(err.message, "error");
   }
@@ -1861,36 +1940,58 @@ async function renderEpisodeDetail(param, gen) {
       </div>`
       : "";
 
-    // Note de l'épisode (5 étoiles, activée une fois l'épisode vu)
-    const epRatingRaw = entries.find((e) => e.rating != null)?.rating;
-    const userEpRating = epRatingRaw != null ? Math.round(epRatingRaw / 2) : 0;
-    const ratingHTML = `
-      <div class="rating-widget-block">
+    // Note de l'épisode (5 étoiles, activée une fois l'épisode vu). Comme
+    // pour la fiche film/série, ces générateurs servent au premier rendu ET
+    // au repatch local après une action (pas de re-fetch TMDB).
+    function episodeActionsMarkup(isWatched, count) {
+      return isWatched
+        ? `
+        <span class="episode-watch-info"><i data-lucide="circle-check-big"></i> vu${count > 1 ? ` • ${count} visionnages` : ""}</span>
+        <button id="episode-rewatch-btn" class="btn btn--accent">
+          Rewatch <i data-lucide="refresh-cw"></i>
+        </button>
+        <button id="episode-undo-btn" class="btn btn--ghost">
+        Annuler un visionnage <i data-lucide="refresh-cw-off"></i>
+        </button>
+        `
+        : `<button id="episode-toggle-btn" class="btn btn--accent">Marquer comme vu</button>`;
+    }
+
+    function episodeRatingMarkup(isWatched, rating) {
+      return `
+      <div class="rating-widget-block" id="rating-widget-block">
         <h2 class="rating-title">Ta note</h2>
-        <div class="rating-widget ${watched ? "" : "rating-widget--disabled"}" id="episode-rating-widget">
+        <div class="rating-widget ${isWatched ? "" : "rating-widget--disabled"}" id="episode-rating-widget">
           ${[1, 2, 3, 4, 5]
             .map(
               (n) =>
-                `<button class="rating-star ${n <= userEpRating ? "rating-star--filled" : ""}" data-value="${n}" ${watched ? "" : "disabled"} title="${n} étoile${n > 1 ? "s" : ""}">${n <= userEpRating ? "★" : "☆"}</button>`
+                `<button class="rating-star ${n <= rating ? "rating-star--filled" : ""}" data-value="${n}" ${isWatched ? "" : "disabled"} title="${n} étoile${n > 1 ? "s" : ""}">${n <= rating ? "★" : "☆"}</button>`
             )
             .join("")}
         </div>
-        ${!watched ? `<p class="rating-hint">Marque l'épisode comme vu pour pouvoir le noter.</p>` : ""}
+        ${!isWatched ? `<p class="rating-hint">Marque l'épisode comme vu pour pouvoir le noter.</p>` : ""}
       </div>`;
-      const epNote = entries.find((e) => e.note)?.note || "";
-      const hasEpisodeNote = watched && !!epNote;
-    const noteHTML = `
-      <div class="note-widget-block">
+    }
+
+    function episodeNoteMarkup(isWatched, note) {
+      const hasNote = isWatched && !!note;
+      return `
+      <div class="note-widget-block" id="note-widget-block">
         <h2 class="rating-title">Ton commentaire :</h2>
-        ${hasEpisodeNote ? myNoteCardHTML(epNote) : ""}
-        <div class="note-edit-view" id="note-edit-view" ${hasEpisodeNote ? "hidden" : ""}>
-          <textarea id="episode-note" class="note-textarea" placeholder="Ce que tu en as pensé..." ${watched ? "" : "disabled"}>${escapeHtml(epNote)}</textarea>
+        ${hasNote ? myNoteCardHTML(note) : ""}
+        <div class="note-edit-view" id="note-edit-view" ${hasNote ? "hidden" : ""}>
+          <textarea id="episode-note" class="note-textarea" placeholder="Ce que tu en as pensé..." ${isWatched ? "" : "disabled"}>${escapeHtml(note || "")}</textarea>
           <div class="note-edit-actions">
-            <button id="save-episode-note-btn" class="btn btn--ghost" ${watched ? "" : "disabled"}>Enregistrer</button>
-            ${hasEpisodeNote ? `<button type="button" id="cancel-note-btn" class="btn btn--ghost">Annuler</button>` : ""}
+            <button id="save-episode-note-btn" class="btn btn--ghost" ${isWatched ? "" : "disabled"}>Enregistrer</button>
+            ${hasNote ? `<button type="button" id="cancel-note-btn" class="btn btn--ghost">Annuler</button>` : ""}
           </div>
         </div>
       </div>`;
+    }
+
+    const epRatingRaw = entries.find((e) => e.rating != null)?.rating;
+    const userEpRating = epRatingRaw != null ? Math.round(epRatingRaw / 2) : 0;
+    const epNote = entries.find((e) => e.note)?.note || "";
 
     // Une navigation plus récente a eu lieu pendant ces appels TMDB : on
     // n'écrase pas un rendu plus à jour avec ce résultat devenu obsolète.
@@ -1928,28 +2029,14 @@ async function renderEpisodeDetail(param, gen) {
             ${episode.vote_average > 0 ? `<p class="tmdb-rating"><i data-lucide="star"></i> ${episode.vote_average.toFixed(1)}/10 sur TMDB · ${episode.vote_count.toLocaleString("fr-FR")} votes</p>` : ""}
             ${formatRuntime(episode.runtime) ? `<p class="show-detail-meta">${formatRuntime(episode.runtime)}</p>` : ""}
 
-            <div class="show-detail-actions">
-              ${
-                watched
-                  ? `
-                  <span class="episode-watch-info"><i data-lucide="circle-check-big"></i> vu${watchCount > 1 ? ` • ${watchCount} visionnages` : ""}</span>
-                  <button id="episode-rewatch-btn" class="btn btn--accent">
-                    Rewatch <i data-lucide="refresh-cw"></i>
-                  </button>
-                  <button id="episode-undo-btn" class="btn btn--ghost">
-                  Annuler un visionnage <i data-lucide="refresh-cw-off"></i>
-                  </button>
-                  `
-                  : `
-                  <button id="episode-toggle-btn" class="btn btn--accent">Marquer comme vu</button>
-                  `
-              }
+            <div class="show-detail-actions" id="episode-actions">
+              ${episodeActionsMarkup(watched, watchCount)}
             </div>
             </div>
             </div>
 
-            ${ratingHTML}
-            ${noteHTML}
+            ${episodeRatingMarkup(watched, userEpRating)}
+            ${episodeNoteMarkup(watched, epNote)}
             ${friendsActivityHTML(friendsActivity)}
             ${castHTML}
 
@@ -1975,20 +2062,58 @@ async function renderEpisodeDetail(param, gen) {
       air_date: episode.air_date || null,
     };
 
-    qs("#episode-toggle-btn")?.addEventListener("click", async () => {
-      await toggleEpisodeWatched(episodeCtx);
-    });
+    // Repatche localement les actions/notation/commentaire de cet épisode
+    // à partir de App.diary à jour, sans re-fetch TMDB ni redessiner la fiche.
+    function refreshEpisodeDetailUI() {
+      const entriesNow = App.diary.filter(
+        (e) =>
+          String(e.tmdb_id) === String(tvId) &&
+          e.media_type === "tv" &&
+          e.season === Number(seasonNumber) &&
+          e.episode === Number(episodeNumber)
+      );
+      const watchedNow = entriesNow.length > 0;
+      const watchCountNow = entriesNow.length;
+      const ratingNow = (() => {
+        const raw = entriesNow.find((e) => e.rating != null)?.rating;
+        return raw != null ? Math.round(raw / 2) : 0;
+      })();
+      const noteNow = entriesNow.find((e) => e.note)?.note || "";
 
-    qs("#episode-undo-btn")?.addEventListener("click", async () => {
-      await undoLastEpisodeWatch(episodeCtx);
-    });
+      const actionsWrap = qs("#episode-actions");
+      if (actionsWrap) {
+        actionsWrap.innerHTML = episodeActionsMarkup(watchedNow, watchCountNow);
+        bindEpisodeActionButtons();
+      }
+      const ratingWrap = qs("#rating-widget-block");
+      if (ratingWrap) {
+        ratingWrap.outerHTML = episodeRatingMarkup(watchedNow, ratingNow);
+        bindEpisodeRatingWidget();
+      }
+      const noteWrap = qs("#note-widget-block");
+      if (noteWrap) {
+        noteWrap.outerHTML = episodeNoteMarkup(watchedNow, noteNow);
+        bindEpisodeNoteWidget();
+      }
+      if (typeof lucide !== "undefined") lucide.createIcons();
+    }
 
-    qs("#episode-rewatch-btn")?.addEventListener("click", async () => {
-      await addEpisodeRewatch(episodeCtx);
-    });
+    function bindEpisodeActionButtons() {
+      qs("#episode-toggle-btn")?.addEventListener("click", async (e) => {
+        await toggleEpisodeWatched(episodeCtx);
+        refreshEpisodeDetailUI();
+      });
+      qs("#episode-undo-btn")?.addEventListener("click", async () => {
+        await undoLastEpisodeWatch(episodeCtx, refreshEpisodeDetailUI);
+      });
+      qs("#episode-rewatch-btn")?.addEventListener("click", async () => {
+        await addEpisodeRewatch(episodeCtx, refreshEpisodeDetailUI);
+      });
+    }
 
-    if (watched) {
+    function bindEpisodeRatingWidget() {
       const widget = qs("#episode-rating-widget");
+      if (!widget || widget.classList.contains("rating-widget--disabled")) return;
       const starEls = qsa(".rating-star", widget);
       const applyPreview = (value) =>
         starEls.forEach((s) => {
@@ -1996,72 +2121,80 @@ async function renderEpisodeDetail(param, gen) {
           s.classList.toggle("rating-star--filled", filled);
           s.textContent = filled ? "★" : "☆";
         });
+      const currentRating = starEls.filter((s) => s.classList.contains("rating-star--filled")).length;
       starEls.forEach((btn) => {
         const value = Number(btn.dataset.value);
         btn.addEventListener("mouseenter", () => applyPreview(value));
         btn.addEventListener("click", async () => {
+          applyPreview(value);
           try {
-            await DB.setEpisodeRating(
-              App.session.user.id,
-              Number(tvId),
-              Number(seasonNumber),
-              Number(episodeNumber),
-              value * 2
+            await DB.setEpisodeRating(App.session.user.id, Number(tvId), Number(seasonNumber), Number(episodeNumber), value * 2);
+            const entry = App.diary.find(
+              (e) => String(e.tmdb_id) === String(tvId) && e.media_type === "tv" && e.season === Number(seasonNumber) && e.episode === Number(episodeNumber)
             );
+            if (entry) entry.rating = value * 2;
             toast("Note enregistrée 🎟️", "success");
-            await App.refresh();
+            App.refreshSilently();
           } catch (err) {
+            applyPreview(currentRating);
             toast(err.message, "error");
           }
         });
       });
-      if (watched) {
-      qs("#save-episode-note-btn")?.addEventListener("click", async () => {
+      widget.addEventListener("mouseleave", () => applyPreview(currentRating));
+    }
+
+    function bindEpisodeNoteWidget() {
+      const widget = qs("#note-widget-block");
+      if (!widget || widget.querySelector("#episode-note")?.disabled) return;
+
+      qs("#save-episode-note-btn", widget)?.addEventListener("click", async () => {
+        const text = qs("#episode-note", widget).value.trim() || null;
         try {
-          await DB.setEpisodeNote(
-            App.session.user.id,
-            Number(tvId),
-            Number(seasonNumber),
-            Number(episodeNumber),
-            qs("#episode-note").value.trim() || null
+          await DB.setEpisodeNote(App.session.user.id, Number(tvId), Number(seasonNumber), Number(episodeNumber), text);
+          const entry = App.diary.find(
+            (e) => String(e.tmdb_id) === String(tvId) && e.media_type === "tv" && e.season === Number(seasonNumber) && e.episode === Number(episodeNumber)
           );
+          if (entry) entry.note = text;
           toast("Commentaire enregistré 🎟️", "success");
-          await App.refresh();
+          refreshEpisodeDetailUI();
+          App.refreshSilently();
         } catch (err) {
           toast(err.message, "error");
         }
       });
 
-      qs("#note-edit-btn")?.addEventListener("click", () => {
-        qs("#note-posted-view").hidden = true;
-        qs("#note-edit-view").hidden = false;
-        qs("#episode-note")?.focus();
+      qs("#note-edit-btn", widget)?.addEventListener("click", () => {
+        qs("#note-posted-view", widget).hidden = true;
+        qs("#note-edit-view", widget).hidden = false;
+        qs("#episode-note", widget)?.focus();
       });
 
-      qs("#cancel-note-btn")?.addEventListener("click", () => {
-        qs("#note-edit-view").hidden = true;
-        qs("#note-posted-view").hidden = false;
+      qs("#cancel-note-btn", widget)?.addEventListener("click", () => {
+        qs("#note-edit-view", widget).hidden = true;
+        qs("#note-posted-view", widget).hidden = false;
       });
 
-      qs("#note-delete-btn")?.addEventListener("click", async () => {
+      qs("#note-delete-btn", widget)?.addEventListener("click", async () => {
         if (!confirm("Supprimer ce commentaire ?")) return;
         try {
-          await DB.setEpisodeNote(
-            App.session.user.id,
-            Number(tvId),
-            Number(seasonNumber),
-            Number(episodeNumber),
-            null
+          await DB.setEpisodeNote(App.session.user.id, Number(tvId), Number(seasonNumber), Number(episodeNumber), null);
+          const entry = App.diary.find(
+            (e) => String(e.tmdb_id) === String(tvId) && e.media_type === "tv" && e.season === Number(seasonNumber) && e.episode === Number(episodeNumber)
           );
+          if (entry) entry.note = null;
           toast("Commentaire supprimé", "success");
-          await App.refresh();
+          refreshEpisodeDetailUI();
+          App.refreshSilently();
         } catch (err) {
           toast(err.message, "error");
         }
       });
     }
-      widget.addEventListener("mouseleave", () => applyPreview(userEpRating));
-    }
+
+    bindEpisodeActionButtons();
+    bindEpisodeRatingWidget();
+    bindEpisodeNoteWidget();
   } catch (err) {
     console.error(err);
     if (gen !== App._renderGen) return;
@@ -2198,7 +2331,7 @@ if (typeof lucide !== "undefined") lucide.createIcons();
           episode: Number(btn.dataset.episode),
           runtime_minutes: Number(btn.dataset.runtime) || null,
           air_date: btn.dataset.airDate || null,
-        });
+        }, () => renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, selectedSeason));
       })
     );
 
@@ -2343,7 +2476,7 @@ function setEpisodeCheckVisual(btnEl, watched) {
 
 // Retire uniquement le DERNIER visionnage d'un épisode (contrairement à
 // toggleEpisodeWatched, utilisé par la coche rapide, qui efface tout).
-async function undoLastEpisodeWatch(ctx) {
+async function undoLastEpisodeWatch(ctx, onDone) {
   const existing = App.diary
     .filter(
       (e) =>
@@ -2358,20 +2491,22 @@ async function undoLastEpisodeWatch(ctx) {
 
   try {
     await DB.deleteDiaryEntries([existing[0].id]);
+    App.diary = App.diary.filter((e) => e.id !== existing[0].id);
     toast(
       existing.length > 1 ? "Dernier visionnage annulé." : "Épisode marqué comme non vu.",
       "success"
     );
-    await App.refresh();
+    onDone ? onDone() : App.refreshSilently();
+    if (onDone) App.refreshSilently();
   } catch (err) {
     toast(err.message, "error");
   }
 }
 
 // Ajoute un revisionnage (rewatch) pour un épisode déjà vu.
-async function addEpisodeRewatch(ctx) {
+async function addEpisodeRewatch(ctx, onDone) {
   try {
-    await DB.addDiaryEntry({
+    const entry = {
       user_id: App.session.user.id,
       tmdb_id: ctx.tmdb_id,
       media_type: "tv",
@@ -2386,9 +2521,12 @@ async function addEpisodeRewatch(ctx) {
       genres: ctx.genres || [],
       runtime_minutes: ctx.runtime_minutes,
       air_date: ctx.air_date || null,
-    });
+    };
+    await DB.addDiaryEntry(entry);
+    App.diary.push(entry);
     toast("Revisionnage ajouté 🎟️", "success");
-    await App.refresh();
+    onDone ? onDone() : App.refreshSilently();
+    if (onDone) App.refreshSilently();
   } catch (err) {
     toast(err.message, "error");
   }
@@ -2493,8 +2631,17 @@ function bindLibraryEvents() {
     }
     if (e.target.classList.contains("remove-btn")) {
       e.stopPropagation();
-      await DB.removeLibraryItem(e.target.dataset.libId);
-      await App.refresh();
+      const card = e.target.closest(".poster-card");
+      const libId = e.target.dataset.libId;
+      card?.remove(); // retrait immédiat de la carte, avant même la requête
+      try {
+        await DB.removeLibraryItem(libId);
+        App.library = App.library.filter((l) => String(l.id) !== String(libId));
+        App.refreshSilently();
+      } catch (err) {
+        toast(err.message, "error");
+        App.route(); // en cas d'échec, on revient à un état cohérent
+      }
       return;
     }
     const card = e.target.closest(".poster-card");
@@ -2789,11 +2936,17 @@ function bindDiaryEvents() {
         { confirmLabel: "Supprimer", cancelLabel: "Annuler" }
       );
       if (!confirmed) return;
+      const ticketEl = deleteBtn.closest(".ticket-card"); // adapte si ta classe diffère
       try {
-        await DB.deleteAllEntriesForWork(App.session.user.id, Number(deleteBtn.dataset.tmdbId), deleteBtn.dataset.type);
+        const tmdbId = Number(deleteBtn.dataset.tmdbId);
+        const mediaType = deleteBtn.dataset.type;
+        await DB.deleteAllEntriesForWork(App.session.user.id, tmdbId, mediaType);
         await DB.removeLibraryItem(deleteBtn.dataset.libId);
+        App.diary = App.diary.filter((e) => !(String(e.tmdb_id) === String(tmdbId) && e.media_type === mediaType));
+        App.library = App.library.filter((l) => !(String(l.tmdb_id) === String(tmdbId) && l.media_type === mediaType));
+        ticketEl?.remove();
         toast("Ticket supprimé.", "success");
-        await App.refresh();
+        App.refreshSilently();
       } catch (err) {
         toast(err.message, "error");
       }

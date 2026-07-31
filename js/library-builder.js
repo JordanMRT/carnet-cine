@@ -14,9 +14,9 @@ const LibraryBuilder = {
 
   // Cache persistant (localStorage) pour éviter de refaire les appels TMDB
   // à CHAQUE ouverture de l'app — c'était le principal goulot d'étranglement
-  // au démarrage (un appel séquentiel par série du journal). TTL de 24h car
+  // au démarrage (un appel séquentiel par série du journal). TTL de 1H car
   // total_episodes/total_seasons peuvent évoluer pour une série en cours.
-  _META_TTL_MS: 24 * 60 * 60 * 1000,
+  _META_TTL_MS: 60 * 60 * 1000,
   _metaStorageKey(tmdbId) {
     return `ttb_show_meta_${tmdbId}`;
   },
@@ -27,7 +27,7 @@ const LibraryBuilder = {
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (!parsed || Date.now() - parsed.ts > this._META_TTL_MS) return null;
-      return { total_episodes: parsed.total_episodes, total_seasons: parsed.total_seasons };
+      return { total_episodes: parsed.total_episodes, total_seasons: parsed.total_seasons, status: parsed.status };
     } catch {
       return null;
     }
@@ -45,11 +45,17 @@ const LibraryBuilder = {
     }
   },
 
+  // Séries dont TMDB confirme qu'il n'y aura plus rien à venir. Une série
+  // "Returning Series"/"In Production"/"Planned" reste "en cours" même une
+  // fois tous les épisodes connus vus, le temps que la saison suivante soit
+  // annoncée — seule une série vraiment finie doit passer en "Terminé".
+  _ENDED_TMDB_STATUSES: new Set(["Ended", "Canceled"]),
+
   async _getShowMeta(tmdbId) {
     if (this._showMetaCache.has(tmdbId)) return this._showMetaCache.get(tmdbId);
 
     const persisted = this._readPersistedMeta(tmdbId);
-    if (persisted) {
+    if (persisted && persisted.status) {
       this._showMetaCache.set(tmdbId, persisted);
       return persisted;
     }
@@ -58,6 +64,7 @@ const LibraryBuilder = {
     const meta = {
       total_episodes: details.number_of_episodes ?? 0,
       total_seasons: details.number_of_seasons ?? 0,
+      status: details.status || null,
     };
     this._showMetaCache.set(tmdbId, meta);
     this._writePersistedMeta(tmdbId, meta);
@@ -68,6 +75,9 @@ const LibraryBuilder = {
     const diary = diaryOverride || (await DB.getDiary(userId));
     const existingStatus = new Map(
       existingLibrary.map((l) => [`${l.media_type}_${l.tmdb_id}`, l.status])
+    );
+    const existingWatchedEpisodes = new Map(
+      existingLibrary.map((l) => [`${l.media_type}_${l.tmdb_id}`, l.watched_episodes || 0])
     );
     const works = new Map();
 
@@ -151,6 +161,7 @@ const LibraryBuilder = {
           const meta = await this._getShowMeta(work.tmdb_id);
           work.total_episodes = meta.total_episodes;
           work.total_seasons = meta.total_seasons;
+          work.status_tmdb = meta.status;
         } catch {
           // TMDB indisponible pour ce show : on garde les valeurs par défaut
         }
@@ -168,10 +179,25 @@ const LibraryBuilder = {
         if (work.total_episodes > 0) {
           const cappedWatched = Math.min(work.watched_episodes, work.total_episodes);
           work.progress = Number(((cappedWatched / work.total_episodes) * 100).toFixed(1));
-          work.status =
-            work.watched_episodes >= work.total_episodes ? "completed" : "watching";
+          const showHasEnded = this._ENDED_TMDB_STATUSES.has(work.status_tmdb);
+          const caughtUp = work.watched_episodes >= work.total_episodes;
+          // Rattrapé mais la série tourne encore (pause entre deux saisons,
+          // saison suivante pas encore annoncée) : reste "En cours" plutôt
+          // que de basculer en "Terminé" — sinon elle disparaît de la vue
+          // "à venir" dès que de nouveaux épisodes sont annoncés.
+          work.status = caughtUp ? (showHasEnded ? "completed" : "watching") : "watching";
         }
       }
+
+      // "dropped" et "completed" sont des choix manuels de l'utilisateur
+      // (menu déroulant sur la fiche) : une fois posés, ils ne doivent pas
+      // être écrasés par le recalcul automatique — seul un nouveau
+      // changement de statut manuel, ou un nouveau visionnage (voir
+      // ci-dessous), doit les faire bouger.
+      const STICKY_STATUSES = new Set(["dropped", "completed"]);
+      const previousStatus = existingStatus.get(`${work.media_type}_${work.tmdb_id}`);
+      const previousWatchedEpisodes = existingWatchedEpisodes.get(`${work.media_type}_${work.tmdb_id}`) ?? 0;
+      const hasNewProgress = work.watched_episodes > previousWatchedEpisodes;
 
       library.push({
         user_id: work.user_id,
@@ -180,8 +206,8 @@ const LibraryBuilder = {
         title: work.title,
         poster_path: work.poster_path,
         status:
-          existingStatus.get(`${work.media_type}_${work.tmdb_id}`) === "dropped"
-            ? "dropped"
+          STICKY_STATUSES.has(previousStatus) && !hasNewProgress
+            ? previousStatus
             : work.status,
         first_watched_date: work.first_watched_date,
         last_watched_date: work.last_watched_date || work.first_watched_date,
