@@ -171,6 +171,30 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
   margin-bottom: .2rem;
   font-size: 16px;
 }
+
+.otp-input { display: flex; gap: 0.5rem; justify-content: center; margin: 0.4rem 0 0.6rem; }
+.otp-cell {
+  width: 2.6rem;
+  height: 3.2rem;
+  padding: 0;
+  text-align: center;
+  font-size: 1.25rem;
+  font-family: var(--font-mono);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--ink);
+  color: var(--cream);
+}
+.otp-cell:focus { outline: none; border-color: var(--mustard); box-shadow: 0 0 0 2px rgba(232, 163, 61, 0.25); }
+.otp-input--shake { animation: otp-shake 0.32s ease; }
+@keyframes otp-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
+}
+
 .auth-actions { display: flex; gap: 0.6rem; margin-top: 0.4rem; }
 .auth-actions .btn { flex: 1; }
 .auth-error { color: var(--coral); font-size: 0.85rem; min-height: 1.2em; margin-top: 0.8rem; }
@@ -244,6 +268,37 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
 
 .empty-state { color: var(--muted); text-align: center; padding: 3rem 1rem; font-size: 0.95rem; }
 .loading { color: var(--muted); padding: 2rem; text-align: center; }
+
+/* ---------- SKELETON SWAP ---------- */
+/* Remplace le texte "Chargement…" par des blocs qui pulsent, à la forme du
+   contenu à venir. Le remplacement par le vrai contenu se fait ensuite en un
+   simple innerHTML, sans fondu (vitesse 0ms) : pas de transition CSS ici. */
+.skeleton-block {
+  background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.12) 37%, rgba(255,255,255,0.05) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  border-radius: 8px;
+}
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.skeleton-line { height: 14px; margin-bottom: 10px; }
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 16px;
+}
+.skeleton-poster { aspect-ratio: 2 / 3; border-radius: 12px; }
+.skeleton-detail { display: flex; gap: 24px; flex-wrap: wrap; padding: 1rem 0; }
+.skeleton-detail .skeleton-poster { width: 220px; flex-shrink: 0; }
+.skeleton-detail-info { flex: 1; min-width: 220px; padding-top: 4px; }
+.skeleton-detail-info .skeleton-line:first-child { height: 26px; margin-bottom: 18px; }
+.skeleton-rows { padding: 0.5rem 0; }
+.skeleton-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+.skeleton-row .skeleton-line { margin-bottom: 0; flex: 1; }
+.skeleton-avatar { width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; }
+.skeleton-thumb { width: 90px; height: 51px; border-radius: 8px; flex-shrink: 0; }
 
 /* ---------- LIBRARY ---------- */
 .library-group { margin-bottom: 2.4rem; }
@@ -1452,7 +1507,7 @@ code {
   pointer-events: auto;
   width: 100%;
   max-width: 420px;
-  background: var(--bg-elevated);
+  /*background: var(--bg-elevated);*/
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -1461,6 +1516,8 @@ code {
   transform: translateY(120%);
   transition: transform 0.3s ease;
   margin-bottom: 5rem;
+  background: rgba(17, 20, 31, .8);
+  backdrop-filter: blur(5px);
 }
 .install-prompt--visible .install-prompt-card { transform: translateY(0); }
 .install-prompt-close {

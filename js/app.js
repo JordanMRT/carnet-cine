@@ -237,6 +237,26 @@ maybeShowInstallPrompt();
   async refresh() {
     await this.syncAndRoute();
   },
+
+  // Resynchronise le journal/bibliothèque/badges en arrière-plan, SANS
+  // appeler route() : la vue actuellement affichée n'est pas redessinée.
+  // À utiliser après une action rapide (coche, ajout…) où l'interface a
+  // déjà été mise à jour localement de façon optimiste.
+  async refreshSilently() {
+    try {
+      const userId = this.session.user.id;
+      const [library, diary] = await Promise.all([DB.getLibrary(userId), DB.getDiary(userId)]);
+      this.library = library;
+      this.diary = diary;
+      const rebuilt = await LibraryBuilder.rebuild(userId, this.diary, this.library);
+      const rebuiltKeys = new Set(rebuilt.map((w) => `${w.media_type}_${w.tmdb_id}`));
+      const untouched = this.library.filter((l) => !rebuiltKeys.has(`${l.media_type}_${l.tmdb_id}`));
+      this.library = [...rebuilt, ...untouched];
+      this.earnedBadges = await evaluateBadges(this.diary, this.library, userId);
+    } catch (err) {
+      console.warn("Synchronisation silencieuse impossible :", err);
+    }
+  },
 };
 
 let _mobileNavPillReady = false;
@@ -571,7 +591,7 @@ function authTemplate() {
           </div>
 
           <div id="step-code" style="display:none;">
-            <input type="text" id="auth-code" placeholder="Code reçu par email" />
+            <div id="auth-otp" class="otp-input"></div>
             <button type="submit" class="btn btn--primary-log">
               Valider le code
             </button>
@@ -590,6 +610,7 @@ function bindAuthEvents() {
   const form = qs("#auth-form");
   const errorEl = qs("#auth-error");
   const successEl = qs("#auth-success");
+  let otpControl = null;
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -598,6 +619,7 @@ function bindAuthEvents() {
     successEl.textContent = "";
 
     const btn = qs(authStep === "email" ? "#step-email button" : "#step-code button", form);
+    if (btn.disabled) return; // évite un double envoi (ex: auto-validation + clic manuel)
     btn.disabled = true;
 
     try {
@@ -617,6 +639,15 @@ function bindAuthEvents() {
         qs("#step-email").style.display = "none";
         qs("#step-code").style.display = "block";
 
+        // Cases du code : la saisie ET le collage du code reçu par email
+        // fonctionnent, avec validation automatique dès les 6 chiffres.
+        otpControl = createOtpInput(qs("#auth-otp"), {
+          length: 6,
+          mode: "numeric",
+          onComplete: () => form.requestSubmit(),
+        });
+        otpControl.focus();
+
         btn.disabled = false;
         btn.textContent = "Valider le code";
 
@@ -627,7 +658,7 @@ function bindAuthEvents() {
 
       // ---------------- STEP CODE ----------------
      if (authStep === "code") {
-  const code = qs("#auth-code").value.trim();
+  const code = otpControl.value.trim();
 
   btn.textContent = "Vérification…";
 
@@ -649,6 +680,13 @@ function bindAuthEvents() {
         authStep === "email"
           ? "Recevoir le code"
           : "Valider le code";
+
+      if (authStep === "code" && otpControl) {
+        const wrap = qs("#auth-otp");
+        wrap.classList.add("otp-input--shake");
+        setTimeout(() => wrap.classList.remove("otp-input--shake"), 350);
+        otpControl.clear();
+      }
     }
   });
 }
@@ -782,7 +820,7 @@ function bindSocialEvents() {
   let activeTab = "following";
 
   async function render() {
-    list.innerHTML = `<p class="loading">Chargement…</p>`;
+    list.innerHTML = skeletonRowsHTML(6, false);
     try {
       if (activeTab === "following") {
         App.following = await DB.getMyFollowingList(App.session.user.id);
@@ -1008,7 +1046,7 @@ const lastViewedSeason = {};
 async function renderShowDetail(param, gen) {
   const [type, id] = param.split("-");
   const view = qs("#view");
-  view.innerHTML = `<p class="loading">Chargement…</p>`;
+  view.innerHTML = skeletonDetailHTML();
   try {
     const data = type === "movie" ? await TMDB.getMovie(id) : await TMDB.getTv(id);
     const title = data.original_title || data.original_name || data.title || data.name;
@@ -1169,16 +1207,33 @@ if (typeof lucide !== "undefined") lucide.createIcons();
 
     qs("#status-select").addEventListener("change", async (e) => {
       const status = e.target.value;
+      const select = e.target;
+      const previousStatus = App.library.find(
+        (l) => String(l.tmdb_id) === String(id) && l.media_type === type
+      )?.status || "";
       if (!status) return;
 
-      if (status === "completed" && type === "tv") {
-        const markAll = await showConfirm(
-          "Marquer tous les épisodes de cette série comme vus ?",
-          { confirmLabel: "Oui, tout marquer", cancelLabel: "Non, juste le statut" }
-        );
-        if (markAll) {
-          toast("Marquage de tous les épisodes en cours…");
-          await markAllEpisodesWatched(id, data.number_of_seasons, title, data.poster_path, genreIds);
+      select.disabled = true;
+      try {
+        if (status === "completed" && type === "tv") {
+          const markAll = await showConfirm(
+            "Marquer tous les épisodes de cette série comme vus ?",
+            { confirmLabel: "Oui, tout marquer", cancelLabel: "Non, juste le statut" }
+          );
+          if (markAll) {
+            toast("Marquage de tous les épisodes en cours…");
+            await markAllEpisodesWatched(id, data.number_of_seasons, title, data.poster_path, genreIds);
+          } else {
+            await DB.upsertLibraryItem({
+              user_id: App.session.user.id,
+              tmdb_id: Number(id),
+              media_type: type,
+              title,
+              poster_path: data.poster_path,
+              status,
+              updated_at: new Date().toISOString(),
+            });
+          }
         } else {
           await DB.upsertLibraryItem({
             user_id: App.session.user.id,
@@ -1190,19 +1245,21 @@ if (typeof lucide !== "undefined") lucide.createIcons();
             updated_at: new Date().toISOString(),
           });
         }
-      } else {
-        await DB.upsertLibraryItem({
-          user_id: App.session.user.id,
-          tmdb_id: Number(id),
-          media_type: type,
-          title,
-          poster_path: data.poster_path,
-          status,
-          updated_at: new Date().toISOString(),
-        });
+        // Patch local immédiat de App.library : les autres vues (bibliothèque,
+        // stats) verront le bon statut sans attendre un aller-retour réseau.
+        const idx = App.library.findIndex((l) => String(l.tmdb_id) === String(id) && l.media_type === type);
+        const entry = { user_id: App.session.user.id, tmdb_id: Number(id), media_type: type, title, poster_path: data.poster_path, status };
+        if (idx >= 0) App.library[idx] = { ...App.library[idx], ...entry };
+        else App.library.push(entry);
+
+        toast("Bibliothèque mise à jour.", "success");
+        App.refreshSilently();
+      } catch (err) {
+        select.value = previousStatus; // on annule le changement optimiste du <select>
+        toast(err.message, "error");
+      } finally {
+        select.disabled = false;
       }
-      toast("Bibliothèque mise à jour.", "success");
-      await App.refresh();
     });
 
     if (type === "movie") {
@@ -1308,7 +1365,7 @@ if (canRate) {
 // ---------- PROFIL PUBLIC (autre utilisateur) ----------
 async function renderUserProfile(userId, gen) {
   const view = qs("#view");
-  view.innerHTML = `<p class="loading">Chargement…</p>`;
+  view.innerHTML = skeletonDetailHTML(3);
   try {
     const profile = await DB.getProfileById(userId);
     if (gen !== App._renderGen) return;
@@ -1506,7 +1563,7 @@ function isGuestAppearance(w) {
 // cohérent visuellement avec les fiches film/série.
 async function renderPersonDetail(id, gen) {
   const view = qs("#view");
-  view.innerHTML = `<p class="loading">Chargement…</p>`;
+  view.innerHTML = skeletonDetailHTML();
   try {
     const person = await TMDB.getPerson(id);
     const credits = person.combined_credits?.cast || [];
@@ -1743,7 +1800,7 @@ async function renderEpisodeDetail(param, gen) {
   const [tvId, seasonNumber, episodeNumber] = param.split("-");
 
   const view = qs("#view");
-  view.innerHTML = `<p class="loading">Chargement…</p>`;
+  view.innerHTML = skeletonDetailHTML(); 
 
   try {
     const show = await TMDB.getTv(tvId);
@@ -2063,7 +2120,7 @@ async function renderSeasonsInto(container, tvId, numberOfSeasons, title, poster
     return;
   }
   lastViewedSeason[tvId] = selectedSeason;
-  container.innerHTML = `<p class="loading">Chargement de la saison…</p>`;
+  container.innerHTML = skeletonRowsHTML(8); 
   try {
     const season = await TMDB.getSeason(tvId, selectedSeason);
     const watchCounts = {};
@@ -2125,7 +2182,7 @@ if (typeof lucide !== "undefined") lucide.createIcons();
   episode: Number(btn.dataset.episode),
   runtime_minutes: Number(btn.dataset.runtime) || null,
   seasonEpisodes: season.episodes || [],
-});
+}, btn);
       })
     );
 
@@ -2160,7 +2217,7 @@ if (typeof lucide !== "undefined") lucide.createIcons();
 
 // Coche rapide : ajoute une entrée si l'épisode n'est pas vu, ou retire
 // TOUTES les entrées (y compris les revisionnages) si on décoche.
-async function toggleEpisodeWatched(ctx) {
+async function toggleEpisodeWatched(ctx, btnEl) {
   const existing = App.diary.filter(
     (e) =>
       String(e.tmdb_id) === String(ctx.tmdb_id) &&
@@ -2200,6 +2257,10 @@ async function toggleEpisodeWatched(ctx) {
       }
 
       const today = new Date().toISOString().slice(0, 10);
+
+      // Mise à jour optimiste : la coche apparaît tout de suite, avant
+      // même que la requête Supabase ne parte.
+      if (btnEl) setEpisodeCheckVisual(btnEl, true);
 
       if (markPrevious) {
         await DB.bulkInsertDiary([
@@ -2259,13 +2320,25 @@ async function toggleEpisodeWatched(ctx) {
         toast("Épisode marqué comme vu 🎟️", "success");
       }
     } else {
+      if (btnEl) setEpisodeCheckVisual(btnEl, false);
       await DB.deleteDiaryEntries(existing.map((e) => e.id));
       toast("Épisode marqué comme non vu.", "success");
     }
-    await App.refresh();
+    App.refreshSilently();
   } catch (err) {
+    // Échec : on annule la coche optimiste posée juste avant.
+    if (btnEl) setEpisodeCheckVisual(btnEl, existing.length > 0);
     toast(err.message, "error");
   }
+}
+
+// Bascule visuellement une coche d'épisode sans toucher au réseau.
+function setEpisodeCheckVisual(btnEl, watched) {
+  btnEl.classList.toggle("is-watched", watched);
+  btnEl.innerHTML = watched ? '<i data-lucide="circle-check-big"></i>' : "";
+  btnEl.title = watched ? "Marquer comme non vu" : "Marquer comme vu";
+  btnEl.closest(".episode-row")?.classList.toggle("episode-row--watched", watched);
+  if (typeof lucide !== "undefined") lucide.createIcons();
 }
 
 // Retire uniquement le DERNIER visionnage d'un épisode (contrairement à
@@ -2432,7 +2505,7 @@ function bindLibraryEvents() {
 // ---------- À VENIR (calendrier) ----------
 async function renderUpcoming(gen) {
   const view = qs("#view");
-  view.innerHTML = `${libraryNavBar("upcoming")}<p class="loading">Chargement du calendrier…</p>`;
+  view.innerHTML = `${libraryNavBar("upcoming")}${skeletonGridHTML(8)}`;
 
   try {
     const today = new Date().toISOString().slice(0, 10);
@@ -2848,7 +2921,7 @@ function openBannerPicker() {
         <button class="picker-tab picker-tab--active" data-tab="backdrops">Fonds d'écran</button>
         ${hasEpisodes ? `<button class="picker-tab" data-tab="episodes">Épisodes</button>` : ""}
       </div>
-      <div id="banner-image-grid" class="picker-grid picker-grid--wide"><p class="loading">Chargement…</p></div>
+      <div id="banner-image-grid" class="picker-grid picker-grid--wide">${skeletonGridHTML(9)}</div>
     `;
     const grid = qs("#banner-image-grid", body);
 
@@ -2862,7 +2935,7 @@ function openBannerPicker() {
     let numberOfSeasons = null;
 
     async function loadBackdrops() {
-      grid.innerHTML = `<p class="loading">Chargement…</p>`;
+      grid.innerHTML = skeletonGridHTML(9);
       try {
         const images = await TMDB.getImages(mediaType, id);
         const backdrops = (images.backdrops || []).slice(0, 30);
@@ -2882,7 +2955,7 @@ function openBannerPicker() {
     }
 
     async function loadEpisodes(season) {
-      grid.innerHTML = `<p class="loading">Chargement…</p>`;
+      grid.innerHTML = skeletonGridHTML(9);
       try {
         if (numberOfSeasons === null) {
           const show = await TMDB.getTv(id);
@@ -2984,7 +3057,7 @@ function openAvatarPicker() {
   resultsEl.addEventListener("click", async (e) => {
     const showItem = e.target.closest(".picker-item--show");
     if (showItem) {
-      resultsEl.innerHTML = `<p class="loading">Chargement du casting…</p>`;
+      resultsEl.innerHTML = skeletonRowsHTML(6, false);
       try {
         const type = showItem.dataset.type;
         const title = showItem.dataset.title;

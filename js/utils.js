@@ -139,3 +139,151 @@ function hideSplash() {
     setTimeout(() => el.remove(), 700);
   }, remaining);
 }
+
+// ---------- SKELETON SWAP ----------
+// Génère des blocs placeholders animés à afficher pendant le chargement,
+// à la place du texte "Chargement…". Le remplacement par le contenu réel
+// est ensuite un simple innerHTML — pas d'animation de transition (0ms).
+const SKELETON_WIDTHS = [100, 93, 97, 88, 95, 91];
+function skeletonWidthFor(index, total) {
+  if (total > 1 && index === total - 1) return 62;
+  return SKELETON_WIDTHS[(index * 7 + 3) % SKELETON_WIDTHS.length];
+}
+
+function skeletonLinesHTML(count = 3) {
+  return Array.from({ length: count }, (_, i) => {
+    const w = skeletonWidthFor(i, count);
+    return `<div class="skeleton-block skeleton-line" style="width:${w}%"></div>`;
+  }).join("");
+}
+
+// Grille de vignettes (résultats de recherche, calendrier, sélecteur d'images…)
+function skeletonGridHTML(count = 10) {
+  return `<div class="skeleton-grid">${Array.from(
+    { length: count },
+    () => `<div class="skeleton-block skeleton-poster"></div>`
+  ).join("")}</div>`;
+}
+
+// Fiche détail (film, série, épisode, profil) : affiche + colonne de texte
+function skeletonDetailHTML(lines = 4) {
+  return `
+    <div class="skeleton-detail">
+      <div class="skeleton-block skeleton-poster"></div>
+      <div class="skeleton-detail-info">
+        <div class="skeleton-block skeleton-line" style="width:70%"></div>
+        ${skeletonLinesHTML(lines)}
+      </div>
+    </div>`;
+}
+
+// Liste de lignes (épisodes d'une saison, liste d'abonnements…)
+function skeletonRowsHTML(count = 6, withThumb = true) {
+  return `<div class="skeleton-rows">${Array.from({ length: count }, () => `
+    <div class="skeleton-row">
+      <div class="skeleton-block ${withThumb ? "skeleton-thumb" : "skeleton-avatar"}"></div>
+      <div class="skeleton-block skeleton-line" style="width:${40 + Math.random() * 40}%"></div>
+    </div>`).join("")}</div>`;
+}
+
+// ---------- OTP INPUT ----------
+// Cases séparées pour le code de connexion. Le collage du code reçu par
+// email fonctionne dans n'importe quelle case : il redistribue les
+// caractères sur toutes les cases suivantes.
+function createOtpInput(container, { length = 6, mode = "numeric", onComplete, onChange } = {}) {
+  const allow = mode === "numeric" ? /[0-9]/ : /[0-9a-zA-Z]/;
+  container.innerHTML = "";
+  const inputs = [];
+
+  const currentValue = () => inputs.map((i) => i.value).join("");
+
+  function emit() {
+    const value = currentValue();
+    onChange?.(value);
+    if (value.length === length && !value.includes("")) onComplete?.(value);
+  }
+
+  function focusAt(index) {
+    const target = inputs[Math.max(0, Math.min(length - 1, index))];
+    target?.focus();
+    target?.select();
+  }
+
+  function fillFrom(index, text) {
+    const chars = text.split("").filter((c) => allow.test(c));
+    if (!chars.length) return;
+    let cursor = index;
+    chars.forEach((c) => {
+      if (cursor >= length) return;
+      inputs[cursor].value = c;
+      cursor += 1;
+    });
+    emit();
+    focusAt(Math.min(cursor, length - 1));
+  }
+
+  for (let i = 0; i < length; i++) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.inputMode = mode === "numeric" ? "numeric" : "text";
+    input.maxLength = 1;
+    input.autocomplete = i === 0 ? "one-time-code" : "off";
+    input.autocapitalize = "off";
+    input.spellcheck = false;
+    input.className = "otp-cell";
+
+    input.addEventListener("input", (e) => {
+      const incoming = e.target.value.split("").filter((c) => allow.test(c));
+      if (!incoming.length) {
+        input.value = "";
+        return;
+      }
+      if (incoming.length === 1) {
+        input.value = incoming[0];
+        emit();
+        if (i < length - 1) focusAt(i + 1);
+        return;
+      }
+      // Plusieurs caractères d'un coup (arrive sur mobile sans passer par
+      // l'event "paste") : on les redistribue comme pour un collage.
+      input.value = "";
+      fillFrom(i, incoming.join(""));
+    });
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Backspace") {
+        if (input.value) {
+          input.value = "";
+          emit();
+          return;
+        }
+        if (i > 0) {
+          inputs[i - 1].value = "";
+          emit();
+          focusAt(i - 1);
+        }
+        return;
+      }
+      if (e.key === "ArrowLeft") { e.preventDefault(); focusAt(i - 1); }
+      if (e.key === "ArrowRight") { e.preventDefault(); focusAt(i + 1); }
+    });
+
+    input.addEventListener("paste", (e) => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData("text");
+      const clean = text.split("").filter((c) => allow.test(c)).join("");
+      fillFrom(clean.length >= length ? 0 : i, clean);
+    });
+
+    input.addEventListener("focus", () => input.select());
+
+    inputs.push(input);
+    container.appendChild(input);
+  }
+
+  return {
+    get value() { return currentValue(); },
+    clear() { inputs.forEach((i) => (i.value = "")); focusAt(0); },
+    focus() { focusAt(0); },
+  };
+}
