@@ -99,9 +99,20 @@ async function main() {
 
   const rows = [];
   const skipped = [];
+  const seasonsFailed = [];
 
   for (const seasonNumber of seasonNumbers) {
-    const season = await tmdbGet(`/tv/${seriesId}/season/${seasonNumber}`);
+    let season;
+    try {
+      season = await tmdbGet(`/tv/${seriesId}/season/${seasonNumber}`);
+    } catch (err) {
+      // Une saison en cours de mise à jour côté TMDB peut renvoyer une
+      // erreur (404 si la fiche saison n'est pas encore publiée, ou une
+      // erreur réseau transitoire) : on ne bloque pas la génération du SQL
+      // pour les autres saisons, on note juste celle-ci comme ignorée.
+      seasonsFailed.push(`Saison ${seasonNumber} — ${err.message}`);
+      continue;
+    }
     for (const ep of season.episodes || []) {
       if (!ep.air_date) {
         skipped.push(`S${seasonNumber}E${ep.episode_number} — pas de date de diffusion`);
@@ -134,7 +145,26 @@ async function main() {
 
   const sql = `-- Marque ${rows.length} épisode(s) de "${title}" (TMDB ${seriesId}) comme vus
 -- à leur date de diffusion. Idempotent : peut être relancé sans créer
--- de doublons (les épisodes déjà présents dans le journal sont ignorés).
+-- de doublons ni écraser les épisodes déjà à la bonne date.
+--
+-- 1) Corrige la watched_date des épisodes déjà présents en base (ex:
+--    cochés via l'app au moment où tu as regardé, donc datés à ce
+--    jour-là) pour les aligner sur leur date de diffusion réelle.
+--    Ne touche ni à la note, ni à la note écrite, ni au flag rewatch.
+update diary_entries d
+set watched_date = v.air_date, air_date = v.air_date
+from (values
+${valuesSQL}
+) as v(user_id, tmdb_id, title, poster_path, season, episode, air_date, genres, runtime_minutes)
+where d.user_id = v.user_id
+  and d.tmdb_id = ${seriesId}
+  and d.media_type = 'tv'
+  and d.season = v.season
+  and d.episode = v.episode
+  and coalesce(d.rewatch, false) = false
+  and d.watched_date is distinct from v.air_date;
+
+-- 2) Insère les épisodes qui n'ont encore aucune entrée en base.
 insert into diary_entries (user_id, tmdb_id, media_type, title, poster_path, season, episode, watched_date, rating, rewatch, note, genres, runtime_minutes, air_date)
 select v.user_id, ${seriesId}, 'tv', v.title, v.poster_path, v.season, v.episode, v.air_date, null, false, null, v.genres, v.runtime_minutes, v.air_date
 from (values
@@ -155,6 +185,11 @@ where not exists (
   if (skipped.length) {
     console.error(`\n${skipped.length} épisode(s) ignoré(s) :`);
     skipped.forEach((s) => console.error(`  - ${s}`));
+  }
+
+  if (seasonsFailed.length) {
+    console.error(`\n${seasonsFailed.length} saison(s) inaccessible(s) sur TMDB (ignorée(s), réessaie plus tard) :`);
+    seasonsFailed.forEach((s) => console.error(`  - ${s}`));
   }
 }
 

@@ -173,9 +173,9 @@ async getReleaseDates(id) {
   return promise;
 },
 
-  async getTv(id) {
+  async getTv(id, forceRefresh = false) {
 
-  if (this._tvCache.has(id)) {
+  if (!forceRefresh && this._tvCache.has(id)) {
     return this._tvCache.get(id);
   }
 

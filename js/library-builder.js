@@ -14,9 +14,18 @@ const LibraryBuilder = {
 
   // Cache persistant (localStorage) pour éviter de refaire les appels TMDB
   // à CHAQUE ouverture de l'app — c'était le principal goulot d'étranglement
-  // au démarrage (un appel séquentiel par série du journal). TTL de 30 minutes car
-  // total_episodes/total_seasons peuvent évoluer pour une série en cours.
-  _META_TTL_MS: 30 * 60 * 1000,
+  // au démarrage (un appel séquentiel par série du journal).
+  //
+  // TTL différencié : une série "Ended"/"Canceled" ne bougera plus jamais
+  // (total_episodes figé), on peut donc la garder longtemps en cache. Une
+  // série encore en cours ("Returning Series"/"In Production"/"Planned")
+  // peut voir TMDB lui ajouter des épisodes/saisons à tout moment : un TTL
+  // de 30 min y était trop long et provoquait un faux "100% — 144/144"
+  // pendant qu'une mise à jour TMDB était en cours (nouveaux épisodes
+  // visibles dans la grille, mais total_episodes du cache pas encore
+  // rafraîchi). D'où un TTL bien plus court pour ces séries-là.
+  _META_TTL_MS_ENDED: 24 * 60 * 60 * 1000,
+  _META_TTL_MS_ONGOING: 5 * 60 * 1000,
   _metaStorageKey(tmdbId) {
     return `ttb_show_meta_${tmdbId}`;
   },
@@ -26,7 +35,11 @@ const LibraryBuilder = {
       const raw = localStorage.getItem(this._metaStorageKey(tmdbId));
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      if (!parsed || Date.now() - parsed.ts > this._META_TTL_MS) return null;
+      if (!parsed) return null;
+      const ttl = this._ENDED_TMDB_STATUSES.has(parsed.status)
+        ? this._META_TTL_MS_ENDED
+        : this._META_TTL_MS_ONGOING;
+      if (Date.now() - parsed.ts > ttl) return null;
       return { total_episodes: parsed.total_episodes, total_seasons: parsed.total_seasons, status: parsed.status, poster_path: parsed.poster_path ?? null, };
     } catch {
       return null;
@@ -51,16 +64,41 @@ const LibraryBuilder = {
   // annoncée — seule une série vraiment finie doit passer en "Terminé".
   _ENDED_TMDB_STATUSES: new Set(["Ended", "Canceled"]),
 
-  async _getShowMeta(tmdbId) {
-    if (this._showMetaCache.has(tmdbId)) return this._showMetaCache.get(tmdbId);
+  async _getShowMeta(tmdbId, watchedEpisodes = 0) {
+    // Le cache mémoire (session) est vérifié en premier, mais il ne doit
+    // PAS court-circuiter le garde-fou anti-staleness : sans ce check, une
+    // série déjà résolue plus tôt dans la session (donc déjà en mémoire)
+    // ignorerait complètement le TTL et le forceRefresh ci-dessous, et
+    // aucune revérification TMDB n'aurait jamais lieu tant que la page
+    // n'est pas rechargée.
+    if (this._showMetaCache.has(tmdbId)) {
+      const cached = this._showMetaCache.get(tmdbId);
+      const memCacheLooksSuspicious =
+        !this._ENDED_TMDB_STATUSES.has(cached.status) &&
+        cached.total_episodes > 0 &&
+        watchedEpisodes >= cached.total_episodes;
+      if (!memCacheLooksSuspicious) return cached;
+    }
 
     const persisted = this._readPersistedMeta(tmdbId);
-    if (persisted && persisted.status) {
+    // Une série "rattrapée" d'après le cache (watched >= total mis en cache)
+    // et pas encore marquée "Ended"/"Canceled" est le cas exact où une
+    // valeur périmée fait le plus de dégâts : elle affiche 100% alors que
+    // TMDB est peut-être en train d'ajouter de nouveaux épisodes. Dans ce
+    // cas précis, on ignore le cache et on revérifie auprès de TMDB, même
+    // si le TTL n'est pas encore expiré.
+    const cacheLooksSuspicious =
+      persisted &&
+      !this._ENDED_TMDB_STATUSES.has(persisted.status) &&
+      persisted.total_episodes > 0 &&
+      watchedEpisodes >= persisted.total_episodes;
+
+    if (persisted && persisted.status && !cacheLooksSuspicious) {
       this._showMetaCache.set(tmdbId, persisted);
       return persisted;
     }
 
-    const details = await TMDB.getTv(tmdbId);
+    const details = await TMDB.getTv(tmdbId, /* forceRefresh */ true);
     const meta = {
       total_episodes: details.number_of_episodes ?? 0,
       total_seasons: details.number_of_seasons ?? 0,
@@ -159,7 +197,7 @@ const LibraryBuilder = {
     await Promise.all(
       tvWorks.map(async (work) => {
         try {
-          const meta = await this._getShowMeta(work.tmdb_id);
+          const meta = await this._getShowMeta(work.tmdb_id, work.watched_episodes);
           work.total_episodes = meta.total_episodes;
           work.total_seasons = meta.total_seasons;
           work.status_tmdb = meta.status;
