@@ -1,8 +1,8 @@
 {
-  "version": "2026-07-31",
+  "version": "2026-08-01",
   "highlights": [
     "What's new ?",
-    "Correction de l'affichage et du chargement des écrans et de bugs mineurs.",
-    "Formation du personnel pour qu'ils arrêtent de manger tout le popcorn."
+    "Nouvel affichage des statistiques : l'activité des 12 derniers mois est affichée grâce à une courbe avec le nombre d'entrées.",
+    "Remplissage du rayon confiserie et de la machine à soda"
   ]
 }

@@ -97,20 +97,72 @@ const Stats = {
 
   renderMonthlyChart(monthly) {
     const entries = Object.entries(monthly);
-    const max = Math.max(...entries.map(([, v]) => v), 1);
-    const bars = entries
-      .map(([key, val]) => {
-        const [y, m] = key.split("-");
-        const label = new Date(y, m - 1, 1).toLocaleDateString("fr-FR", { month: "short" });
-        const h = Math.round((val / max) * 100);
-        return `
-          <div class="chart-bar-wrap">
-            <div class="chart-bar" style="height:${h}%" title="${val} entrées"></div>
-            <span class="chart-bar-label">${label}</span>
-          </div>`;
+    const data = entries.map(([key, val]) => {
+      const [y, m] = key.split("-");
+      const label = new Date(y, m - 1, 1).toLocaleDateString("fr-FR", { month: "short" });
+      return { val, label };
+    });
+
+    const colW = 86;
+    const padL = 18, padR = 20, padTop = 40, padBottom = 34;
+    const pointInset = 10;
+    const n = data.length;
+    const plotW = colW * (n - 1);
+    const W = padL + plotW + padR;
+    const H = 210;
+    const plotH = H - padTop - padBottom;
+
+    const sqrtScale = (v) => Math.sqrt(v);
+    const realMax = Math.max(...data.map((d) => d.val), 1);
+    const domainMax = sqrtScale(realMax) * 1.3;
+
+    const x0 = padL + pointInset, x1 = W - padR - pointInset;
+    const stepX = n > 1 ? (x1 - x0) / (n - 1) : 0;
+
+    const points = data.map((d, i) => ({
+      ...d,
+      x: x0 + stepX * i,
+      y: padTop + plotH - (sqrtScale(d.val) / domainMax) * plotH,
+    }));
+
+    const linePath = points
+      .map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+      .join(" ");
+
+    // Grille purement décorative : intervalles réguliers de la hauteur du
+    // graphique, sans lien avec les valeurs réelles (les chiffres exacts
+    // sont déjà portés par chaque point, l'axe n'a plus besoin de graduer).
+    const gridlines = [0.25, 0.5, 0.75, 1]
+      .map((frac) => {
+        const y = padTop + plotH - frac * plotH;
+        return `<line class="chart-grid" x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}"></line>`;
       })
       .join("");
-    return `<div class="chart chart--monthly">${bars}</div>`;
+
+    // Placement adaptatif : le chiffre est toujours au-dessus du point par
+    // défaut (le plus lisible), sauf s'il n'y a pas la place en haut du
+    // cadre (pic proche du sommet) — dans ce cas il bascule en-dessous,
+    // sans jamais pouvoir chevaucher la ligne des noms de mois.
+    const labelGap = 12, topLimit = 14, bottomLimit = H - padBottom - 8;
+    const pointsSvg = points
+      .map((p) => {
+        const aboveY = p.y - labelGap;
+        const labelY = aboveY >= topLimit ? aboveY : Math.min(p.y + labelGap + 4, bottomLimit);
+        return `
+          <circle class="chart-dot" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4"></circle>
+          <text class="chart-point-value" x="${p.x.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle">${p.val}</text>
+          <text class="chart-month-label" x="${p.x.toFixed(1)}" y="${H - 10}" text-anchor="middle">${p.label}</text>`;
+      })
+      .join("");
+
+    return `
+      <div class="chart chart--monthly">
+        <svg class="chart-svg" viewBox="0 0 ${W} ${H}" width="${W}">
+          ${gridlines}
+          <path class="chart-line" d="${linePath}"></path>
+          ${pointsSvg}
+        </svg>
+      </div>`;
   },
 
   // topGenres: [[label, count], ...]
