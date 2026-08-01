@@ -14,9 +14,9 @@ const LibraryBuilder = {
 
   // Cache persistant (localStorage) pour éviter de refaire les appels TMDB
   // à CHAQUE ouverture de l'app — c'était le principal goulot d'étranglement
-  // au démarrage (un appel séquentiel par série du journal). TTL de 1H car
+  // au démarrage (un appel séquentiel par série du journal). TTL de 30 minutes car
   // total_episodes/total_seasons peuvent évoluer pour une série en cours.
-  _META_TTL_MS: 60 * 60 * 1000,
+  _META_TTL_MS: 30 * 60 * 1000,
   _metaStorageKey(tmdbId) {
     return `ttb_show_meta_${tmdbId}`;
   },
@@ -27,7 +27,7 @@ const LibraryBuilder = {
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (!parsed || Date.now() - parsed.ts > this._META_TTL_MS) return null;
-      return { total_episodes: parsed.total_episodes, total_seasons: parsed.total_seasons, status: parsed.status };
+      return { total_episodes: parsed.total_episodes, total_seasons: parsed.total_seasons, status: parsed.status, poster_path: parsed.poster_path ?? null, };
     } catch {
       return null;
     }
@@ -64,6 +64,7 @@ const LibraryBuilder = {
     const meta = {
       total_episodes: details.number_of_episodes ?? 0,
       total_seasons: details.number_of_seasons ?? 0,
+      poster_path: details.poster_path ?? null,
       status: details.status || null,
     };
     this._showMetaCache.set(tmdbId, meta);
@@ -162,6 +163,9 @@ const LibraryBuilder = {
           work.total_episodes = meta.total_episodes;
           work.total_seasons = meta.total_seasons;
           work.status_tmdb = meta.status;
+          if (meta.poster_path) {
+  work.poster_path = meta.poster_path;
+}
         } catch {
           // TMDB indisponible pour ce show : on garde les valeurs par défaut
         }
