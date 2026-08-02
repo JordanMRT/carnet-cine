@@ -1172,7 +1172,18 @@ async function renderShowDetail(param, gen) {
             ${data.vote_average > 0 ? `<p class="tmdb-rating"><i data-lucide="star"></i> ${data.vote_average.toFixed(1)}/10 sur TMDB · ${data.vote_count.toLocaleString("fr-FR")} votes</p>` : ""}
             ${
               type === "tv"
-                ? `<p class="show-detail-status"><span class="status-badge">${TV_STATUS_LABELS[data.status] || data.status}</span><br>${data.next_episode_to_air ? `Prochain épisode le ${formatDate(data.next_episode_to_air.air_date)}` : ""}</p>`
+                ? `<p class="show-detail-status"><span class="status-badge">${TV_STATUS_LABELS[data.status] || data.status}</span><br>${
+                    data.next_episode_to_air &&
+                    !App.diary.some(
+                      (e) =>
+                        String(e.tmdb_id) === String(id) &&
+                        e.media_type === "tv" &&
+                        e.season === data.next_episode_to_air.season_number &&
+                        e.episode === data.next_episode_to_air.episode_number
+                    )
+                      ? `Prochain épisode le ${formatDate(data.next_episode_to_air.air_date)}`
+                      : ""
+                  }</p>`
                 : ""
             }
             <div class="overview-wrapper">
@@ -2690,19 +2701,30 @@ async function renderUpcoming(gen) {
           const startSeason = watchedSeasons.length ? Math.max(...watchedSeasons) : 1;
 
           let nextEpisode = null;
+          let upcomingEpisode = null;
           const lastSeasonToCheck = Math.min(startSeason + 1, data.number_of_seasons || startSeason);
           for (let s = startSeason; s <= lastSeasonToCheck; s++) {
             const season = await TMDB.getSeason(show.tmdb_id, s);
-            const found = (season.episodes || []).find(
-              (ep) => !watchedKeys.has(`${s}x${ep.episode_number}`) && ep.air_date && ep.air_date <= today
-            );
-            if (found) {
-              nextEpisode = { ...found, season_number: s };
-              break;
+            const episodes = season.episodes || [];
+
+            if (!nextEpisode) {
+              const found = episodes.find(
+                (ep) => !watchedKeys.has(`${s}x${ep.episode_number}`) && ep.air_date && ep.air_date <= today
+              );
+              if (found) nextEpisode = { ...found, season_number: s };
             }
+
+            if (!upcomingEpisode) {
+              const found = episodes.find(
+                (ep) => !watchedKeys.has(`${s}x${ep.episode_number}`) && ep.air_date && ep.air_date > today
+              );
+              if (found) upcomingEpisode = { ...found, season_number: s };
+            }
+
+            if (nextEpisode && upcomingEpisode) break;
           }
 
-          return { show, toWatch: nextEpisode, upcoming: data.next_episode_to_air || null };
+          return { show, toWatch: nextEpisode, upcoming: upcomingEpisode };
         } catch {
           return { show, toWatch: null, upcoming: null };
         }
