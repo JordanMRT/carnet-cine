@@ -520,4 +520,31 @@ async upsertLibraryItems(items) {
       );
     if (error) throw error;
   },
+
+  // ---------- NOTIFICATIONS PUSH ----------
+  async savePushSubscription(userId, subscription) {
+    const json = subscription.toJSON();
+    const { error } = await supabaseClient
+      .from("push_subscriptions")
+      .upsert(
+        { user_id: userId, endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth },
+        { onConflict: "user_id,endpoint" }
+      );
+    if (error) throw error;
+  },
+
+  async deletePushSubscription(endpoint) {
+    const { error } = await supabaseClient.from("push_subscriptions").delete().eq("endpoint", endpoint);
+    if (error) throw error;
+  },
+
+  async hasPushSubscription(userId) {
+    const { data, error } = await supabaseClient
+      .from("push_subscriptions")
+      .select("id")
+      .eq("user_id", userId)
+      .limit(1);
+    if (error) throw error;
+    return (data || []).length > 0;
+  },
 };

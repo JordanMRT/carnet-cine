@@ -8,9 +8,7 @@ const INSTALL_SESSION_DISMISS_KEY = "carnetcine_install_dismissed_session";
 
 function detectInstallPlatform() {
   const ua = navigator.userAgent;
-  const isStandalone =
-    window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
-  if (isStandalone) return null; // déjà installé
+  if (isStandalone()) return null; // déjà installé
 
   const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
   const isAndroid = /Android/.test(ua);

@@ -186,6 +186,66 @@ function skeletonRowsHTML(count = 6, withThumb = true) {
     </div>`).join("")}</div>`;
 }
 
+// Lignes d'épisodes d'une saison, au gabarit exact de .episode-row
+// (mêmes classes que le vrai composant : la largeur de la vignette suit
+// automatiquement la colonne de grille 100px/72px définie dans le CSS,
+// pas de dimension dupliquée à maintenir à la main).
+function skeletonEpisodeRowsHTML(count = 8) {
+  return `<div class="episode-list">${Array.from({ length: count }, () => `
+    <div class="episode-row">
+      <div class="skeleton-block skeleton-episode-thumb"></div>
+      <div>
+        <div class="skeleton-block skeleton-line" style="width:${50 + Math.random() * 30}%"></div>
+        <div class="skeleton-block skeleton-line" style="width:${25 + Math.random() * 20}%;margin-top:0.4rem;"></div>
+      </div>
+      <div class="skeleton-block skeleton-episode-check"></div>
+    </div>`).join("")}</div>`;
+}
+
+// Grille de portraits circulaires (sélecteur de photo d'acteur)
+function skeletonActorGridHTML(count = 8) {
+  return `<div class="picker-grid">${Array.from({ length: count }, () => `
+    <div class="picker-item picker-item--actor">
+      <div class="skeleton-block skeleton-actor-photo"></div>
+      <div class="skeleton-block skeleton-line" style="width:70%;margin:0.3rem auto 0;"></div>
+    </div>`).join("")}</div>`;
+}
+
+
+// ---------- RECHERCHES RÉCENTES ----------
+// Stockées en local (pas de sync entre appareils), onglet "Films & séries"
+// uniquement. 5 maximum, les plus anciennes sont retirées automatiquement.
+const RECENT_SEARCHES_KEY = "ttb-recent-searches";
+const RECENT_SEARCHES_MAX = 5;
+
+function getRecentSearches() {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function addRecentSearch(query) {
+  const q = query.trim();
+  if (!q) return;
+  const list = getRecentSearches().filter((item) => item.toLowerCase() !== q.toLowerCase());
+  list.unshift(q);
+  localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(list.slice(0, RECENT_SEARCHES_MAX)));
+}
+
+function recentSearchChipsHTML() {
+  const recent = getRecentSearches();
+  if (!recent.length) return "";
+  return `
+    <div class="recent-searches">
+      <span class="recent-searches-label">Recherches récentes</span>
+      <div class="recent-searches-chips">
+        ${recent.map((q) => `<button class="recent-search-chip" data-query="${escapeHtml(q)}">${escapeHtml(q)}</button>`).join("")}
+      </div>
+    </div>`;
+}
+
 // ---------- OTP INPUT ----------
 // Cases séparées pour le code de connexion. Le collage du code reçu par
 // email fonctionne dans n'importe quelle case : il redistribue les
@@ -286,4 +346,11 @@ function createOtpInput(container, { length = 6, mode = "numeric", onComplete, o
     clear() { inputs.forEach((i) => (i.value = "")); focusAt(0); },
     focus() { focusAt(0); },
   };
+}
+
+// ---------- PWA ----------
+// display-mode: standalone n'est pas fiable sur iOS, d'où navigator.standalone
+// en complément. Utilisé pour l'install prompt et les notifications push.
+function isStandalone() {
+  return window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
 }

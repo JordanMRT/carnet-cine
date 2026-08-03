@@ -1,4 +1,4 @@
-const SW_VERSION = "2026-08-01-1"; // ⚠️ change cette valeur à chaque déploiement
+const SW_VERSION = "2026-08-03-2"; // ⚠️ change cette valeur à chaque déploiement
 const CACHE_NAME = `timetobinge-${SW_VERSION}`;
 
 // App shell : fichiers statiques du projet, mis en cache dès l'installation
@@ -26,7 +26,9 @@ const APP_SHELL = [
   "./js/library-builder.js",
   "./js/runtime-enrichment.js",
   "./js/ticket-share.js",
+  "./js/themes.js",
   "./js/install-prompt.js",
+  "./js/notification-prompt.js",
   "./js/update-prompt.js",
   "./js/app.js",
 ];
@@ -86,6 +88,48 @@ self.addEventListener("fetch", (event) => {
       // Cache-first pour un affichage instantané, avec revalidation en
       // arrière-plan (stale-while-revalidate) pour rester à jour.
       return cached || network;
+    })
+  );
+});
+
+// ---------- NOTIFICATIONS PUSH ----------
+// Payload envoyé par l'Edge Function (bloc 6) : { title, body, url }
+// où url est le hash de route à ouvrir au clic (ex: "#/show/movie-560").
+self.addEventListener("push", (event) => {
+  let payload = { title: "Time To Binge", body: "" };
+  try {
+    payload = event.data.json();
+  } catch {
+    // payload absent ou non-JSON : on garde les valeurs par défaut
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: "./ttb-logo-ticketcorn-flat.png",
+      badge: "./ttb-logo-ticketcorn-flat.png",
+      data: { url: payload.url || "" },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const hash = event.notification.data?.url || "";
+  const fullUrl = new URL(hash, self.registration.scope).href;
+
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
+      // Une fenêtre TTB est déjà ouverte : on la réutilise, sans recharger
+      // la page (juste changer de route, comme une navigation normale).
+      for (const client of windowClients) {
+        if ("focus" in client) {
+          client.postMessage({ type: "NOTIFICATION_NAVIGATE", hash });
+          return client.focus();
+        }
+      }
+      // Sinon, nouvelle fenêtre directement sur la bonne fiche.
+      return clients.openWindow(fullUrl);
     })
   );
 });

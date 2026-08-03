@@ -18,6 +18,7 @@ const App = {
   _renderGen: 0,
 
   async init() {
+    loadSavedTheme();
     let initialRenderDone = false;
     DB.onAuthChange((session) => {
       const wasLoggedIn = !!this.session;
@@ -45,6 +46,12 @@ const App = {
 
 // Service Worker
 if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    if (event.data?.type === "NOTIFICATION_NAVIGATE" && event.data.hash) {
+      location.hash = event.data.hash;
+    }
+  });
+
   navigator.serviceWorker.register("./sw.js").then((registration) => {
     // Vérifie immédiatement si une mise à jour existe
     registration.update();
@@ -90,6 +97,7 @@ maybeShowInstallPrompt();
       await this.syncAndRoute();
       if (typeof lucide !== "undefined") lucide.createIcons();
       bindShellEvents();
+      maybeShowNotificationPrompt();
     } finally {
       this._rendering = false;
       hideSplash();
@@ -495,8 +503,71 @@ async function runImport(e, kind) {
   e.target.value = "";
 }
 
+async function renderNotificationsSection() {
+  const zone = qs("#notifications-toggle-zone");
+  if (!zone) return;
+
+  if (!isStandalone()) {
+    zone.innerHTML = `<p class="import-hint">Disponible une fois Time To Binge installé sur ton écran d'accueil.</p>`;
+    return;
+  }
+  if (!("Notification" in window) || !("PushManager" in window)) {
+    zone.innerHTML = `<p class="import-hint">Les notifications ne sont pas prises en charge sur cet appareil.</p>`;
+    return;
+  }
+  if (Notification.permission === "denied") {
+    zone.innerHTML = `<p class="import-hint">Les notifications sont bloquées au niveau de ton appareil. Il faut les réactiver dans ses réglages pour les utiliser ici.</p>`;
+    return;
+  }
+
+  let subscribed = false;
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    subscribed = !!(await registration.pushManager.getSubscription());
+  } catch {
+    // tant pis, on repart de l'hypothèse "non activé"
+  }
+
+  zone.innerHTML = `
+    <div class="privacy-toggle" id="notifications-toggle" role="switch" aria-checked="${subscribed ? "true" : "false"}">
+      <span class="episode-check-toggle ${subscribed ? "is-watched" : ""}">${subscribed ? '<i data-lucide="circle-check-big"></i>' : ""}</span>
+      <span>Prévenu·e des sorties de ma watchlist</span>
+    </div>`;
+  if (typeof lucide !== "undefined") lucide.createIcons();
+
+  qs("#notifications-toggle").addEventListener("click", async (e) => {
+    const el = e.currentTarget;
+    const currentlyOn = el.getAttribute("aria-checked") === "true";
+
+    if (currentlyOn) {
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription();
+        if (subscription) {
+          await DB.deletePushSubscription(subscription.endpoint);
+          await subscription.unsubscribe();
+        }
+        toast("Notifications désactivées.", "success");
+      } catch {
+        toast("Impossible de désactiver les notifications pour l'instant.", "error");
+      }
+    } else {
+      await subscribeToPushNotifications();
+    }
+    renderNotificationsSection(); // reflète l'état réel après l'action
+  });
+}
 
 function bindSettingsEvents() {
+  renderNotificationsSection();
+
+  qsa(".theme-swatch:not([disabled])").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      applyTheme(btn.dataset.themeId);
+      App.route();
+    })
+  );
+
   qs("#import-shows-btn")?.addEventListener("click", () => qs("#import-shows-input").click());
   qs("#import-movies-btn")?.addEventListener("click", () => qs("#import-movies-input").click());
 
@@ -692,6 +763,11 @@ function bindAuthEvents() {
 }
 
 // ---------- SEARCH ----------
+// Conserve la dernière recherche "Films & séries" en mémoire, pour éviter
+// de tout réafficher à vide (et de refaire l'appel TMDB) quand on revient
+// sur #/search après avoir consulté une fiche.
+const SearchState = { query: "", html: "" };
+
 function searchTemplate() {
   return `
     <div class="search-view">
@@ -712,33 +788,53 @@ function bindSearchEvents() {
   let activeTab = "content";
   let myFollowing = {}; // { followedId: status } — chargé une fois, mis à jour localement ensuite
 
+  // Restaure la recherche précédente (retour depuis une fiche) ; sinon,
+  // si le champ est vide, propose les recherches récentes.
+  if (SearchState.query) {
+    input.value = SearchState.query;
+    results.innerHTML = SearchState.html;
+  } else {
+    results.innerHTML = recentSearchChipsHTML();
+  }
+
   function setTab(tab) {
     activeTab = tab;
     tabs.forEach((t) => t.classList.toggle("search-tab--active", t.dataset.tab === tab));
     input.placeholder = tab === "users" ? "Cherche un pseudo…" : "Cherche une série ou un film…";
-    results.innerHTML = "";
+    results.innerHTML = tab === "content" ? recentSearchChipsHTML() : "";
     input.value = "";
     input.focus();
   }
 
   tabs.forEach((t) => t.addEventListener("click", () => setTab(t.dataset.tab)));
 
+  async function runContentSearch(q) {
+    try {
+      const items = await TMDB.searchMulti(q);
+      results.innerHTML = items.map(posterCard).join("") || emptyState("Aucun résultat.");
+    } catch (err) {
+      results.innerHTML = emptyState("Erreur TMDB — vérifie ta clé API dans js/config.js.");
+    }
+    SearchState.query = q;
+    SearchState.html = results.innerHTML;
+  }
+
   input.addEventListener(
     "input",
     debounce(async () => {
       const q = input.value.trim();
       if (q.length < 2) {
-        results.innerHTML = "";
+        if (activeTab === "content") {
+          results.innerHTML = recentSearchChipsHTML();
+          SearchState.query = SearchState.html = "";
+        } else {
+          results.innerHTML = "";
+        }
         return;
       }
 
       if (activeTab === "content") {
-        try {
-          const items = await TMDB.searchMulti(q);
-          results.innerHTML = items.map(posterCard).join("") || emptyState("Aucun résultat.");
-        } catch (err) {
-          results.innerHTML = emptyState("Erreur TMDB — vérifie ta clé API dans js/config.js.");
-        }
+        await runContentSearch(q);
         return;
       }
 
@@ -758,8 +854,16 @@ function bindSearchEvents() {
   );
 
   results.addEventListener("click", async (e) => {
+    const chip = e.target.closest(".recent-search-chip");
+    if (chip) {
+      input.value = chip.dataset.query;
+      await runContentSearch(chip.dataset.query);
+      return;
+    }
+
     const card = e.target.closest(".poster-card");
     if (card) {
+      addRecentSearch(input.value);
       location.hash = `#/show/${card.dataset.type}-${card.dataset.id}`;
       return;
     }
@@ -1100,7 +1204,7 @@ async function renderShowDetail(param, gen) {
       if (type !== "movie") return "";
       return watchCount > 0
         ? `
-        <span class="episode-watch-info"><i data-lucide="circle-check-big"></i> vu${watchCount > 1 ? ` • ${watchCount} visionnages` : ""}</span>
+        <span class="movie-watch-info"><i data-lucide="circle-check-big"></i> vu${watchCount > 1 ? ` • ${watchCount} visionnages` : ""}</span>
         <button id="movie-rewatch-btn" class="btn btn--accent">
           Rewatch <i data-lucide="refresh-cw"></i>
         </button>
@@ -1579,11 +1683,11 @@ function otherUserTicketCard(item) {
         </div>
         <div class="ticket-row ticket-row--meta">
           <span class="ticket-date">${formatDate(item.last_watched_date)}</span>
-          ${rewatchCount > 1 ? `<span class="ticket-tag">×${rewatchCount}</span>` : ""}
         </div>
         ${item.avg_rating != null ? `<div class="ticket-stars">${stars(item.avg_rating)}</div>` : ""}
         ${item.last_note ? `<p class="ticket-note">${escapeHtml(item.last_note)}</p>` : ""}
         <div class="ticket-barcode">${barcodeSVG(ticketId + item.last_watched_date)}</div>
+        ${rewatchCount > 1 ? `<div class="ticket-rewatch-stamp"><span class="ticket-rewatch-stamp-label">VISIONNAGES</span><span class="ticket-rewatch-stamp-count">×${rewatchCount}</span></div>` : ""}
       </div>
     </div>
   `;
@@ -2264,7 +2368,7 @@ async function renderSeasonsInto(container, tvId, numberOfSeasons, title, poster
     return;
   }
   lastViewedSeason[tvId] = selectedSeason;
-  container.innerHTML = skeletonRowsHTML(8); 
+  container.innerHTML = skeletonEpisodeRowsHTML(8);
   try {
     const season = await TMDB.getSeason(tvId, selectedSeason);
     const watchCounts = {};
@@ -2922,10 +3026,10 @@ function journalTicketCard(item) {
         </div>
         <div class="ticket-row ticket-row--meta">
           <span class="ticket-date">${formatDate(item.last_watched_date)}</span>
-          ${rewatchCount > 1 ? `<span class="ticket-tag">×${rewatchCount}</span>` : ""}
         </div>
         ${item.avg_rating != null ? `<div class="ticket-stars">${stars(item.avg_rating)}</div>` : ""}
         <div class="ticket-barcode">${barcodeSVG(ticketId + item.last_watched_date)}</div>
+        ${rewatchCount > 1 ? `<div class="ticket-rewatch-stamp"><span class="ticket-rewatch-stamp-label">VISIONNÉ</span><span class="ticket-rewatch-stamp-count">${rewatchCount} x</span></div>` : ""}
       
       <div class="ticket-actions">
         <button class="ticket-delete" data-lib-id="${item.id}" data-tmdb-id="${item.tmdb_id}" data-type="${item.media_type}" title="Supprimer">✕</button>
@@ -3256,7 +3360,7 @@ function openAvatarPicker() {
   resultsEl.addEventListener("click", async (e) => {
     const showItem = e.target.closest(".picker-item--show");
     if (showItem) {
-      resultsEl.innerHTML = skeletonRowsHTML(6, false);
+      resultsEl.innerHTML = skeletonActorGridHTML(6);
       try {
         const type = showItem.dataset.type;
         const title = showItem.dataset.title;
@@ -3391,6 +3495,30 @@ function settingsTemplate() {
             <option value="private" ${App.profile?.visibility === "private" ? "selected" : ""}>Privé (personne)</option>
           </select>
         </div>
+      </section>
+
+      <section class="stats-section-themes">
+        <h2>Thème</h2>
+        <div class="theme-grid">
+          ${THEMES.map((t) => {
+            const unlocked = isThemeUnlocked(t);
+            const active = (localStorage.getItem("ttb-theme") || "default") === t.id;
+            return `
+              <button class="theme-swatch ${active ? "theme-swatch--active" : ""}" data-theme-id="${t.id}" ${!unlocked ? "disabled" : ""}>
+                <span class="theme-swatch-colors">
+                  <span style="background:${t.mustard}"></span>
+                  <span style="background:${t.coral}"></span>
+                  <span style="background:${t.sage}"></span>
+                </span>
+                <span class="theme-swatch-name">${!unlocked ? '<i data-lucide="lock"></i> ' : ""}${t.name}</span>
+              </button>`;
+          }).join("")}
+        </div>
+      </section>
+
+      <section class="stats-section-notifications">
+        <h2>Notifications</h2>
+        <div id="notifications-toggle-zone"></div>
       </section>
 
       <section class="stats-section-import">

@@ -55,9 +55,14 @@ const TicketShare = {
     const elevated = "#23263a";
     const ink = "#0e0f14";
     const cream = "#f2efe9";
-    const mustard = "#e8a33d";
     const border = "#34374d";
     const muted = "#8a8ea3";
+    // Seul l'accent change avec le thème actif ; le canvas ne peut pas lire
+    // var(--mustard) directement, donc on résout la valeur au moment du
+    // dessin plutôt qu'à l'écriture du fichier.
+    const rootStyles = getComputedStyle(document.documentElement);
+    const mustard = rootStyles.getPropertyValue("--mustard").trim() || "#e8a33d";
+    const coral = rootStyles.getPropertyValue("--coral").trim() || "#e8636b";
 
     ctx.fillStyle = elevated;
     roundRectPath(ctx, 0, 0, W, H, 18);
@@ -100,13 +105,13 @@ const TicketShare = {
     let y = 56;
 
     await Promise.all([
-      document.fonts.load('700 26px "Bricolage Grotesque"').catch(() => {}),
-      document.fonts.load('600 15px "IBM Plex Mono"').catch(() => {}),
-      document.fonts.load('400 14px "IBM Plex Mono"').catch(() => {}),
+      document.fonts.load('700 26px "Unbounded"').catch(() => {}),
+      document.fonts.load('600 15px "Nunito Sans"').catch(() => {}),
+      document.fonts.load('400 14px "Nunito Sans"').catch(() => {}),
     ]);
 
     ctx.fillStyle = cream;
-    ctx.font = '700 26px "Bricolage Grotesque", sans-serif';
+    ctx.font = '700 26px "Unbounded", sans-serif';
     y = wrapText(ctx, item.title || "", textX, y, maxTextWidth, 30, 2);
     y += 18;
 
@@ -115,20 +120,32 @@ const TicketShare = {
         ? `SÉRIE · ${item.total_episodes || item.watched_episodes} ÉPISODES`
         : "FILM";
     ctx.fillStyle = mustard;
-    ctx.font = '600 14px "IBM Plex Mono", monospace';
+    ctx.font = '600 14px "Nunito Sans", monospace';
     ctx.fillText(sub, textX, y);
     y += 28;
 
     ctx.fillStyle = muted;
-    ctx.font = '400 14px "IBM Plex Mono", monospace';
+    ctx.font = '400 14px "Nunito Sans", monospace';
     ctx.fillText(formatDate(item.last_watched_date), textX, y);
 
     if (item.media_type === "movie" && item.watch_count > 1) {
-      const label = `×${item.watch_count}`;
-      ctx.font = '600 14px "IBM Plex Mono", monospace';
-      const lw = ctx.measureText(label).width;
-      ctx.fillStyle = mustard;
-      ctx.fillText(label, W - 24 - lw, y);
+      ctx.save();
+      ctx.translate(W - 62, H - 56);
+      ctx.rotate((-11 * Math.PI) / 180);
+      ctx.globalAlpha = 0.85;
+      ctx.strokeStyle = coral;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, 30, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = coral;
+      ctx.textAlign = "center";
+      ctx.font = '700 9px "Nunito Sans", monospace';
+      ctx.fillText("VISIONNÉ", 0, -4);
+      ctx.font = '700 16px "Unbounded", sans-serif';
+      ctx.fillText(`${item.watch_count} x`, 0, 14);
+      ctx.textAlign = "left";
+      ctx.restore();
     }
     y += 32;
 
@@ -145,7 +162,7 @@ const TicketShare = {
     drawBarcode(ctx, `${item.tmdb_id}${item.last_watched_date}`, textX, y, 130, 22, muted);
 
     ctx.fillStyle = muted;
-    ctx.font = '600 11px "IBM Plex Mono", monospace';
+    ctx.font = '600 11px "Nunito Sans", monospace';
     ctx.fillText("TIME TO BINGE 🎟️", textX, H - 20);
 
     return canvas;

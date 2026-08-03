@@ -13,3 +13,7 @@ entrypoint = "./functions/tvdb-proxy/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/delete-account/index.ts"
+[functions.send-release-notifications]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/send-release-notifications/index.ts"
