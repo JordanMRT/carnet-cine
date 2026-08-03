@@ -1343,7 +1343,7 @@ if (typeof lucide !== "undefined") lucide.createIcons();
             runtime_minutes: data.runtime || null,
             air_date: data.release_date || null,
           });
-          toast(rewatch ? "Nouveau visionnage ajouté 🎟️" : "Marqué comme vu 🎟️", "success");
+          toast(rewatch ? "Nouveau visionnage ajouté 🎟️" : "Marqué comme vu 🎟️", "ticket");
           refreshShowDetailUI();
           App.refreshSilently();
         } catch (err) {
@@ -1826,7 +1826,7 @@ async function toggleWorkWatched({ tmdbId, type, title, posterPath, genreIds, ai
           runtime_minutes: null,
           air_date: airDate || null,
         });
-        toast("Marqué comme vu 🎟️", "success");
+        toast("Marqué comme vu 🎟️", "ticket");
       }
     } else {
       const inLibrary = App.library.find(
@@ -2362,6 +2362,10 @@ if (typeof lucide !== "undefined") lucide.createIcons();
 // Coche rapide : ajoute une entrée si l'épisode n'est pas vu, ou retire
 // TOUTES les entrées (y compris les revisionnages) si on décoche.
 async function toggleEpisodeWatched(ctx, btnEl) {
+  // Hors du bloc try, pour pouvoir annuler la mise à jour optimiste des
+  // épisodes rattrapés en cas d'échec de la requête (cf. catch plus bas).
+  let catchUpListEl = null;
+  let catchUpEpisodes = [];
   const existing = App.diary.filter(
     (e) =>
       String(e.tmdb_id) === String(ctx.tmdb_id) &&
@@ -2407,6 +2411,19 @@ async function toggleEpisodeWatched(ctx, btnEl) {
       if (btnEl) setEpisodeCheckVisual(btnEl, true);
 
       if (markPrevious) {
+        // Même mise à jour optimiste, étendue à toutes les lignes des
+        // épisodes précédents rattrapés — sinon seule la ligne cliquée
+        // se coche à l'écran tant qu'on ne revient pas sur la saison
+        // (App.refreshSilently() met à jour les données, pas le DOM).
+        catchUpListEl = btnEl?.closest(".episode-list");
+        catchUpEpisodes = missingEpisodes;
+        catchUpEpisodes.forEach((ep) => {
+          const rowBtn = catchUpListEl?.querySelector(
+            `.episode-check-toggle[data-episode="${ep.episode_number}"]`
+          );
+          if (rowBtn) setEpisodeCheckVisual(rowBtn, true);
+        });
+
         await DB.bulkInsertDiary([
           ...missingEpisodes.map((ep) => ({
             user_id: App.session.user.id,
@@ -2442,7 +2459,7 @@ async function toggleEpisodeWatched(ctx, btnEl) {
           },
         ]);
 
-        toast(`${missingEpisodes.length + 1} épisodes marqués comme vus 🎟️`, "success");
+        toast(`${missingEpisodes.length + 1} épisodes marqués comme vus 🎟️`, "ticket");
       } else {
         await DB.addDiaryEntry({
           user_id: App.session.user.id,
@@ -2461,7 +2478,7 @@ async function toggleEpisodeWatched(ctx, btnEl) {
           air_date: ctx.air_date || null,
         });
 
-        toast("Épisode marqué comme vu 🎟️", "success");
+        toast("Épisode marqué comme vu 🎟️", "ticket");
       }
     } else {
       if (btnEl) setEpisodeCheckVisual(btnEl, false);
@@ -2470,8 +2487,15 @@ async function toggleEpisodeWatched(ctx, btnEl) {
     }
     App.refreshSilently();
   } catch (err) {
-    // Échec : on annule la coche optimiste posée juste avant.
+    // Échec : on annule la coche optimiste posée juste avant, y compris
+    // celle des épisodes précédents rattrapés le cas échéant.
     if (btnEl) setEpisodeCheckVisual(btnEl, existing.length > 0);
+    catchUpEpisodes.forEach((ep) => {
+      const rowBtn = catchUpListEl?.querySelector(
+        `.episode-check-toggle[data-episode="${ep.episode_number}"]`
+      );
+      if (rowBtn) setEpisodeCheckVisual(rowBtn, false);
+    });
     toast(err.message, "error");
   }
 }
@@ -2535,7 +2559,7 @@ async function addEpisodeRewatch(ctx, onDone) {
     };
     await DB.addDiaryEntry(entry);
     App.diary.push(entry);
-    toast("Revisionnage ajouté 🎟️", "success");
+    toast("Revisionnage ajouté 🎟️", "ticket");
     onDone ? onDone() : App.refreshSilently();
     if (onDone) App.refreshSilently();
   } catch (err) {
