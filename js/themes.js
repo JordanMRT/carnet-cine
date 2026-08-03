@@ -7,9 +7,10 @@
 // ============================================
 
 const THEMES = [
-  { id: "default", name: "Time To Binge", mustard: "#e8a33d", coral: "#e8636b", sage: "#7c9885", unlock: null },
-  { id: "braise", name: "Braise", mustard: "#e8a33d", coral: "#d64545", sage: "#8f5a3d", unlock: null },
-  { id: "embruns", name: "Embruns", mustard: "#5fb0a8", coral: "#e8636b", sage: "#4a7c94", unlock: null },
+  { id: "default", name: "Time To Binge", mustard: "#e8a33d", coral: "#e8636b", sage: "#7c9885", bg: "#1b1d2a", bgelevated: "#23263a", unlock: null },
+  { id: "braise", name: "Braise", mustard: "#e8a33d", coral: "#d64545", sage: "#8f5a3d", bg: "#130c08", bgelevated: "#201a17", unlock: null },
+  { id: "embruns", name: "Embruns", mustard: "#5fb0a8", coral: "#e8636b", sage: "#4a7c94", bg: "#0d161a", bgelevated: "#2a3e48", unlock: null },
+  { id: "twentyonepilots", name: "Twenty One Pilots", mustard: "#fde61e", coral: "#e6413b", sage: "#d2cfbd", bg: "#202020", bgelevated: "#873132", unlock: null },
   // Exemple de thème verrouillé — à remplacer par les vrais thèmes-films.
   { id: "oiseau_nuit", name: "Oiseau de nuit", mustard: "#5b7fd6", coral: "#8f6fd6", sage: "#2f4a6e", unlock: { badgeKey: "night_owl", tier: 1 } },
 ];
@@ -26,6 +27,8 @@ function applyTheme(themeId) {
   root.setProperty("--mustard", theme.mustard);
   root.setProperty("--coral", theme.coral);
   root.setProperty("--sage", theme.sage);
+  root.setProperty("--bg", theme.bg);
+  root.setProperty("--bg-elevated", theme.bgelevated);
   localStorage.setItem("ttb-theme", theme.id);
 }
 
