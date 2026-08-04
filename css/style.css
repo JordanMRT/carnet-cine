@@ -7,6 +7,7 @@
   --bg: #1b1d2a;
   --bg-elevated: #23263a;
   --ink: #0e0f14;
+  --topbar: var(--ink);
   --cream: #f2efe9;
   --mustard: #e8a33d;
   --coral: #e8636b;
@@ -105,7 +106,7 @@ button, input, select, textarea { font-family: inherit; }
   align-items: center;
   gap: 2rem;
   padding: 1rem 2rem;
-  background: var(--ink);
+  background: var(--topbar);
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
