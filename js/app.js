@@ -1687,7 +1687,7 @@ function otherUserTicketCard(item) {
         ${item.avg_rating != null ? `<div class="ticket-stars">${stars(item.avg_rating)}</div>` : ""}
         ${item.last_note ? `<p class="ticket-note">${escapeHtml(item.last_note)}</p>` : ""}
         <div class="ticket-barcode">${barcodeSVG(ticketId + item.last_watched_date)}</div>
-        ${rewatchCount > 1 ? `<div class="ticket-rewatch-stamp"><span class="ticket-rewatch-stamp-label">VISIONNAGES</span><span class="ticket-rewatch-stamp-count">×${rewatchCount}</span></div>` : ""}
+        ${rewatchCount > 1 ? `<div class="ticket-rewatch-stamp"><span class="ticket-rewatch-stamp-label">VISIONNÉ</span><span class="ticket-rewatch-stamp-count">${rewatchCount} x</span></div>` : ""}
       </div>
     </div>
   `;

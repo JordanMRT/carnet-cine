@@ -69,15 +69,32 @@ serve(async (req) => {
         const watchedKeys = new Set((entries || []).map((e) => `${e.season}x${e.episode}`));
         const startSeason = entries?.length ? Math.max(...entries.map((e) => e.season || 1)) : 1;
 
-        const season = await tmdb(`/tv/${show.tmdb_id}/season/${startSeason}`);
-        const nextEp = (season.episodes || []).find(
-          (ep: any) => !watchedKeys.has(`${startSeason}x${ep.episode_number}`) && ep.air_date === today
-        );
+        // On vérifie aussi la saison suivante : si une nouvelle saison démarre
+        // avant que le journal ne contienne le moindre épisode vu dedans,
+        // startSeason resterait sinon bloqué sur l'ancienne saison et la
+        // sortie du jour passerait inaperçue (cf. renderUpcoming côté client).
+        const showData = await tmdb(`/tv/${show.tmdb_id}`);
+        const lastSeasonToCheck = Math.min(startSeason + 1, showData.number_of_seasons || startSeason);
+
+        let nextEp: any = null;
+        let nextEpSeason = startSeason;
+        for (let s = startSeason; s <= lastSeasonToCheck; s++) {
+          const season = await tmdb(`/tv/${show.tmdb_id}/season/${s}`);
+          const found = (season.episodes || []).find(
+            (ep: any) => !watchedKeys.has(`${s}x${ep.episode_number}`) && ep.air_date === today
+          );
+          if (found) {
+            nextEp = found;
+            nextEpSeason = s;
+            break;
+          }
+        }
+
         if (nextEp) {
           notifications.push({
             title: `${show.title} — épisode ${nextEp.episode_number} sorti aujourd'hui 🎬`,
-            body: `Saison ${startSeason}${nextEp.name ? " · " + nextEp.name : ""}`,
-            url: `#/episode/${show.tmdb_id}-${startSeason}-${nextEp.episode_number}`,
+            body: `Saison ${nextEpSeason}${nextEp.name ? " · " + nextEp.name : ""}`,
+            url: `#/episode/${show.tmdb_id}-${nextEpSeason}-${nextEp.episode_number}`,
           });
         }
       } catch (e) {
