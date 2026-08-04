@@ -168,11 +168,13 @@ function skeletonGridHTML(count = 10) {
 // Fiche détail (film, série, épisode, profil) : affiche + colonne de texte
 function skeletonDetailHTML(lines = 4) {
   return `
-    <div class="skeleton-detail">
-      <div class="skeleton-block skeleton-poster"></div>
-      <div class="skeleton-detail-info">
-        <div class="skeleton-block skeleton-line" style="width:70%"></div>
-        ${skeletonLinesHTML(lines)}
+    <div class="show-detail">
+      <div class="show-detail-overlay">
+        <div class="skeleton-block show-detail-poster" style="aspect-ratio:2/3;"></div>
+        <div class="show-detail-info">
+          <div class="skeleton-block skeleton-line" style="width:70%;height:26px;margin-bottom:18px;"></div>
+          ${skeletonLinesHTML(lines)}
+        </div>
       </div>
     </div>`;
 }

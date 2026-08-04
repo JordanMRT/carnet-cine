@@ -11,8 +11,21 @@ const THEMES = [
   { id: "braise", name: "Braise", mustard: "#e8a33d", coral: "#d64545", sage: "#8f5a3d", bg: "#130c08", bgelevated: "#201a17", unlock: null },
   { id: "embruns", name: "Embruns", mustard: "#5fb0a8", coral: "#e8636b", sage: "#4a7c94", bg: "#0d161a", bgelevated: "#2a3e48", unlock: null },
   { id: "twentyonepilots", name: "Twenty One Pilots", mustard: "#fde61e", coral: "#e6413b", sage: "#d2cfbd", bg: "#202020", bgelevated: "#873132", unlock: null },
-  // Exemple de thème verrouillé — à remplacer par les vrais thèmes-films.
-  { id: "oiseau_nuit", name: "Oiseau de nuit", mustard: "#5b7fd6", coral: "#8f6fd6", sage: "#2f4a6e", unlock: { badgeKey: "night_owl", tier: 1 } },
+
+  // ---------- Thèmes films (accès libre) ----------
+  { id: "avatar", name: "Avatar", mustard: "#4dd9c0", coral: "#d94dc9", sage: "#2f6b4f", bg: "#071410", bgelevated: "#0f2620", unlock: null },
+  { id: "barbie", name: "Barbie", mustard: "#ff6fb0", coral: "#ff3d94", sage: "#7fe0c9", bg: "#1a0f18", bgelevated: "#2b1826", unlock: null },
+  { id: "drive", name: "Drive", mustard: "#f2c94c", coral: "#ff2e6e", sage: "#2ec4d6", bg: "#0a0a14", bgelevated: "#16162b", unlock: null },
+  { id: "amelie_poulain", name: "Amélie Poulain", mustard: "#e0a339", coral: "#c23b3b", sage: "#4f7a52", bg: "#1a100a", bgelevated: "#2b1c12", unlock: null },
+  { id: "la_la_land", name: "La La Land", mustard: "#ff9d4d", coral: "#e0559c", sage: "#5b6bab", bg: "#14102a", bgelevated: "#241b42", unlock: null },
+  { id: "blade_runner", name: "Blade Runner", mustard: "#ff9a3d", coral: "#ff3d7a", sage: "#2fd4c7", bg: "#0c0906", bgelevated: "#1f150d", unlock: null },
+
+  // ---------- Thèmes verrouillés (liés à un badge) ----------
+  { id: "oiseau_nuit", name: "Oiseau de nuit", mustard: "#5b7fd6", coral: "#8f6fd6", sage: "#2f4a6e", bg: "#0a0e1a", bgelevated: "#161d33", unlock: { badgeKey: "night_owl", tier: 1 } },
+  { id: "vhs", name: "VHS", mustard: "#e0883d", coral: "#d6486b", sage: "#4f9e8f", bg: "#170f0a", bgelevated: "#2b1f16", unlock: { badgeKey: "rewatcher", tier: 1 } },
+  { id: "critique_severe", name: "Critique sévère", mustard: "#a8d8e8", coral: "#e85d5d", sage: "#4a6b7a", bg: "#080d12", bgelevated: "#141f28", unlock: { badgeKey: "harsh_critic", tier: 1 } },
+  { id: "coeur_tendre", name: "Cœur tendre", mustard: "#f0a878", coral: "#e87ba0", sage: "#a389b0", bg: "#1c1015", bgelevated: "#2e1c24", unlock: { badgeKey: "soft_heart", tier: 1 } },
+  { id: "reveillon", name: "Réveillon", mustard: "#e0b84d", coral: "#c23b45", sage: "#2f6b45", bg: "#0a1410", bgelevated: "#16281f", unlock: { badgeKey: "holiday_binge", tier: 1 } },
 ];
 
 function isThemeUnlocked(theme) {
@@ -27,8 +40,10 @@ function applyTheme(themeId) {
   root.setProperty("--mustard", theme.mustard);
   root.setProperty("--coral", theme.coral);
   root.setProperty("--sage", theme.sage);
-  root.setProperty("--bg", theme.bg);
-  root.setProperty("--bg-elevated", theme.bgelevated);
+  // Filet de sécurité : si un futur thème oublie bg/bgelevated, on retombe
+  // sur le thème par défaut plutôt que de casser tout le fond de l'app.
+  root.setProperty("--bg", theme.bg || THEMES[0].bg);
+  root.setProperty("--bg-elevated", theme.bgelevated || THEMES[0].bgelevated);
   localStorage.setItem("ttb-theme", theme.id);
 }
 

@@ -185,7 +185,7 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
   background: var(--ink);
   color: var(--cream);
 }
-.otp-cell:focus { outline: none; border-color: var(--mustard); box-shadow: 0 0 0 2px rgba(232, 163, 61, 0.25); }
+.otp-cell:focus { outline: none; border-color: var(--mustard); box-shadow: 0 0 0 2px color-mix(in srgb, var(--mustard) 25%, transparent); }
 .otp-input--shake { animation: otp-shake 0.32s ease; }
 @keyframes otp-shake {
   0%, 100% { transform: translateX(0); }
@@ -290,10 +290,7 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
   gap: 16px;
 }
 .skeleton-poster { aspect-ratio: 2 / 3; border-radius: 12px; }
-.skeleton-detail { display: flex; gap: 24px; flex-wrap: wrap; padding: 1rem 0; }
-.skeleton-detail .skeleton-poster { width: 220px; flex-shrink: 0; }
-.skeleton-detail-info { flex: 1; min-width: 220px; padding-top: 4px; }
-.skeleton-detail-info .skeleton-line:first-child { height: 26px; margin-bottom: 18px; }
+
 .skeleton-rows { padding: 0.5rem 0; }
 .skeleton-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
 .skeleton-row .skeleton-line { margin-bottom: 0; flex: 1; }
@@ -702,7 +699,7 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   align-items: center;
 }
 .episode-row:hover { border-color: var(--mustard); }
-.episode-row--watched { border-color: var(--sage); background: rgba(124, 152, 133, 0.1); }
+.episode-row--watched { border-color: var(--sage); background: color-mix(in srgb, var(--sage) 10%, transparent); }
 .episode-num { font-family: var(--font-mono); color: var(--mustard); font-size: 0.85rem; }
 .episode-date { font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); }
 
@@ -804,7 +801,7 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   cursor: pointer;
 }
 .filmography-item:hover { border-color: var(--mustard); }
-.filmography-item--watched { border-color: var(--sage); background: rgba(124, 152, 133, 0.1); }
+.filmography-item--watched { border-color: var(--sage); background: color-mix(in srgb, var(--sage) 10%, transparent); }
 .filmography-poster {
   width: 60px;
   aspect-ratio: 2/3;
@@ -866,7 +863,7 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   font-family: var(--font-mono);
   font-size: 0.72rem;
   color: var(--mustard);
-  background: rgba(232, 163, 61, 0.12);
+  background: color-mix(in srgb, var(--mustard) 12%, transparent);
   padding: 0.1em 0.5em;
   border-radius: 999px;
 }
@@ -874,7 +871,7 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   font-family: var(--font-mono);
   font-size: 0.8rem;
   color: var(--sage);
-  background: rgba(124, 152, 133, 0.12);
+  background: color-mix(in srgb, var(--sage) 12%, transparent);
   padding: 0.3em 0.7em;
   border-radius: 999px;
   align-self: center;
@@ -1692,7 +1689,7 @@ code {
   bottom: 4px;
   left: 0;
   border-radius: 999px;
-  background: rgba(232, 163, 61, 0.15);
+  background: color-mix(in srgb, var(--mustard) 15%, transparent);
   pointer-events: none;
   z-index: 0;
 }
@@ -1786,7 +1783,7 @@ code {
 
 .episode-row--watched {
     border-color: var(--sage);
-    background: rgba(124, 152, 133, 0.1);
+    background: color-mix(in srgb, var(--sage) 10%, transparent);
 }
 
 .episode-watch-info {
