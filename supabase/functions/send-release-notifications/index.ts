@@ -77,6 +77,29 @@ serve(async (req) => {
     return new Response("Non autorisé", { status: 401 });
   }
 
+  // Chemin de test : envoie une notification factice à un seul
+  // utilisateur, sans toucher au scan des watchlists ni à la table
+  // anti-doublon. Jamais utilisé par le cron.
+  const body = await req.json().catch(() => ({}));
+  if (body.test && body.userId) {
+    const { data: testSubs } = await supabase
+      .from("push_subscriptions").select("*").eq("user_id", body.userId);
+    if (!testSubs?.length) return new Response("Aucun abonnement pour cet utilisateur", { status: 404 });
+
+    const payload = {
+      title: "Ceci est un test 🦋",
+      body: "Si cette notification apparaît, alors toute la logique fonctionne.",
+      url: "#/upcoming",
+    };
+    for (const sub of testSubs) {
+      await webpush.sendNotification(
+        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+        JSON.stringify(payload)
+      );
+    }
+    return new Response("Test envoyé", { status: 200 });
+  }
+
   const { dateStr: today, hour: nowHour, minute: nowMinute } = nowInParis();
   const { data: subs } = await supabase.from("push_subscriptions").select("*");
   const userIds = [...new Set((subs || []).map((s) => s.user_id))];
@@ -100,7 +123,7 @@ serve(async (req) => {
         if (data.release_date === today) {
           candidates.push({
             title: `${movie.title} est sorti aujourd'hui 🎬`,
-            body: "C'est dans ta watchlist — direction la fiche ?",
+            body: "C'est dans ta watchlist ! Direction la fiche ?",
             url: `#/show/movie-${movie.tmdb_id}`,
             mediaType: "movie", tmdbId: String(movie.tmdb_id), season: null, episode: null,
           });
@@ -146,7 +169,7 @@ serve(async (req) => {
         }
 
         candidates.push({
-          title: `${show.title} — épisode ${nextEp.episode_number} sorti aujourd'hui 🎬`,
+          title: `${show.title} - L'épisode ${nextEp.episode_number} est sorti 📺`,
           body: `Saison ${nextEpSeason}${nextEp.name ? " · " + nextEp.name : ""}`,
           url: `#/episode/${show.tmdb_id}-${nextEpSeason}-${nextEp.episode_number}`,
           mediaType: "tv", tmdbId: String(show.tmdb_id), season: nextEpSeason, episode: nextEp.episode_number,

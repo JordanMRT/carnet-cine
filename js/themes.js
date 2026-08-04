@@ -23,7 +23,7 @@ const THEMES = [
   // ---------- Thèmes verrouillés (liés à un badge) ----------
   { id: "oiseau_nuit", name: "Oiseau de nuit", mustard: "#5b7fd6", coral: "#8f6fd6", sage: "#2f4a6e", bg: "#0a0e1a", bgelevated: "#161d33", topbar: "#06080f", unlock: { badgeKey: "night_owl", tier: 1 } },
   { id: "vhs", name: "VHS", mustard: "#e0883d", coral: "#d6486b", sage: "#4f9e8f", bg: "#170f0a", bgelevated: "#2b1f16", topbar: "#100a07", unlock: { badgeKey: "rewatcher", tier: 1 } },
-  { id: "givre", name: "Givre", mustard: "#a8d8e8", coral: "#e85d5d", sage: "#4a6b7a", bg: "#080d12", bgelevated: "#141f28", topbar: "#05080b", unlock: { badgeKey: "harsh_critic", tier: 1 } },
+  { id: "critique_severe", name: "Critique Sévère", mustard: "#a8d8e8", coral: "#e85d5d", sage: "#4a6b7a", bg: "#080d12", bgelevated: "#141f28", topbar: "#05080b", unlock: { badgeKey: "harsh_critic", tier: 1 } },
   { id: "coeur_tendre", name: "Cœur tendre", mustard: "#f0a878", coral: "#e87ba0", sage: "#a389b0", bg: "#1c1015", bgelevated: "#2e1c24", topbar: "#120a0d", unlock: { badgeKey: "soft_heart", tier: 1 } },
   { id: "reveillon", name: "Réveillon", mustard: "#e0b84d", coral: "#c23b45", sage: "#2f6b45", bg: "#0a1410", bgelevated: "#16281f", topbar: "#060d0a", unlock: { badgeKey: "holiday_binge", tier: 1 } },
 ];
