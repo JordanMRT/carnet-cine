@@ -19,6 +19,16 @@ const App = {
 
   async init() {
     loadSavedTheme();
+
+    // Ouverte depuis une notification : on insère une entrée d'accueil
+    // avant la fiche ciblée, pour que le retour arrière (swipe) ramène
+    // dans l'app plutôt que sur l'onglet vide en dessous (cf. sw.js).
+    if (location.search.includes("src=notification")) {
+      const deepLinkHash = location.hash || "#/journal";
+      history.replaceState(null, "", location.pathname); // page d'accueil, sans hash ni paramètre
+      location.hash = deepLinkHash; // repousse la vraie destination par-dessus
+    }
+
     let initialRenderDone = false;
     DB.onAuthChange((session) => {
       const wasLoggedIn = !!this.session;

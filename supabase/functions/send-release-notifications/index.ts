@@ -169,7 +169,7 @@ serve(async (req) => {
         }
 
         candidates.push({
-          title: `${show.title} - L'épisode ${nextEp.episode_number} est sorti 📺`,
+          title: `${show.title}: l'épisode ${nextEp.episode_number} est sorti 📺`,
           body: `Saison ${nextEpSeason}${nextEp.name ? " · " + nextEp.name : ""}`,
           url: `#/episode/${show.tmdb_id}-${nextEpSeason}-${nextEp.episode_number}`,
           mediaType: "tv", tmdbId: String(show.tmdb_id), season: nextEpSeason, episode: nextEp.episode_number,

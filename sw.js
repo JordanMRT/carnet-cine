@@ -1,4 +1,4 @@
-const SW_VERSION = "2026-08-04-3"; // ⚠️ change cette valeur à chaque déploiement
+const SW_VERSION = "2026-08-04-4"; // ⚠️ change cette valeur à chaque déploiement
 const CACHE_NAME = `timetobinge-${SW_VERSION}`;
 
 // App shell : fichiers statiques du projet, mis en cache dès l'installation
@@ -116,7 +116,10 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const hash = event.notification.data?.url || "";
-  const fullUrl = new URL(hash, self.registration.scope).href;
+  // Le paramètre src=notification permet à l'app de détecter ce cas
+  // précis au démarrage, pour insérer une entrée d'accueil avant la
+  // fiche ciblée dans l'historique (cf. js/app.js).
+  const fullUrl = new URL(`?src=notification${hash}`, self.registration.scope).href;
 
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
