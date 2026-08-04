@@ -1107,7 +1107,7 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 .import-hint { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.8rem; }
 .import-actions { display: flex; gap: 0.8rem; flex-wrap: wrap; }
 .stats-section-genres { margin-bottom: 2.4rem; }
-.stats-section-danger, .stats-section-import, .stats-section-ratings, .stats-section-following, .stats-section-themes { margin-bottom: 2.4rem; }
+.stats-section-danger, .stats-section-import, .stats-section-ratings, .stats-section-following, .stats-section-themes, .stats-section-notifications { margin-bottom: 2.4rem; }
 .stats-section-danger {border-top: 1px dashed var(--coral); padding-top: 1.4rem;}
 /*.cha rt--monthly{
     display: flex;
@@ -1136,7 +1136,7 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 /* STATS&PRIVACY */
 
 .stats-section-privacy { margin-bottom: 2.4rem; border-top: 1px dashed var(--muted); padding-top: 1.4rem; }
-.stats-section-import, .stats-section-themes {border-top: 1px dashed var(--muted); padding-top: 1.4rem;}
+.stats-section-import, .stats-section-themes, .stats-section-notifications {border-top: 1px dashed var(--muted); padding-top: 1.4rem;}
 .privacy-toggle {
   display: flex;
   align-items: center;
