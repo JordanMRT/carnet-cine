@@ -1833,7 +1833,7 @@ code {
     right:12px;
     bottom:12px;
     height:70px;
-    background:rgba(14,15,20,.72);
+    background: color-mix(in srgb, var(--bg) 75%, transparent);
     backdrop-filter:blur(5px);
     border:1px solid var(--border);
     border-radius:100px;

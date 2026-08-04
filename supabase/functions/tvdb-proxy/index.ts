@@ -73,6 +73,30 @@ serve(async (req) => {
       });
     }
 
+    // ---- Créneau de diffusion habituel d'une série ----
+    if (payload.action === "seriesInfo") {
+      const { tvdbId } = payload;
+      if (!tvdbId) {
+        return new Response(JSON.stringify({ error: "tvdbId manquant" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const res = await fetch(`https://api4.thetvdb.com/v4/series/${tvdbId}/extended`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        return new Response(JSON.stringify({ error: `TheTVDB a répondu ${res.status}` }), {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const json = await res.json();
+      return new Response(JSON.stringify({ airsTime: json.data?.airsTime || null }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ---- Personnages (comportement par défaut) ----
     const { mediaType, tvdbId } = payload;
     if (!tvdbId || !["movie", "series"].includes(mediaType)) {

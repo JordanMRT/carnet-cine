@@ -2,9 +2,8 @@
   "version": "2026-08-03",
   "highlights": [
     "What's new ?",
-    "Les thèmes débarquent sur Time To Binge ! Retrouve-les dans les paramètres de l'app (sur ton profil).",
-    "En revenant en arrière après une recherche, les résultats restent. Le petit + : tes recherches récentes sont affichées pour y revenir plus facilement.",
-    "Ne manque plus aucune sortie : reçoit une notification lorsqu'un film ou un épisode de tes séries en cours sort.",
+    "Les sorties d'épisodes dans 'A venir' sont maintenant liés à l'heure de leur diffusion.",
+    "Les notifications sont maintenant pleinement fonctionnelles.",
     "Correction de bugs d'affichages et de logique mineurs."
   ]
 }

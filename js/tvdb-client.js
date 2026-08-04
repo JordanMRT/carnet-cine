@@ -12,6 +12,14 @@ const TVDBProxy = {
     return data?.characters || [];
   },
 
+  async getAirsTime(tvdbId) {
+    const { data, error } = await supabaseClient.functions.invoke("tvdb-proxy", {
+      body: { action: "seriesInfo", tvdbId },
+    });
+    if (error) throw error;
+    return data?.airsTime || null;
+  },
+
   async search(mediaType, query) {
     const { data, error } = await supabaseClient.functions.invoke("tvdb-proxy", {
       body: { action: "search", mediaType, query },
@@ -104,5 +112,36 @@ async function getCastForDisplay(mediaType, tmdbId, title, tmdbCastFallback) {
   })();
 
   _castDisplayCache.set(cacheKey, result);
+  return result;
+}
+
+// TheTVDB mélange les formats selon les séries : "21:00" ou "3:00 AM".
+function parseAirsTime(raw) {
+  if (!raw) return null;
+  const ampm = raw.match(/^(\d{1,2}):(\d{2})\s*([AP]M)$/i);
+  if (ampm) {
+    let hour = parseInt(ampm[1], 10) % 12;
+    if (/PM/i.test(ampm[3])) hour += 12;
+    return { hour, minute: parseInt(ampm[2], 10) };
+  }
+  const h24 = raw.match(/^(\d{1,2}):(\d{2})$/);
+  if (h24) return { hour: parseInt(h24[1], 10), minute: parseInt(h24[2], 10) };
+  return null;
+}
+
+const _airsTimeCache = new Map();
+// Créneau habituel d'une série (TheTVDB), pour affiner "sorti aujourd'hui"
+// au-delà de la simple date fournie par TMDB. null si inconnu.
+async function resolveAirsTime(tmdbId, title) {
+  const cacheKey = String(tmdbId);
+  if (_airsTimeCache.has(cacheKey)) return _airsTimeCache.get(cacheKey);
+  let result = null;
+  try {
+    const tvdbId = await resolveTvdbId("series", tmdbId, title);
+    if (tvdbId) result = parseAirsTime(await TVDBProxy.getAirsTime(tvdbId));
+  } catch {
+    // ignoré : pas de créneau connu, on retombe sur la date seule
+  }
+  _airsTimeCache.set(cacheKey, result);
   return result;
 }

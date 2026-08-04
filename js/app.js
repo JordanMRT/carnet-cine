@@ -2830,6 +2830,7 @@ async function renderUpcoming(gen) {
 
           let nextEpisode = null;
           let upcomingEpisode = null;
+          let tvdbAirsTime; // résolu au besoin, une seule fois par série (undefined = pas encore vérifié)
           const lastSeasonToCheck = Math.min(startSeason + 1, data.number_of_seasons || startSeason);
           for (let s = startSeason; s <= lastSeasonToCheck; s++) {
             const season = await TMDB.getSeason(show.tmdb_id, s);
@@ -2839,7 +2840,23 @@ async function renderUpcoming(gen) {
               const found = episodes.find(
                 (ep) => !watchedKeys.has(`${s}x${ep.episode_number}`) && ep.air_date && ep.air_date <= today
               );
-              if (found) nextEpisode = { ...found, season_number: s };
+              if (found) {
+                // TMDB ne donne qu'une date : si l'épisode sort précisément
+                // aujourd'hui, on affine avec le créneau habituel (TheTVDB)
+                // avant de le compter comme réellement sorti.
+                let actuallyAired = true;
+                if (found.air_date === today) {
+                  if (tvdbAirsTime === undefined) tvdbAirsTime = await resolveAirsTime(show.tmdb_id, data.name);
+                  if (tvdbAirsTime) {
+                    const now = new Date();
+                    actuallyAired =
+                      now.getHours() > tvdbAirsTime.hour ||
+                      (now.getHours() === tvdbAirsTime.hour && now.getMinutes() >= tvdbAirsTime.minute);
+                  }
+                }
+                if (actuallyAired) nextEpisode = { ...found, season_number: s };
+                else upcomingEpisode = { ...found, season_number: s }; // pas encore sorti dans les faits
+              }
             }
 
             if (!upcomingEpisode) {
