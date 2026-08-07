@@ -265,6 +265,20 @@ const LibraryBuilder = {
     }
 
     await DB.upsertLibraryItems(library);
+
+    // Séries qui viennent de passer en "Terminé" lors de CE rebuild (pas
+    // déjà "completed" avant) : c'est à l'appelant de décider s'il s'agit
+    // d'une vraie action en direct de l'utilisateur (→ célébration) ou d'un
+    // simple rechargement/import en masse (→ rien).
+    this.lastCompletedTransitions = library.filter((item) => {
+      const key = `${item.media_type}_${item.tmdb_id}`;
+      return (
+        item.media_type === "tv" &&
+        item.status === "completed" &&
+        existingStatus.get(key) !== "completed"
+      );
+    });
+
     return library;
   },
 };

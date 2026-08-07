@@ -1267,7 +1267,7 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 
 
 /* ---------- PROFIL ---------- */
-.profile-header { margin: -2rem -2rem 2rem; overflow-x: hidden; }
+.profile-header { margin: -2rem -2rem 1rem; overflow-x: hidden; overflow-y: hidden; padding-bottom: 1rem;}
 .profile-banner-wrap {
   position: relative;
   height: 300px;
@@ -1552,6 +1552,13 @@ code {
   padding: 0.7em 1.2em; border-radius: 999px; font-size: 0.88rem;
   opacity: 0; pointer-events: none; transition: all 0.25s ease;
   z-index: 200; box-shadow: var(--shadow);
+  /* Les messages plus longs (ex. easter eggs) passent sur plusieurs
+     lignes plutôt que de déborder de l'écran ou d'étirer la pilule à
+     l'infini. max-width laisse toujours de la marge de chaque côté sur
+     mobile (calc tient compte du centrage horizontal). */
+  max-width: min(420px, calc(100vw - 2.4rem));
+  text-align: center;
+  white-space: normal;
 }
 .toast--visible { opacity: 1; transform: translate(-50%, 0); }
 .toast--success { border-color: var(--sage); }
@@ -1624,7 +1631,7 @@ code {
   transform: translateY(120%);
   transition: transform 0.3s ease;
   margin-bottom: 5rem;
-  background: rgba(17, 20, 31, .8);
+  background: color-mix(in srgb, var(--bg) 75%, transparent);
   backdrop-filter: blur(5px);
 }
 .install-prompt--visible .install-prompt-card { transform: translateY(0); }
@@ -1923,3 +1930,216 @@ code {
     width:100%;
     overflow-x:hidden;
 }
+
+/* Pluie de confettis (célébration de fin de série) */
+.confetti-burst {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  overflow: hidden;
+}
+
+.confetti-piece {
+  position: absolute;
+  top: -10px;
+  left: var(--confetti-x);
+  width: 8px;
+  height: 14px;
+  background: var(--confetti-color);
+  border-radius: 2px;
+  opacity: 0.9;
+  animation: confettiFall var(--confetti-duration) ease-in var(--confetti-delay) forwards;
+}
+
+@keyframes confettiFall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateY(105vh) rotate(var(--confetti-rotate));
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confetti-burst { display: none; }
+}
+
+
+/* EASTER EGGS */
+
+/* Easter egg : tap x5 sur le logo header — un faisceau lumineux balaie
+   le logo + texte de gauche à droite, façon projecteur/lampe torche,
+   plutôt qu'un simple clignotement d'opacité. */
+.brand--flicker {
+  position: relative;
+  overflow: visible;
+}
+
+.brand--flicker::after {
+  content: "";
+  position: absolute;
+  inset: -6px -14px;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(242, 239, 233, 0.75) 48%,
+    rgba(242, 239, 233, 0.95) 50%,
+    rgba(242, 239, 233, 0.75) 52%,
+    transparent 70%
+  );
+  mix-blend-mode: overlay;
+  transform: translateX(-140%);
+  animation: brandSpotlight 1.3s ease-in-out;
+}
+
+@keyframes brandSpotlight {
+  0% { transform: translateX(-140%); }
+  100% { transform: translateX(140%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand--flicker::after { animation: none; display: none; }
+}
+
+.stat-card--easter-egg { cursor: pointer; }
+
+/* Easter egg : badge "carte membre" façon compte certifié (icône
+   badge-check pleine, pas un cercle de fond), débloqué après 50 jours
+   d'ancienneté (voir isLifetimeCardUnlocked). Positionné à l'opposé du
+   bouton d'édition (bottom/right) pour ne pas les superposer. */
+.profile-lifetime-badge {
+  position: absolute; top: 0; left: 0;
+  width: 26px; height: 26px;
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+}
+.profile-lifetime-badge svg {
+  width: 100%; height: 100%;
+  fill: var(--sage);
+  stroke: var(--bg);
+  stroke-width: 1;
+}
+
+/* ---------- Carte "Abonnement à vie" ---------- */
+.lifetime-card-overlay .modal {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  max-width: 380px;
+}
+
+.lifetime-card {
+  width: 100%;
+  background: var(--cream);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255,255,255,0.04);
+}
+
+.lifetime-card-header {
+  background: var(--bg);
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.lifetime-card-header img { width: 32px; }
+.lifetime-card-header span {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--cream);
+}
+
+.lifetime-card-body { padding: 22px 20px 20px; }
+
+.lifetime-card-identity { display: flex; align-items: flex-start; gap: 14px; }
+
+.lifetime-card-avatar {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  background: var(--sage) center/cover no-repeat;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--ink);
+  border: 3px solid var(--ink);
+}
+
+.lifetime-card-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--ink);
+  margin: 0 0 4px;
+}
+
+.lifetime-card-status {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--coral);
+  margin: 0 0 8px;
+}
+
+.lifetime-card-since {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink);
+  opacity: 0.55;
+  margin: 0;
+}
+.lifetime-card-since strong { opacity: 1; font-weight: 700; }
+
+.lifetime-card-divider {
+  margin: 18px 0 16px;
+  height: 1px;
+  background: repeating-linear-gradient(
+    to right,
+    rgba(14,15,20,0.22) 0, rgba(14,15,20,0.22) 5px,
+    transparent 5px, transparent 10px
+  );
+}
+
+.lifetime-card-footer {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
+}
+.lifetime-card-barcode { color: var(--ink); }
+.lifetime-card-barcode svg { width: 110px; height: 26px; display: block; }
+.lifetime-card-barcode-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+  opacity: 0.45;
+  margin-top: 4px;
+}
+
+.lifetime-card-stamp {
+  width: 92px; height: 92px;
+  flex-shrink: 0;
+  transform: rotate(-8deg);
+  opacity: 0.82;
+  mix-blend-mode: multiply;
+}
+.lifetime-card-stamp svg { width: 100%; height: 100%; overflow: visible; }
+.lifetime-card-stamp-ring-text {
+  font-family: var(--font-mono);
+  font-size: 7.6px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  fill: var(--coral);
+}
+.lifetime-card-stamp-circle { fill: none; stroke: var(--coral); stroke-width: 1.7; }
+.lifetime-card-stamp-ticket { fill: none; stroke: var(--coral); stroke-width: 1.5; }

@@ -112,6 +112,131 @@ function toast(message, type = "info") {
   toastTimer = setTimeout(() => el.classList.remove("toast--visible"), 3000);
 }
 
+// Pluie de confettis, déclenchée quand une série passe en "Terminé" en
+// direct (jamais au chargement ni après un import en masse, voir
+// App.refreshSilently). Éléments DOM générés dynamiquement plutôt qu'un
+// canvas : pas de dépendance externe, cohérent avec le reste du projet
+// (vanilla JS, sans build step).
+function celebrateCompletion() {
+  const CONFETTI_COLORS = ["var(--mustard)", "var(--coral)", "var(--sage)"];
+  const CONFETTI_COUNT = 40;
+
+  const container = document.createElement("div");
+  container.className = "confetti-burst";
+
+  for (let i = 0; i < CONFETTI_COUNT; i++) {
+    const piece = document.createElement("span");
+    piece.className = "confetti-piece";
+    piece.style.setProperty("--confetti-color", CONFETTI_COLORS[i % CONFETTI_COLORS.length]);
+    piece.style.setProperty("--confetti-x", `${Math.random() * 100}vw`);
+    piece.style.setProperty("--confetti-delay", `${Math.random() * 0.3}s`);
+    piece.style.setProperty("--confetti-duration", `${2.2 + Math.random() * 1.2}s`);
+    piece.style.setProperty("--confetti-rotate", `${Math.random() * 720 - 360}deg`);
+    container.appendChild(piece);
+  }
+
+  document.body.appendChild(container);
+  setTimeout(() => container.remove(), 3600);
+}
+
+// Easter egg : carte "Abonnement à vie", débloquée après 50 jours
+// d'ancienneté du compte (rétroactif : peu importe quand ce code est
+// déployé, un compte de 3 mois débloque la carte dès le premier chargement
+// après mise à jour, pas seulement 50 jours après le déploiement).
+const LIFETIME_CARD_THRESHOLD_DAYS = 50;
+
+function isLifetimeCardUnlocked(userCreatedAt) {
+  if (!userCreatedAt) return false;
+  const createdDate = new Date(userCreatedAt);
+  const daysSince = (Date.now() - createdDate.getTime()) / (1000 * 60 * 60 * 24);
+  return daysSince >= LIFETIME_CARD_THRESHOLD_DAYS;
+}
+
+// Easter egg : 5 taps rapides sur le logo du header. Messages affichés
+// dans l'ordre puis en boucle (pas aléatoire), pour que quelqu'un qui
+// retape plusieurs fois de suite découvre bien les 4 avant qu'un message
+// ne se répète.
+const LOGO_EASTER_EGG_MESSAGES = [
+  "Tu es la 3ᵉ personne à trouver ça. Ou pas. On ne compte pas vraiment.",
+  "Rien à voir ici. Enfin si, un peu.",
+  "Le générique de fin n'existe pas ici. Continue de binge watcher.",
+  "Bravo, tu as trouvé un easter egg. Il n'y a pas de prix à gagner, juste ça.",
+];
+
+let _logoTapCount = 0;
+let _logoTapTimer = null;
+let _logoEasterEggIndex = 0;
+
+function handleLogoTap(brandEl) {
+  _logoTapCount++;
+  clearTimeout(_logoTapTimer);
+  // Fenêtre glissante de 1.5s entre deux taps : au-delà, on repart de zéro.
+  _logoTapTimer = setTimeout(() => { _logoTapCount = 0; }, 1500);
+
+  if (_logoTapCount >= 5) {
+    _logoTapCount = 0;
+    clearTimeout(_logoTapTimer);
+
+    brandEl.classList.remove("brand--flicker");
+    void brandEl.offsetWidth; // force le reflow pour pouvoir rejouer l'animation si retapé peu après
+    brandEl.classList.add("brand--flicker");
+
+    const message = LOGO_EASTER_EGG_MESSAGES[_logoEasterEggIndex % LOGO_EASTER_EGG_MESSAGES.length];
+    _logoEasterEggIndex++;
+    toast(message, "info");
+  }
+}
+
+// Easter egg : tap sur les cartes "temps passé devant des films/séries"
+// dans les stats personnelles. Comparaison absurde façon "ça fait X fois
+// Titanic bout à bout", calculée dynamiquement à partir des vraies
+// minutes du profil. Référence tirée au hasard à chaque tap, pour éviter
+// la lassitude si quelqu'un retape plusieurs fois.
+const ABSURD_MOVIE_REFERENCES = [
+  { title: "Titanic", minutes: 194 },
+  { title: "Le Seigneur des Anneaux : Le Retour du Roi", minutes: 201 },
+  { title: "Avengers: Endgame", minutes: 181 },
+];
+
+const ABSURD_TV_REFERENCES = [
+  { title: "Friends", minutes: 236 * 22 },
+  { title: "The Office (US)", minutes: 186 * 22 },
+  { title: "Grey's Anatomy", minutes: 466 * 43 },
+];
+
+// Formate un ratio en texte pour les comparaisons absurdes : arrondi à
+// l'entier pour les valeurs significatives, message qualitatif ("même pas
+// le quart de…") pour les petits totaux où "0 fois" serait moins parlant.
+// tvMode ajuste juste "rewatch de" → l'appelant fournit déjà ce mot, donc
+// ce paramètre ne sert qu'à garder la fonction lisible si un jour le texte
+// diffère entre films et séries.
+function formatAbsurdRatio(ratio) {
+  if (ratio < 0.25) return "même pas le quart de";
+  if (ratio < 0.5) return "même pas la moitié de";
+  if (ratio < 1) return "pas encore un";
+  return String(Math.round(ratio));
+}
+
+function showAbsurdMovieComparison(totalMovieMinutes) {
+  if (!totalMovieMinutes) {
+    toast("Pas encore assez de films pour comparer à quoi que ce soit.", "info");
+    return;
+  }
+  const ref = ABSURD_MOVIE_REFERENCES[Math.floor(Math.random() * ABSURD_MOVIE_REFERENCES.length)];
+  const ratio = totalMovieMinutes / ref.minutes;
+  toast(`C'est ${formatAbsurdRatio(ratio)} fois "${ref.title}".`, "info");
+}
+
+function showAbsurdTvComparison(totalTvMinutes) {
+  if (!totalTvMinutes) {
+    toast("Pas encore assez de séries pour comparer à quoi que ce soit.", "info");
+    return;
+  }
+  const ref = ABSURD_TV_REFERENCES[Math.floor(Math.random() * ABSURD_TV_REFERENCES.length)];
+  const ratio = totalTvMinutes / ref.minutes;
+  toast(`C'est ${formatAbsurdRatio(ratio)} fois "${ref.title}" regardé${/^\d+$/.test(formatAbsurdRatio(ratio)) && Math.round(ratio) > 1 ? "s" : ""} en entier.`, "info");
+}
+
 function qs(sel, ctx = document) {
   return ctx.querySelector(sel);
 }

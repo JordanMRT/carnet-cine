@@ -260,7 +260,23 @@ maybeShowInstallPrompt();
   // appeler route() : la vue actuellement affichée n'est pas redessinée.
   // À utiliser après une action rapide (coche, ajout…) où l'interface a
   // déjà été mise à jour localement de façon optimiste.
+  //
+  // Sérialisée via _refreshChain : plusieurs coches rapprochées (ex. tout
+  // décocher une saison en quelques clics) déclenchent chacune un appel.
+  // Sans sérialisation, ces appels tournent en parallèle et rien ne
+  // garantit leur ordre de complétion — le dernier à finir peut écraser
+  // App.library/App.diary avec un état du journal plus ancien que ce que
+  // les autres appels avaient déjà lu, laissant des compteurs incohérents
+  // (ex. "watched_episodes" qui ne correspond à aucun état réel du
+  // journal, avant ou après les actions de l'utilisateur).
   async refreshSilently() {
+    this._refreshChain = (this._refreshChain || Promise.resolve()).then(() =>
+      this._doRefreshSilently()
+    );
+    return this._refreshChain;
+  },
+
+  async _doRefreshSilently() {
     try {
       const userId = this.session.user.id;
       const [library, diary] = await Promise.all([DB.getLibrary(userId), DB.getDiary(userId)]);
@@ -271,6 +287,14 @@ maybeShowInstallPrompt();
       const untouched = this.library.filter((l) => !rebuiltKeys.has(`${l.media_type}_${l.tmdb_id}`));
       this.library = [...rebuilt, ...untouched];
       this.earnedBadges = await evaluateBadges(this.diary, this.library, userId);
+
+      // Une série vient de passer "Terminé" suite à une action en direct
+      // (coche du dernier épisode, marquage global depuis une fiche…) :
+      // on célèbre. refreshSilently() n'est jamais appelée au chargement
+      // initial de l'app ni après l'import CSV, donc pas de faux positif.
+      if (LibraryBuilder.lastCompletedTransitions?.length) {
+        celebrateCompletion();
+      }
     } catch (err) {
       console.warn("Synchronisation silencieuse impossible :", err);
     }
@@ -398,10 +422,24 @@ function bindShellEvents() {
 
   qs("#import-shows-input").addEventListener("change", (e) => runImport(e, "shows"));
   qs("#import-movies-input").addEventListener("change", (e) => runImport(e, "movies"));
+
+  const brandEl = qs(".brand");
+  if (brandEl) {
+    brandEl.style.cursor = "pointer";
+    brandEl.addEventListener("click", () => handleLogoTap(brandEl));
+  }
 }
 
 function bindStatsEvents() {
+  qs("#tv-minutes-card")?.addEventListener("click", () => {
+    showAbsurdTvComparison(Stats.compute(App.diary, App.library, App.genreMaps).totalTvMinutes);
+  });
+  qs("#movie-minutes-card")?.addEventListener("click", () => {
+    showAbsurdMovieComparison(Stats.compute(App.diary, App.library, App.genreMaps).totalMovieMinutes);
+  });
+
   qs("#edit-banner-btn")?.addEventListener("click", openBannerPicker);
+  qs("#lifetime-card-btn")?.addEventListener("click", openLifetimeCard);
   qs("#edit-avatar-btn")?.addEventListener("click", openAvatarPicker);
   qs("#profile-username-btn")?.addEventListener("click", async () => {
     const current = App.session.user.user_metadata?.username || "";
@@ -3144,6 +3182,7 @@ function profileHeaderHTML() {
   const bannerUrl = meta.banner_path ? TMDB.backdropUrl(meta.banner_path, "w1280") : null;
   const avatarUrl = meta.avatar_url || (meta.avatar_path ? TMDB.posterUrl(meta.avatar_path, "w185") : null);
   const bannerStyle = bannerUrl ? `background-image: url('${bannerUrl}');` : "";
+  const hasLifetimeCard = isLifetimeCardUnlocked(App.session.user.created_at);
 
   return `
     <div class="profile-header">
@@ -3157,11 +3196,88 @@ function profileHeaderHTML() {
             ${avatarUrl ? "" : `<span class="profile-avatar-fallback">${escapeHtml(username[0]?.toUpperCase() || "?")}</span>`}
           </div>
           <button id="edit-avatar-btn" class="profile-avatar-edit" title="Modifier l'avatar"><i data-lucide="pencil"></i></button>
+         ${hasLifetimeCard ? `<button id="lifetime-card-btn" class="profile-lifetime-badge" title="Carte membre"><i data-lucide="badge-check"></i></button>` : ""}
         </div>
         <button id="profile-username-btn" class="profile-username" title="Modifier ton pseudo">${escapeHtml(username)}</button>
         <a href="#/social" class="profile-social-btn" title="Abonnements et abonnés"><i data-lucide="users"></i></a>
       </div>
     </div>`;
+}
+
+// Easter egg : carte "Abonnement à vie", affichée en lightbox au clic sur
+// le badge de l'avatar. Débloquée après 50 jours d'ancienneté du compte
+// (voir isLifetimeCardUnlocked dans utils.js).
+function openLifetimeCard() {
+  const meta = App.session.user.user_metadata || {};
+  const username = meta.username || App.session.user.email?.split("@")[0] || "Toi";
+  const avatarUrl = meta.avatar_url || (meta.avatar_path ? TMDB.posterUrl(meta.avatar_path, "w185") : null);
+  const createdAt = new Date(App.session.user.created_at);
+  const memberSince = createdAt.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+  const barcodeSeed = App.session.user.id + App.session.user.created_at;
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay lifetime-card-overlay";
+  overlay.innerHTML = `
+    <div class="modal">
+      <div class="lifetime-card">
+        <div class="lifetime-card-header">
+          <img src="brand-top.png">
+          <span>Time To Binge</span>
+        </div>
+        <div class="lifetime-card-body">
+          <div class="lifetime-card-identity">
+            <div class="lifetime-card-avatar" style="${avatarUrl ? `background-image:url('${avatarUrl}')` : ""}">
+              ${avatarUrl ? "" : escapeHtml(username[0]?.toUpperCase() || "?")}
+            </div>
+            <div>
+              <p class="lifetime-card-name">${escapeHtml(username)}</p>
+              <p class="lifetime-card-status">Abonnement à vie</p>
+              <p class="lifetime-card-since">Membre depuis le <strong>${memberSince}</strong></p>
+            </div>
+          </div>
+
+          <div class="lifetime-card-divider"></div>
+
+          <div class="lifetime-card-footer">
+            <div class="lifetime-card-barcode">
+              ${barcodeSVG(barcodeSeed)}
+              <div class="lifetime-card-barcode-label">N° ${String(App.session.user.id).slice(0, 8).toUpperCase()}</div>
+            </div>
+
+            <div class="lifetime-card-stamp">
+              <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <filter id="inkRough" x="-20%" y="-20%" width="140%" height="140%">
+                    <feTurbulence type="fractalNoise" baseFrequency="0.5" numOctaves="2" seed="4" result="noise" />
+                    <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.1" />
+                  </filter>
+                  <path id="stampArcTop" d="M 10,50 a 38,38 0 1,1 80,0" />
+                  <path id="stampArcBottom" d="M 87,50 a 37,37 0 1,1 -74,0" />
+                </defs>
+                <g filter="url(#inkRough)">
+                  <circle class="lifetime-card-stamp-circle" cx="50" cy="50" r="45" />
+                  <circle class="lifetime-card-stamp-circle" cx="50" cy="50" r="33" />
+                  <text class="lifetime-card-stamp-ring-text">
+                    <textPath href="#stampArcTop" startOffset="50%" text-anchor="middle">ABONNEMENT À VIE</textPath>
+                  </text>
+                  <text class="lifetime-card-stamp-ring-text">
+                    <textPath href="#stampArcBottom" startOffset="50%" text-anchor="middle">TIME TO BINGE</textPath>
+                  </text>
+                  <circle cx="9.5" cy="50" r="1.4" fill="var(--coral)" />
+                  <circle cx="90.5" cy="50" r="1.4" fill="var(--coral)" />
+                  <g class="lifetime-card-stamp-ticket" transform="translate(50 50)">
+                    <path d="M -18,-12 h36 a4.5,4.5 0 0 1 0,9 a3.2,3.2 0 0 0 0,6 a4.5,4.5 0 0 1 0,9 h-36 a4.5,4.5 0 0 1 0,-9 a3.2,3.2 0 0 0 0,-6 a4.5,4.5 0 0 1 0,-9 z" />
+                    <line x1="-6.5" y1="-10" x2="-6.5" y2="10" stroke-dasharray="2,2.2" />
+                  </g>
+                </g>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", (e) => e.target === overlay && overlay.remove());
 }
 
 // ---------- SÉLECTEURS BANNIÈRE / AVATAR (recherche TMDB) ----------
@@ -3449,8 +3565,8 @@ function statsTemplate(diary, library) {
       <div class="stats-cards">
         <div class="stat-card"><span class="stat-num">${s.episodesCount}</span><span class="stat-label">Épisodes</span></div>
         <div class="stat-card"><span class="stat-num">${s.moviesCount}</span><span class="stat-label">Films</span></div>
-        <div class="stat-card"><span class="stat-num">${formatWatchDuration(s.totalTvMinutes)}</span><span class="stat-label">passés devant des séries</span></div>
-        <div class="stat-card"><span class="stat-num">${formatWatchDuration(s.totalMovieMinutes)}</span><span class="stat-label">passés devant des films</span></div>
+        <div class="stat-card stat-card--easter-egg" id="tv-minutes-card"><span class="stat-num">${formatWatchDuration(s.totalTvMinutes)}</span><span class="stat-label">passés devant des séries</span></div>
+        <div class="stat-card stat-card--easter-egg" id="movie-minutes-card"><span class="stat-num">${formatWatchDuration(s.totalMovieMinutes)}</span><span class="stat-label">passés devant des films</span></div>
         <div class="stat-card"><span class="stat-num">${s.avgRating ? s.avgRating.toFixed(1) : "—"}</span><span class="stat-label">Note moyenne</span></div>
         <div class="stat-card"><span class="stat-num">${s.showsCompleted}</span><span class="stat-label">Séries terminées</span></div>
       </div>

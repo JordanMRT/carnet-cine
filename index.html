@@ -118,9 +118,27 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #e8a33d;
+    background: var(--splash-dot-color, #e8a33d);
     opacity: 0.35;
     animation: splashDot 1.1s ease-in-out infinite;
+  }
+  /* Détail saisonnier discret, jamais documenté : appliqué uniquement le
+     31/10 et du 1er au 25/12 via JS (voir script plus bas). Le reste de
+     l'année, ces classes ne sont jamais posées et le splash reste
+     inchangé. */
+  #splash-screen.splash--halloween {
+    background: #2b1233;
+    --splash-dot-color: #7ed957;
+  }
+  #splash-screen.splash--halloween .splash__logo {
+    filter: hue-rotate(80deg) saturate(2.3) brightness(1.02);
+  }
+  #splash-screen.splash--christmas {
+    background: #0f2418;
+    --splash-dot-color: #e0637a;
+  }
+  #splash-screen.splash--christmas .splash__logo {
+    filter: sepia(1) saturate(4) hue-rotate(-48deg) brightness(0.85);
   }
   .splash__dots span:nth-child(2) { animation-delay: 0.15s; }
   .splash__dots span:nth-child(3) { animation-delay: 0.3s; }
@@ -182,8 +200,26 @@
 </div>
 <script>
   window.__splashShownAt = Date.now();
-  // Un message tiré au hasard à chaque ouverture, pas un défilement des trois.
+
+  // Détail saisonnier discret : jamais annoncé, jamais visible dans les
+  // paramètres. Seule la date du jour (heure locale de l'appareil) le
+  // déclenche : le 31/10 pour Halloween (un jour précis), du 1er au 25/12
+  // inclus pour Noël (toute la période fêtive). Fond, teinte du logo et
+  // couleur des points de chargement changent ensemble.
+  var today = new Date();
+  var isHalloween = today.getMonth() === 9 && today.getDate() === 31;
+  var isChristmas = today.getMonth() === 11 && today.getDate() >= 1 && today.getDate() <= 25;
+
   var SPLASH_MESSAGES = ["Préparation de la salle", "Distribution de popcorn", "Bonne séance"];
+  if (isHalloween) {
+    SPLASH_MESSAGES = ["Distribution de bonbons 🎃", "Une séance qui fait frissonner", "Bonne séance, si tu l'oses"];
+    document.getElementById("splash-screen").classList.add("splash--halloween");
+  } else if (isChristmas) {
+    SPLASH_MESSAGES = ["Distribution de chocolats chauds 🎄", "Préparation du sapin", "Joyeuses fêtes, bonne séance"];
+    document.getElementById("splash-screen").classList.add("splash--christmas");
+  }
+
+  // Un message tiré au hasard à chaque ouverture, pas un défilement des trois.
   document.getElementById("splash-msg").textContent =
     SPLASH_MESSAGES[Math.floor(Math.random() * SPLASH_MESSAGES.length)];
 </script>

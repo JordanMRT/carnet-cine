@@ -1,9 +1,9 @@
 {
-  "version": "2026-08-03",
+  "version": "2026-08-07",
   "highlights": [
-    "What's new ?",
-    "Les sorties d'épisodes dans 'A venir' sont maintenant liés à l'heure de leur diffusion.",
-    "Les notifications sont maintenant pleinement fonctionnelles.",
+    "What's new (v. 1.6) ?",
+    "Des confettis pour célébrer le visionnage complet d'une série ? C'est en place !",
+    "Quelques easter eggs sont cachés dans l'app, certains TRÈS bien cachés, ou activés à des moments précis...",
     "Correction de bugs d'affichages et de logique mineurs."
   ]
 }
