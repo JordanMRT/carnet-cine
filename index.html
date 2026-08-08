@@ -8,6 +8,12 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<!-- TMDB (images + API) et Supabase sont sollicités sur quasiment chaque
+     écran : préchauffer la connexion (DNS/TLS) fait gagner un aller-retour
+     dès la première requête, plutôt que de le payer au premier fetch. -->
+<link rel="preconnect" href="https://image.tmdb.org" />
+<link rel="preconnect" href="https://api.themoviedb.org" />
+<link rel="preconnect" href="https://zhlhmoafhlidixwhynxi.supabase.co" />
 <!-- Seuls les graisses réellement utilisées dans css/style.css sont chargées
      (400/600/700, sans italique) : l'import précédent demandait toute la
      plage variable 200..1000 en romain ET italique pour 3 familles, ce qui
@@ -247,7 +253,7 @@
 <script src="js/install-prompt.js" defer></script>
 <script src="js/notification-prompt.js" defer></script>
 <script src="js/update-prompt.js" defer></script>
-<script src="https://unpkg.com/lucide@latest" defer></script>
+<script src="https://unpkg.com/lucide@1.30.0" defer></script>
 <script src="js/app.js" defer></script>
 </body>
 </html>

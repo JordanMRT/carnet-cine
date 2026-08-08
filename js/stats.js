@@ -63,20 +63,22 @@ const Stats = {
       if (key in monthly) monthly[key] += 1;
     });
 
-    // Meilleures notes — un seul ticket par œuvre (la note s'applique à
-    // tout le journal de ce film/série), avec la date du premier
-    // visionnage. Tri par note, puis par date la plus récente ; 4 max.
-    const byWork = new Map();
-    ratedEntries.forEach((e) => {
-      const key = `${e.media_type}_${e.tmdb_id}`;
-      const existing = byWork.get(key);
-      if (!existing || e.watched_date < existing.watched_date) {
-        byWork.set(key, { ...e, rewatch: false });
-      }
-    });
-    const topRated = [...byWork.values()]
-      .sort((a, b) => b.rating - a.rating || b.watched_date.localeCompare(a.watched_date))
-      .slice(0, 4);
+    // Meilleures notes — un ticket par œuvre. On part de `library` (dont
+// avg_rating est déjà la vraie moyenne des notes du journal pour cette
+// œuvre, recalculée par LibraryBuilder) plutôt que d'une ligne
+// diary_entries arbitraire : noter une série entière via setWorkRating
+// copie la même note sur CHAQUE épisode du journal, donc piocher "la
+// première entrée trouvée" revenait à afficher un épisode au hasard
+// (ex. S1E5) comme s'il représentait toute la série. Tri par note,
+// puis par dernier visionnage le plus récent ; 4 max.
+const topRated = library
+  .filter((l) => l.avg_rating != null)
+  .sort(
+    (a, b) =>
+      b.avg_rating - a.avg_rating ||
+      (b.last_watched_date || "").localeCompare(a.last_watched_date || "")
+  )
+  .slice(0, 4);
 
     return {
       totalEntries,

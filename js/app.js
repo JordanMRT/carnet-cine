@@ -81,7 +81,7 @@ if ("serviceWorker" in navigator) {
         }
       });
     });
-  });
+  }).catch((err) => console.warn("Enregistrement du Service Worker impossible :", err));
 }
 
 maybeShowInstallPrompt();
@@ -417,7 +417,11 @@ function displayName() {
 
 function bindShellEvents() {
   qs("#logout-btn").addEventListener("click", async () => {
-    await DB.signOut();
+    try {
+      await DB.signOut();
+    } catch (err) {
+      toast(err.message, "error");
+    }
   });
 
   qs("#import-shows-input").addEventListener("change", (e) => runImport(e, "shows"));
@@ -495,26 +499,6 @@ function bindStatsEvents() {
         App.route();
       } catch (err) {
         btn.disabled = false;
-        toast(err.message, "error");
-      }
-      return;
-    }
-
-    const card = e.target.closest(".user-result-card[data-user-id]");
-    if (card) location.hash = `#/u/${card.dataset.userId}`;
-  });
-
-  qs(".stats-section-following")?.addEventListener("click", async (e) => {
-    const unfollowBtn = e.target.closest(".other-profile-unfollow-btn");
-    if (unfollowBtn) {
-      unfollowBtn.disabled = true;
-      try {
-        await DB.unfollow(App.session.user.id, userId);
-        toast("Désabonnement effectué.", "success");
-        App.following = await DB.getMyFollowingList(App.session.user.id);
-        App.route();
-      } catch (err) {
-        unfollowBtn.disabled = false;
         toast(err.message, "error");
       }
       return;
@@ -1004,7 +988,7 @@ function bindSocialEvents() {
     if (unfollowBtn) {
       unfollowBtn.disabled = true;
       try {
-        await DB.unfollow(App.session.user.id, unfollowBtn.dataset.userId);
+        await DB.unfollow(unfollowBtn.dataset.followId);
         toast("Désabonnement effectué.", "success");
         render();
       } catch (err) {
@@ -1181,7 +1165,7 @@ function followingCard(f) {
         ${avatarUrl ? "" : `<span class="profile-avatar-fallback">${escapeHtml(username[0]?.toUpperCase() || "?")}</span>`}
       </div>
       <span class="user-result-name">${escapeHtml(username)}${statusLabel}</span>
-      <button class="btn btn--ghost unfollow-btn" data-user-id="${f.followed_id}">Se désabonner</button>
+      <button class="btn btn--ghost unfollow-btn" data-follow-id="${f.id}">Se désabonner</button>
     </div>
   `;
 }
@@ -1200,21 +1184,25 @@ async function renderShowDetail(param, gen) {
   const view = qs("#view");
   view.innerHTML = skeletonDetailHTML();
   try {
-    const data = type === "movie" ? await TMDB.getMovie(id) : await TMDB.getTv(id);
+    // Le fetch principal (data) est lancé en parallèle avec les appels qui
+    // n'en dépendent pas (recommandations, providers, activité amis), au
+    // lieu d'attendre son résultat avant de les démarrer : ça évite un
+    // aller-retour réseau séquentiel inutile sur la fiche film/série.
+    const dataPromise = type === "movie" ? TMDB.getMovie(id) : TMDB.getTv(id);
+    const friendIds = App.following.filter((f) => f.status === "accepted").map((f) => f.followed_id);
+    const [data, recommendations, watchProviders, friendsActivity, rawCast] = await Promise.all([
+      dataPromise,
+      TMDB.getRecommendations(type, id).catch(() => []),
+      TMDB.getWatchProviders(type, id).catch(() => null),
+      friendIds.length ? DB.getFriendsActivityForWork(friendIds, Number(id), type).catch(() => []) : Promise.resolve([]),
+      type === "tv" ? TMDB.getAggregateCredits(id).then((r) => r.cast || []) : dataPromise.then((d) => d.credits?.cast || []),
+    ]);
     const title = data.original_title || data.original_name || data.title || data.name;
     const genreNames = (data.genres || []).map((g) => g.name);
     const genreIds = (data.genres || []).map((g) => String(g.id));
     const inLibrary = App.library.find(
       (l) => String(l.tmdb_id) === String(id) && l.media_type === type
     );
-
-    const friendIds = App.following.filter((f) => f.status === "accepted").map((f) => f.followed_id);
-    const [recommendations, watchProviders, friendsActivity, rawCast] = await Promise.all([
-      TMDB.getRecommendations(type, id).catch(() => []),
-      TMDB.getWatchProviders(type, id).catch(() => null),
-      friendIds.length ? DB.getFriendsActivityForWork(friendIds, Number(id), type).catch(() => []) : Promise.resolve([]),
-      type === "tv" ? TMDB.getAggregateCredits(id).then((r) => r.cast || []) : Promise.resolve(data.credits?.cast || []),
-    ]);
     const cast = (await getCastForDisplay(type === "movie" ? "movie" : "series", id, title, rawCast)).slice(0, 12);
     const castHTML = cast.length
       ? `
@@ -1315,7 +1303,7 @@ async function renderShowDetail(param, gen) {
     view.innerHTML = `
       <div class="show-detail" style="--backdrop:url('${TMDB.backdropUrl(data.backdrop_path)}')">
         <div class="show-detail-overlay">
-          <img class="show-detail-poster" src="${TMDB.posterUrl(data.poster_path)}" alt="" />
+          <img class="show-detail-poster" src="${TMDB.posterUrl(data.poster_path)}" alt="" fetchpriority="high" />
           <div class="show-detail-info">
             <h1>${escapeHtml(title)}</h1>
             ${type === "movie" && data.tagline ? `<p class="show-detail-tagline">${escapeHtml(data.tagline)}</p>` : ""}
@@ -1875,7 +1863,7 @@ async function renderPersonDetail(id, gen) {
     view.innerHTML = `
       <div class="show-detail" style="--backdrop:url('${backdropSource ? TMDB.backdropUrl(backdropSource.backdrop_path) : ""}')">
         <div class="show-detail-overlay">
-          <img class="show-detail-poster" src="${TMDB.posterUrl(person.profile_path)}" alt="${escapeHtml(person.name)}" />
+          <img class="show-detail-poster" src="${TMDB.posterUrl(person.profile_path)}" alt="${escapeHtml(person.name)}" fetchpriority="high" />
           <div class="show-detail-info">
             <h1>${escapeHtml(person.name)}</h1>
             ${metaParts.length ? `<p class="show-detail-meta">${metaParts.join(" · ")}</p>` : ""}
@@ -2045,9 +2033,19 @@ async function renderEpisodeDetail(param, gen) {
   view.innerHTML = skeletonDetailHTML(); 
 
   try {
-    const show = await TMDB.getTv(tvId);
-    const season = await TMDB.getSeason(tvId, Number(seasonNumber));
-    const aggregateCredits = await TMDB.getAggregateCredits(tvId).catch(() => null);
+    // getTv/getSeason/getAggregateCredits/friendsActivity sont indépendants
+    // (aucun n'a besoin du résultat d'un autre) : les lancer en parallèle
+    // au lieu de les enchaîner évite 3 allers-retours réseau séquentiels
+    // inutiles sur la fiche épisode.
+    const friendIds = App.following.filter((f) => f.status === "accepted").map((f) => f.followed_id);
+    const [show, season, aggregateCredits, friendsActivity] = await Promise.all([
+      TMDB.getTv(tvId),
+      TMDB.getSeason(tvId, Number(seasonNumber)),
+      TMDB.getAggregateCredits(tvId).catch(() => null),
+      friendIds.length
+        ? DB.getFriendsActivityForEpisode(friendIds, Number(tvId), Number(seasonNumber), Number(episodeNumber)).catch(() => [])
+        : Promise.resolve([]),
+    ]);
 
     const episode = season.episodes.find(
       (ep) => ep.episode_number === Number(episodeNumber)
@@ -2067,11 +2065,6 @@ async function renderEpisodeDetail(param, gen) {
 
     const watched = entries.length > 0;
     const watchCount = entries.length;
-
-    const friendIds = App.following.filter((f) => f.status === "accepted").map((f) => f.followed_id);
-    const friendsActivity = friendIds.length
-      ? await DB.getFriendsActivityForEpisode(friendIds, Number(tvId), Number(seasonNumber), Number(episodeNumber)).catch(() => [])
-      : [];
 
     // Cast : le casting principal de la série (agrégé sur toute la
     // série) + les invités propres à cet épisode, sans doublons.
@@ -2170,6 +2163,7 @@ async function renderEpisodeDetail(param, gen) {
             class="show-detail-poster"
             src="${TMDB.posterUrl(episode.still_path || show.poster_path, "w500")}"
             alt=""
+            fetchpriority="high"
           />
 
           <div class="show-detail-info">
@@ -3105,25 +3099,29 @@ function journalTicketCard(item) {
   `;
 }
 
-// Version individuelle (par entrée) utilisée pour "Tes meilleures notes"
-// dans les stats — reste au niveau épisode/film, contrairement au Journal.
-function entryTicketCard(entry) {
-  const sub = entry.media_type === "tv" && entry.season != null ? `S${entry.season}E${entry.episode}` : "Film";
+// Version compacte au niveau œuvre — utilisée pour "Tes meilleures notes"
+// dans les stats, qui vient de `library` (voir Stats.compute). Contrairement
+// à journalTicketCard, pas d'actions delete/share : c'est un simple aperçu.
+function workTicketCard(item) {
+  const sub =
+    item.media_type === "tv"
+      ? `Série · ${item.total_episodes || item.watched_episodes} épisode${(item.total_episodes || item.watched_episodes) > 1 ? "s" : ""}`
+      : "Film";
   return `
     <div class="ticket ticket--compact">
       <div class="ticket-poster">
-        <img src="${TMDB.posterUrl(entry.poster_path, "w185")}" alt="" loading="lazy" />
+        <img src="${TMDB.posterUrl(item.poster_path, "w185")}" alt="" loading="lazy" />
       </div>
       <div class="ticket-perforation"></div>
       <div class="ticket-body">
         <div class="ticket-row">
-          <span class="ticket-title">${escapeHtml(entry.title)}</span>
+          <span class="ticket-title">${escapeHtml(item.title)}</span>
           <span class="ticket-sub">${sub}</span>
         </div>
         <div class="ticket-row ticket-row--meta">
-          <span class="ticket-date">${formatDate(entry.watched_date)}</span>
+          <span class="ticket-date">${formatDate(item.last_watched_date)}</span>
         </div>
-        ${entry.rating != null ? `<div class="ticket-stars">${stars(entry.rating)}</div>` : ""}
+        ${item.avg_rating != null ? `<div class="ticket-stars">${stars(item.avg_rating)}</div>` : ""}
       </div>
     </div>
   `;
@@ -3592,7 +3590,7 @@ function statsTemplate(diary, library) {
         s.topRated.length
           ? `<section class="stats-section-ratings">
         <h2>Tes meilleures notes</h2>
-        <div class="ticket-list">${s.topRated.map(entryTicketCard).join("")}</div>
+        <div class="ticket-list">${s.topRated.map(workTicketCard).join("")}</div>
       </section>`
           : ""
       }

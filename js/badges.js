@@ -429,7 +429,11 @@ async function evaluateBadges(entries, library, userId) {
       }
     } catch (e) {
       console.error(`Erreur badge ${badge.key}`, e);
-      results[badge.key] = { tier: 0, maxTier: badge.tiers ? badge.tiers.length : 1 };
+      // On retombe sur le tier déjà en base (pas 0) : une exception
+      // ponctuelle dans le calcul ne doit jamais faire redescendre
+      // l'affichage d'un badge déjà acquis, même si rien n'est persisté ici.
+      const fallbackTier = existingTiers[badge.key] || 0;
+      results[badge.key] = { tier: fallbackTier, maxTier: badge.tiers ? badge.tiers.length : 1 };
     }
   }
   return results;
