@@ -58,6 +58,7 @@ const TMDB = {
     const promise = tmdbFetch(path).then((data) => data.results || []);
 
     this._recommendationsCache.set(key, promise);
+    promise.catch(() => this._recommendationsCache.delete(key));
 
     return promise;
   },
@@ -73,6 +74,7 @@ const TMDB = {
     const promise = tmdbFetch(path).then((data) => data.results?.FR || null);
 
     this._watchProvidersCache.set(key, promise);
+    promise.catch(() => this._watchProvidersCache.delete(key));
 
     return promise;
   },
@@ -156,6 +158,7 @@ if (bestDate) {
   })();
 
   this._movieCache.set(id, promise);
+  promise.catch(() => this._movieCache.delete(id));
 
   return promise;
 },
@@ -169,6 +172,7 @@ async getReleaseDates(id) {
   const promise = tmdbFetch(`/movie/${id}/release_dates`);
 
   this._releaseDatesCache.set(id, promise);
+  promise.catch(() => this._releaseDatesCache.delete(id));
 
   return promise;
 },
@@ -184,6 +188,7 @@ async getReleaseDates(id) {
   });
 
   this._tvCache.set(id, promise);
+  promise.catch(() => this._tvCache.delete(id));
 
   return promise;
 },
@@ -199,6 +204,7 @@ async getReleaseDates(id) {
   const promise = tmdbFetch(`/tv/${tvId}/season/${seasonNumber}`);
 
   this._seasonCache.set(key, promise);
+  promise.catch(() => this._seasonCache.delete(key));
 
   return promise;
 },
@@ -216,6 +222,7 @@ async getReleaseDates(id) {
   });
 
   this._imagesCache.set(key, promise);
+  promise.catch(() => this._imagesCache.delete(key));
 
   return promise;
 },
@@ -232,6 +239,7 @@ async getReleaseDates(id) {
   const promise = tmdbFetch(`/tv/${tvId}/aggregate_credits`);
 
   this._aggregateCreditsCache.set(tvId, promise);
+  promise.catch(() => this._aggregateCreditsCache.delete(tvId));
 
   return promise;
 },
@@ -249,6 +257,7 @@ async getReleaseDates(id) {
   });
 
   this._personCache.set(id, promise);
+  promise.catch(() => this._personCache.delete(id));
 
   return promise;
 },
@@ -264,6 +273,7 @@ async getReleaseDates(id) {
   const promise = tmdbFetch(`/${mediaType}/${id}/external_ids`);
 
   this._externalIdsCache.set(key, promise);
+  promise.catch(() => this._externalIdsCache.delete(key));
 
   return promise;
 },
