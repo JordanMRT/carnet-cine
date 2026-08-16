@@ -105,6 +105,41 @@ serve(async (req) => {
   const userIds = [...new Set((subs || []).map((s) => s.user_id))];
   if (!userIds.length) return new Response("Aucun abonné", { status: 200 });
 
+  // ---- Wrapped annuel : notification unique le 30 décembre ----
+  // Ce cron tourne 5x/jour ; wrapped_notifications_sent (clé primaire
+  // user_id+year) garantit qu'un seul envoi passe, même si ce bloc
+  // s'exécute plusieurs fois le 30 décembre.
+  if (today.endsWith("-12-30")) {
+    const wrappedYear = Number(today.slice(0, 4));
+    for (const userId of userIds) {
+      const { error } = await supabase
+        .from("wrapped_notifications_sent")
+        .insert({ user_id: userId, year: wrappedYear });
+      if (error) continue; // déjà envoyée cette année pour cet utilisateur
+
+      const payload = {
+        title: "Ton bilan ciné de l'année est prêt !",
+        body: "Découvre ton récap' Time To Binge maintenant 🎬✨.",
+        url: `#/wrapped/${wrappedYear}`,
+      };
+      const userSubs = (subs || []).filter((s) => s.user_id === userId);
+      for (const sub of userSubs) {
+        try {
+          await webpush.sendNotification(
+            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+            JSON.stringify(payload)
+          );
+        } catch (err: any) {
+          if (err.statusCode === 404 || err.statusCode === 410) {
+            await supabase.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+          } else {
+            console.error("Envoi push Wrapped échoué", err);
+          }
+        }
+      }
+    }
+  }
+
   for (const userId of userIds) {
     const candidates: {
       title: string; body: string; url: string;

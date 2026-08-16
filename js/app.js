@@ -248,6 +248,15 @@ maybeShowInstallPrompt();
         view_el.innerHTML = socialTemplate();
         bindSocialEvents();
         break;
+        case "wrapped": {
+        if (qs(".wrapped-overlay") || qs(".wrapped-loading-overlay")) break;
+        view_el.innerHTML = statsTemplate(this.diary, this.library);
+        bindStatsEvents();
+        const wrappedYear = param ? Number(param) : activeWrappedYear();
+        history.replaceState(null, "", `${location.pathname}${location.search}#/stats`);
+        if (wrappedYear) WrappedUI.open(wrappedYear);
+        break;
+      }
     }
     if (typeof lucide !== "undefined") lucide.createIcons();
   },
@@ -415,6 +424,20 @@ function displayName() {
   return username || App.session?.user?.email?.split("@")[0] || "Toi";
 }
 
+// Fenêtre de visibilité du Wrapped : du 30 décembre (jour de sortie, voir
+// send-release-notifications) au 30 janvier suivant inclus, ~1 mois comme
+// convenu. Retourne l'année à afficher, ou null si on est hors fenêtre
+// (le bouton doit alors être masqué).
+function activeWrappedYear() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const d = now.getDate();
+  if (m === 11 && d >= 30) return y;
+  if (m === 0 && d <= 30) return y - 1;
+  return null;
+}
+
 function bindShellEvents() {
   qs("#logout-btn").addEventListener("click", async () => {
     try {
@@ -460,6 +483,11 @@ function bindStatsEvents() {
     }
   });
 
+  qs("#open-wrapped-btn")?.addEventListener("click", () => {
+    const year = activeWrappedYear();
+    if (year) WrappedUI.open(year);
+  });
+  
   qs("#open-settings-btn")?.addEventListener("click", () => {
     location.hash = "#/settings";
   });
@@ -3592,6 +3620,15 @@ function statsTemplate(diary, library) {
         <h2>Tes meilleures notes</h2>
         <div class="ticket-list">${s.topRated.map(workTicketCard).join("")}</div>
       </section>`
+          : ""
+      }
+
+      ${
+        activeWrappedYear() !== null
+          ? `<button id="open-wrapped-btn" class="btn btn--ghost settings-entry-btn">
+        <i data-lucide="sparkles"></i>
+        Time To Binge Wrapped
+      </button>`
           : ""
       }
 

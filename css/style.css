@@ -2143,3 +2143,74 @@ code {
 }
 .lifetime-card-stamp-circle { fill: none; stroke: var(--coral); stroke-width: 1.7; }
 .lifetime-card-stamp-ticket { fill: none; stroke: var(--coral); stroke-width: 1.5; }
+
+/* ---------- WRAPPED ---------- */
+.wrapped-loading-overlay {
+  position: fixed; inset: 0;
+  background: rgba(14,15,20,0.92);
+  z-index: 1100;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1rem;
+  color: var(--cream);
+  font-family: var(--font-mono);
+}
+.wrapped-loading-overlay .spinner {
+  width: 40px; height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--mustard);
+  border-radius: 50%;
+  animation: wrapped-spin 0.8s linear infinite;
+}
+@keyframes wrapped-spin { to { transform: rotate(360deg); } }
+
+.wrapped-overlay {
+  position: fixed; inset: 0;
+  background: var(--ink);
+  /* Doit passer au-dessus de .mobile-nav (z-index:1000, cf. media query
+     mobile), sinon la pastille de nav flottante recouvre les points de
+     progression et les boutons partager/télécharger en bas de l'écran. */
+  z-index: 1100;
+  display: flex; flex-direction: column;
+}
+.wrapped-close-btn {
+  position: absolute; top: 1rem; right: 1rem; z-index: 5;
+  background: rgba(14,15,20,0.6);
+  border: none; border-radius: 50%;
+  width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--cream);
+  cursor: pointer;
+}
+.wrapped-rail {
+  flex: 1;
+  display: flex; align-items: center;
+  gap: 16px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-inline: 7vw;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.wrapped-rail::-webkit-scrollbar { display: none; }
+.wrapped-card-frame {
+  flex-shrink: 0;
+  scroll-snap-align: center;
+  width: min(86vw, 400px);
+  aspect-ratio: 9 / 16;
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+}
+.wrapped-card-frame img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.wrapped-progress-dots {
+  display: flex; justify-content: center; gap: 8px;
+  padding: 1rem 0;
+}
+.wrapped-progress-dots .d {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--border);
+  transition: all 0.2s;
+}
+.wrapped-progress-dots .d.active { background: var(--mustard); width: 22px; border-radius: 4px; }
+.wrapped-actions { display: flex; gap: 0.7rem; padding: 0 1.2rem calc(1.6rem + env(safe-area-inset-bottom, 0px)); }
+.wrapped-actions .btn { flex: 1; justify-content: center; }

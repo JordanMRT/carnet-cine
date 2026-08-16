@@ -222,3 +222,22 @@ create policy "Users manage their own push subscriptions"
 -- sent_notifications : écrite uniquement par l'Edge Function via la clé
 -- service_role (qui bypass RLS) — aucune policy client nécessaire, RLS
 -- activée seule suffit à bloquer tout accès direct depuis le navigateur.
+
+-- ---------- WRAPPED : verrou anti-doublon de la notif annuelle ----------
+-- Séparée de sent_notifications plutôt que d'y ajouter media_type='wrapped',
+-- car cette dernière a une contrainte CHECK (media_type in ('movie','tv'))
+-- qu'on préfère ne pas toucher sur une table déjà en prod. Clé primaire
+-- (user_id, year) = le verrou lui-même, un seul envoi possible par
+-- utilisateur et par année, quel que soit le nombre de passages du cron
+-- dans la journée du 30 décembre.
+create table if not exists wrapped_notifications_sent (
+  user_id uuid references auth.users(id) on delete cascade not null,
+  year int not null,
+  sent_at timestamptz default now(),
+  primary key (user_id, year)
+);
+
+alter table wrapped_notifications_sent enable row level security;
+-- Même raisonnement que sent_notifications : écrite uniquement par
+-- l'Edge Function via service_role, RLS activée sans policy = accès
+-- client direct bloqué.

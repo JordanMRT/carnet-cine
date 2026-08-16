@@ -97,6 +97,130 @@ const topRated = library
     };
   },
 
+// ============================================
+  // WRAPPED ANNUEL — calculs dédiés, séparés de compute() pour ne pas
+  // risquer de modifier le comportement des stats existantes (qui
+  // raisonnent en 12 derniers mois glissants, pas en année civile).
+  // entries/library : mêmes formes que pour compute(). year : ex. 2026.
+  // ============================================
+  computeForYear(entries, library, genreMaps = { movie: {}, tv: {} }, year) {
+    const yearEntries = entries.filter((e) => {
+      const d = new Date(e.watched_date);
+      return !Number.isNaN(d.getTime()) && d.getFullYear() === year;
+    });
+
+    const movies = yearEntries.filter((e) => e.media_type === "movie");
+    const episodes = yearEntries.filter((e) => e.media_type === "tv");
+    const totalMinutes = yearEntries.reduce((sum, e) => sum + (e.runtime_minutes || 0), 0);
+
+    // Séries terminées "de l'année" : approximation — on ne connaît pas
+    // l'historique des statuts, seulement le statut actuel de `library`.
+    // On considère donc une série comme "terminée cette année-là" si au
+    // moins un épisode a été regardé pendant l'année ET que son statut
+    // actuel est "completed". Une série finie depuis mais dont le dernier
+    // épisode regardé date de l'année visée compte, ce qui est le
+    // comportement voulu pour un récap.
+    const libraryStatusByWork = new Map(
+      library.map((l) => [`${l.media_type}_${l.tmdb_id}`, l.status])
+    );
+    const showsCompletedInYear = new Set(
+      episodes
+        .filter((e) => libraryStatusByWork.get(`${e.media_type}_${e.tmdb_id}`) === "completed")
+        .map((e) => `${e.media_type}_${e.tmdb_id}`)
+    ).size;
+
+    // Genres — même logique de dédoublonnage par œuvre que compute(),
+    // mais restreinte aux entrées de l'année ciblée.
+    const genreCount = {};
+    const seenWorksForGenres = new Set();
+    yearEntries.forEach((e) => {
+      const workKey = `${e.media_type}_${e.tmdb_id}`;
+      if (seenWorksForGenres.has(workKey)) return;
+      seenWorksForGenres.add(workKey);
+      const map = genreMaps[e.media_type] || {};
+      (e.genres || []).forEach((gid) => {
+        const label = map[gid] || map[Number(gid)] || `Genre ${gid}`;
+        genreCount[label] = (genreCount[label] || 0) + 1;
+      });
+    });
+    const topGenres = Object.entries(genreCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4);
+    const topGenre = topGenres.length ? { label: topGenres[0][0], count: topGenres[0][1] } : null;
+
+    // Mois le plus intense — 12 mois fixes de l'année ciblée (contrairement
+    // à compute() qui glisse sur les 12 derniers mois depuis aujourd'hui).
+    const monthly = [];
+    for (let m = 0; m < 12; m++) {
+      const label = new Date(year, m, 1).toLocaleDateString("fr-FR", { month: "long" });
+      monthly.push({ key: `${year}-${String(m + 1).padStart(2, "0")}`, label, value: 0 });
+    }
+    yearEntries.forEach((e) => {
+      const d = new Date(e.watched_date);
+      monthly[d.getMonth()].value += 1;
+    });
+    const peakMonth = monthly.reduce(
+      (best, m) => (!best || m.value > best.value ? m : best),
+      null
+    );
+
+    // Meilleures notes de l'année — dédoublonnées par œuvre (une série
+    // notée copie la même note sur chaque épisode, voir compute()), en
+    // gardant l'entrée la plus représentative de chaque œuvre plutôt que
+    // la première rencontrée au hasard.
+    const ratedByWork = new Map();
+    yearEntries
+      .filter((e) => e.rating != null)
+      .forEach((e) => {
+        const workKey = `${e.media_type}_${e.tmdb_id}`;
+        const existing = ratedByWork.get(workKey);
+        if (!existing || e.rating > existing.rating || (e.rating === existing.rating && e.watched_date > existing.watched_date)) {
+          ratedByWork.set(workKey, e);
+        }
+      });
+    const topRated = Array.from(ratedByWork.values())
+      .sort((a, b) => b.rating - a.rating || (b.watched_date || "").localeCompare(a.watched_date || ""))
+      .slice(0, 4)
+      .map((e) => ({
+        title: e.title,
+        mediaType: e.media_type,
+        tmdbId: e.tmdb_id,
+        rating: e.rating,
+        posterPath: e.poster_path,
+      }));
+
+    // Pool d'affiches pour la mosaïque finale — une par œuvre distincte,
+    // uniquement celles avec une affiche connue, triées par note puis
+    // récence pour privilégier les œuvres marquantes de l'année.
+    const seenWorksForPosters = new Set();
+    const posterPool = yearEntries
+      .slice()
+      .sort((a, b) => (b.rating || 0) - (a.rating || 0) || (b.watched_date || "").localeCompare(a.watched_date || ""))
+      .filter((e) => {
+        const workKey = `${e.media_type}_${e.tmdb_id}`;
+        if (!e.poster_path || seenWorksForPosters.has(workKey)) return false;
+        seenWorksForPosters.add(workKey);
+        return true;
+      })
+      .slice(0, 12)
+      .map((e) => ({ title: e.title, mediaType: e.media_type, tmdbId: e.tmdb_id, posterPath: e.poster_path }));
+
+    return {
+      year,
+      totalEntries: yearEntries.length,
+      moviesCount: movies.length,
+      episodesCount: episodes.length,
+      totalMinutes,
+      showsCompletedInYear,
+      topGenres,
+      topGenre,
+      monthly,
+      peakMonth,
+      topRated,
+      posterPool,
+    };
+  },
+
   renderMonthlyChart(monthly) {
     const entries = Object.entries(monthly);
     const data = entries.map(([key, val]) => {
