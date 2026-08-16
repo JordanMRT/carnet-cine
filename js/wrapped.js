@@ -157,9 +157,10 @@ const Wrapped = {
 
     // La largeur d'un emoji mesurée par Canvas2D n'est pas fiable sur
     // iOS/Safari (surtout avec un sélecteur de variation comme sur 🎟️) —
-    // ça poussait tout le bloc trop à droite, jusqu'à sortir du cadre.
-    // On aligne donc uniquement le texte ASCII (mesure fiable), et on
-    // place l'emoji à gauche de ce texte plutôt que de compter sur lui.
+    // ça poussait/écrasait le bloc selon comment on s'en servait pour le
+    // positionner. On aligne le texte ASCII (mesure fiable), puis on place
+    // l'emoji à une distance FIXE de son bord gauche, sans jamais utiliser
+    // sa propre largeur mesurée. Valeurs validées manuellement sur iPhone.
     ctx.fillStyle = theme.muted;
     ctx.font = '600 22px "Nunito Sans", sans-serif';
     const tagText = "#TTBWrapped";
@@ -167,7 +168,11 @@ const Wrapped = {
     ctx.textAlign = "right";
     ctx.fillText(tagText, tagRightEdge, footerBorderY + 44);
     const tagW = ctx.measureText(tagText).width;
-    ctx.fillText("🎟️", tagRightEdge - tagW - 8, footerBorderY + 44);
+    const textLeftEdge = tagRightEdge - tagW;
+    const EMOJI_SLOT = 20;
+    const GAP_EMOJI_TEXTE = 12;
+    ctx.textAlign = "left";
+    ctx.fillText("🎟️", textLeftEdge - GAP_EMOJI_TEXTE - EMOJI_SLOT, footerBorderY + 44);
     ctx.textAlign = "left";
 
     // Zone de contenu disponible entre l'eyebrow et le pied de page
