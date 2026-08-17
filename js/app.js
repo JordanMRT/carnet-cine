@@ -15,7 +15,8 @@ const App = {
   // appel précédent) n'écrase un rendu plus récent une fois sa requête TMDB
   // enfin résolue — ça peut arriver car route() est maintenant appelée deux
   // fois au chargement (affichage rapide, puis rafraîchi après rebuild).
-  _renderGen: 0,
+ _renderGen: 0,
+_lastRoutedHash: null,
 
   async init() {
     loadSavedTheme();
@@ -194,6 +195,8 @@ maybeShowInstallPrompt();
     const gen = ++this._renderGen;
     const hash = location.hash.slice(2) || "diary";
     const [view, param] = hash.split("/");
+    if (hash !== this._lastRoutedHash) window.scrollTo(0, 0);
+    this._lastRoutedHash = hash;
     qsa(".nav-link").forEach((a) => a.classList.toggle("active", a.dataset.view === view));
     updateMobileNavPill();
     const view_el = qs("#view");

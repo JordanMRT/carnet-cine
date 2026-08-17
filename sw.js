@@ -1,4 +1,4 @@
-const SW_VERSION = "2026-08-16-3"; // ⚠️ change cette valeur à chaque déploiement
+const SW_VERSION = "2026-08-17-1"; // ⚠️ change cette valeur à chaque déploiement
 const CACHE_NAME = `timetobinge-${SW_VERSION}`;
 
 // App shell : fichiers statiques du projet, mis en cache dès l'installation
@@ -31,6 +31,8 @@ const APP_SHELL = [
   "./js/notification-prompt.js",
   "./js/update-prompt.js",
   "./js/app.js",
+  "./js/wrapped.js",
+  "./js/wrapped-ui.js",
 ];
 
 self.addEventListener("install", (event) => {

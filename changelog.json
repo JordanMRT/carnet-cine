@@ -1,7 +1,8 @@
 {
-  "version": "2026-08-16",
+  "version": "2026-08-17",
   "highlights": [
-    "What's new (v 2.2) ?",
-    "Continue d'enregistrer tes visionnages, et retrouve ton wrapped en fin d'année (disponible le 30 décembre jusqu'au 31 janvier) !"
+    "What's new (v 2.3) ?",
+    "Continue d'enregistrer tes visionnages, et retrouve ton wrapped en fin d'année (disponible le 30 décembre jusqu'au 31 janvier) !",
+    "Correction de l'affichage avec un retour en haut de page automatique."
   ]
 }
