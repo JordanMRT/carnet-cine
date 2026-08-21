@@ -268,7 +268,8 @@ function hideSplash() {
 // ---------- SKELETON SWAP ----------
 // Génère des blocs placeholders animés à afficher pendant le chargement,
 // à la place du texte "Chargement…". Le remplacement par le contenu réel
-// est ensuite un simple innerHTML — pas d'animation de transition (0ms).
+// passe par revealContent() (juste après ces fonctions) pour un léger
+// fondu plutôt qu'un swap instantané.
 const SKELETON_WIDTHS = [100, 93, 97, 88, 95, 91];
 function skeletonWidthFor(index, total) {
   if (total > 1 && index === total - 1) return 62;
@@ -336,6 +337,38 @@ function skeletonActorGridHTML(count = 8) {
       <div class="skeleton-block skeleton-actor-photo"></div>
       <div class="skeleton-block skeleton-line" style="width:70%;margin:0.3rem auto 0;"></div>
     </div>`).join("")}</div>`;
+}
+
+// Remplace l'innerHTML d'un conteneur (typiquement un skeleton) par du
+// contenu réel avec un léger fondu, au lieu d'un swap instantané.
+function revealContent(el, html) {
+  if (!el) return;
+  el.classList.add("content-reveal", "content-reveal--hidden");
+  el.innerHTML = html;
+  void el.offsetWidth; // force le reflow pour que le fondu parte bien de opacity:0
+  el.classList.remove("content-reveal--hidden");
+}
+
+// Ajoute une croix pour vider un champ de recherche, identique sur desktop
+// et mobile (remplace la croix native WebKit, masquée en CSS). wrap doit
+// contenir un .search-input et un .search-clear-btn. Le clic vide le champ,
+// redonne le focus, puis redéclenche un event "input" pour que la logique
+// de recherche déjà en place (debounce, etc.) réagisse normalement.
+function initSearchClear(wrap) {
+  const input = qs(".search-input", wrap);
+  const btn = qs(".search-clear-btn", wrap);
+  if (!input || !btn) return;
+
+  const sync = () => wrap.classList.toggle("search-input-wrap--has-value", input.value.length > 0);
+  input.addEventListener("input", sync);
+  sync();
+
+  btn.addEventListener("click", () => {
+    input.value = "";
+    sync();
+    input.focus();
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
 }
 
 

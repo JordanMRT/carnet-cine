@@ -240,7 +240,7 @@ const Wrapped = {
     const y1 = yearStr.slice(0, 2);
     const y2 = yearStr.slice(2);
 
-    let y = content.y + 220;
+    let y = content.y + 620;
     ctx.font = '900 210px "Unbounded", sans-serif';
     ctx.fillStyle = theme.cream;
     const w1 = ctx.measureText(y1).width;
@@ -253,9 +253,9 @@ const Wrapped = {
     ctx.font = '600 46px "Unbounded", sans-serif';
     y = wrapText(ctx, "Ton année au cinéma, ou sur le canapé", content.x, y, 780, 56, 2);
 
-    y += 200;
+    y += 90;
     ctx.fillStyle = theme.cream;
-    ctx.font = '400 46px "Unbounded", sans-serif';
+    ctx.font = '300 40px "Unbounded", sans-serif';
     y = wrapText(ctx, "On rewind ensemble : film après film, épisode par épisode ?", content.x, y, 780, 56, 3);
 
     // Avatar + pseudo, ancrés en bas de la zone de contenu
@@ -303,7 +303,7 @@ const Wrapped = {
 
     const totalHours = Math.round(stats.totalMinutes / 60);
 
-    let y = content.y + 220;
+    let y = content.y + 620;
     ctx.fillStyle = theme.coral;
     ctx.font = '900 260px "Unbounded", sans-serif';
     ctx.fillText(String(totalHours), content.x, y);
@@ -322,7 +322,7 @@ const Wrapped = {
     // rigoureusement homogène (comme les easter eggs existants sur les stats).
     y += 60;
     const boxTop = y;
-    const boxH = 160;
+    const boxH = 170;
     ctx.fillStyle = theme.bgElevated;
     roundRectPath(ctx, content.x, boxTop, content.w, boxH, 20);
     ctx.fill();
@@ -380,7 +380,7 @@ const Wrapped = {
     const top = stats.topRated?.[0] || null;
     const posterW = 420, posterH = 630;
     const posterX = content.x + (content.w - posterW) / 2;
-    const posterY = content.y + 30;
+    const posterY = content.y + 320;
 
     ctx.save();
     roundRectPath(ctx, posterX, posterY, posterW, posterH, 22);
@@ -414,7 +414,7 @@ const Wrapped = {
     roundRectPath(ctx, posterX, posterY, posterW, posterH, 22);
     ctx.stroke();
 
-    let y = posterY + posterH + 66;
+    let y = posterY + posterH + 80;
     ctx.fillStyle = theme.cream;
     ctx.font = '700 52px "Unbounded", sans-serif';
     ctx.textAlign = "center";
@@ -432,7 +432,7 @@ const Wrapped = {
       ctx.fillText("Pas encore de coup de cœur", content.x + content.w / 2, y);
     }
 
-    y += 50;
+    y += 70;
     if (top?.rating != null) {
       const filled = Math.round((top.rating / 10) * 5);
       ctx.font = "42px sans-serif";
@@ -443,7 +443,7 @@ const Wrapped = {
         ctx.fillText("★", sx, y);
         sx += 56;
       }
-      y += 46;
+      y += 50;
       ctx.fillStyle = theme.muted;
       ctx.font = '600 26px "Nunito Sans", sans-serif';
       ctx.fillText(`${(top.rating / 2).toFixed(1)} / 5 : ta meilleure note de l'année`, content.x + content.w / 2, y);
@@ -460,7 +460,7 @@ const Wrapped = {
     const content = this._shell(ctx, theme, { eyebrow: "Ton genre de l'année", accent: theme.sage, background });
 
     const top = stats.topGenre;
-    let y = content.y + 130;
+    let y = content.y + 520;
     ctx.fillStyle = theme.sage;
     ctx.font = '900 118px "Unbounded", sans-serif';
     y = wrapText(ctx, top ? top.label : "—", content.x, y, content.w, 118, 1);
@@ -514,7 +514,7 @@ const Wrapped = {
     const content = this._shell(ctx, theme, { eyebrow: "Ton mois le plus intense", background });
 
     const peak = stats.peakMonth;
-    let y = content.y + 130;
+    let y = content.y + 520;
     ctx.fillStyle = theme.mustard;
     ctx.font = '900 136px "Unbounded", sans-serif';
     ctx.fillText(peak ? capitalize(peak.label) : "—", content.x, y);

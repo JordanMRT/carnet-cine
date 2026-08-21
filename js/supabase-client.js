@@ -303,7 +303,10 @@ async verifyOtp(email, code) {
 
   // ---------- LIBRARY (bibliothèque : à voir / en cours / terminé) ----------
   async getLibrary(userId) {
-    return this._getAllPages("library", userId, { column: "updated_at", ascending: false });
+    return this._getAllPages("library", userId, [
+      { column: "updated_at", ascending: false },
+      { column: "id", ascending: false },
+    ]);
   },
 
   async updateDiaryEntryRuntime(id, runtimeMinutes) {
@@ -410,6 +413,7 @@ async upsertLibraryItems(items) {
     return this._getAllPages("diary_entries", userId, [
       { column: "watched_date", ascending: false },
       { column: "created_at", ascending: false },
+      { column: "id", ascending: false },
     ]);
   },
 

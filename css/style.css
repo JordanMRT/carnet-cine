@@ -202,16 +202,39 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
 .auth-success { color: var(--sage); font-size: 0.9rem; margin-top: 0.8rem; line-height: 1.5; }
 
 /* ---------- SEARCH / GRID ---------- */
+.search-input-wrap { position: relative; margin-bottom: .9rem; }
+.search-input-wrap .search-input { margin-bottom: 0; }
 .search-input {
   width: 100%;
-  padding: 0.9em 1.1em;
+  padding: 0.9em 2.6em 0.9em 1.1em;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--bg-elevated);
   color: var(--cream);
   font-size: 1rem;
-  margin-bottom: .9rem;
 }
+/* On masque la croix native (WebKit/Blink) pour la remplacer par la nôtre,
+   identique sur desktop et mobile. */
+.search-input::-webkit-search-cancel-button { display: none; }
+.search-clear-btn {
+  position: absolute;
+  top: 50%;
+  right: 0.6em;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.search-clear-btn:hover { color: var(--cream); background: var(--border); }
+.search-clear-btn svg { width: 16px; height: 16px; }
+.search-input-wrap--has-value .search-clear-btn { display: flex; }
 
 .search-tab--active { background: var(--mustard); color: var(--ink); border-color: var(--mustard); }
 
@@ -272,8 +295,11 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
 
 /* ---------- SKELETON SWAP ---------- */
 /* Remplace le texte "Chargement…" par des blocs qui pulsent, à la forme du
-   contenu à venir. Le remplacement par le vrai contenu se fait ensuite en un
-   simple innerHTML, sans fondu (vitesse 0ms) : pas de transition CSS ici. */
+   contenu à venir. Le remplacement par le vrai contenu passe par
+   revealContent() (js/utils.js), qui fait un léger fondu via les classes
+   .content-reveal / .content-reveal--hidden ci-dessous. */
+.content-reveal { transition: opacity 0.22s ease; }
+.content-reveal--hidden { opacity: 0; }
 .skeleton-block {
   background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.12) 37%, rgba(255,255,255,0.05) 63%);
   background-size: 400% 100%;
@@ -847,6 +873,12 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 }
 .episode-check-toggle:hover { border-color: var(--sage); }
 .episode-check-toggle.is-watched { background: var(--sage); color: var(--ink); border-color: var(--sage); }
+@keyframes checkPopIn {
+  0% { opacity: 0; transform: scale(0.4) rotate(-20deg); }
+  60% { opacity: 1; transform: scale(1.15) rotate(4deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+.check-pop { animation: checkPopIn 0.32s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .episode-rewatch-btn {
   width: 26px; height: 26px;
   border-radius: 50%;
@@ -954,7 +986,10 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   background: rgba(14,15,20,0.72);
   display: flex; align-items: center; justify-content: center;
   z-index: 100; padding: 1rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
 }
+.modal-overlay--visible { opacity: 1; }
 .modal {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -963,7 +998,10 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   width: 100%; max-width: 380px;
   display: flex; flex-direction: column; gap: 0.5rem;
   box-shadow: var(--shadow);
+  transform: scale(0.96) translateY(6px);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
+.modal-overlay--visible .modal { transform: scale(1) translateY(0); }
 .modal-subtitle { color: var(--muted); margin-top: -0.4rem; }
 .modal label { font-size: 0.82rem; color: var(--muted); margin-top: 0.5rem; }
 .modal input, .modal textarea {

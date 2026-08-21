@@ -838,7 +838,10 @@ function searchTemplate() {
         <button class="picker-tab search-tab--active" data-tab="content">Films &amp; séries</button>
         <button class="picker-tab" data-tab="users">Utilisateurs</button>
       </div>
-      <input type="search" id="search-input" class="search-input" placeholder="Cherche une série ou un film…" autofocus />
+      <div class="search-input-wrap">
+        <input type="search" id="search-input" class="search-input" placeholder="Cherche une série ou un film…" autofocus />
+        <button type="button" class="search-clear-btn" aria-label="Effacer la recherche"><i data-lucide="x"></i></button>
+      </div>
       <div id="search-results" class="grid"></div>
     </div>
   `;
@@ -870,6 +873,8 @@ function bindSearchEvents() {
   }
 
   tabs.forEach((t) => t.addEventListener("click", () => setTab(t.dataset.tab)));
+  initSearchClear(qs(".search-input-wrap"));
+  if (typeof lucide !== "undefined") lucide.createIcons();
 
   async function runContentSearch(q) {
     try {
@@ -959,6 +964,7 @@ function socialTemplate() {
       <a href="#/stats" class="settings-back">← Retour au profil</a>
       <h1>Abonnements &amp; abonnés</h1>
       <div class="picker-tabs social-tabs">
+        <div class="tab-pill"></div>
         <button class="picker-tab search-tab--active" data-tab="following">Abonnements</button>
         <button class="picker-tab" data-tab="followers">Abonnés</button>
       </div>
@@ -991,14 +997,20 @@ function bindSocialEvents() {
     try {
       if (activeTab === "following") {
         App.following = await DB.getMyFollowingList(App.session.user.id);
-        list.innerHTML = App.following.length
-          ? App.following.map(followingCard).join("")
-          : emptyState("Tu ne suis personne pour l'instant.");
+        revealContent(
+          list,
+          App.following.length
+            ? App.following.map(followingCard).join("")
+            : emptyState("Tu ne suis personne pour l'instant.")
+        );
       } else {
         const followers = await DB.getMyFollowers(App.session.user.id);
-        list.innerHTML = followers.length
-          ? followers.map(followerCard).join("")
-          : emptyState("Personne ne te suit pour l'instant.");
+        revealContent(
+          list,
+          followers.length
+            ? followers.map(followerCard).join("")
+            : emptyState("Personne ne te suit pour l'instant.")
+        );
       }
       if (typeof lucide !== "undefined") lucide.createIcons();
     } catch (err) {
@@ -2476,14 +2488,17 @@ async function renderSeasonsInto(container, tvId, numberOfSeasons, title, poster
         </div>`;
       })
       .join("");
-    container.innerHTML = `
+    revealContent(
+      container,
+      `
       <div class="seasons-block">
         <div class="seasons-header">
           <h2>Épisodes</h2>
           <select id="season-select">${seasonOptions}</select>
         </div>
         <div class="episode-list">${rows}</div>
-      </div>`;
+      </div>`
+    );
 
 if (typeof lucide !== "undefined") lucide.createIcons();
 
@@ -2680,7 +2695,7 @@ async function toggleEpisodeWatched(ctx, btnEl) {
 // Bascule visuellement une coche d'épisode sans toucher au réseau.
 function setEpisodeCheckVisual(btnEl, watched) {
   btnEl.classList.toggle("is-watched", watched);
-  btnEl.innerHTML = watched ? '<i data-lucide="circle-check-big"></i>' : "";
+  btnEl.innerHTML = watched ? '<i data-lucide="circle-check-big" class="check-pop"></i>' : "";
   btnEl.title = watched ? "Marquer comme non vu" : "Marquer comme vu";
   btnEl.closest(".episode-row")?.classList.toggle("episode-row--watched", watched);
   if (typeof lucide !== "undefined") lucide.createIcons();
@@ -2744,6 +2759,19 @@ async function addEpisodeRewatch(ctx, onDone) {
   }
 }
 
+// ---------- OUVERTURE / FERMETURE DE MODALE (fondu + scale) ----------
+// Toutes les modales génériques (.modal-overlay > .modal) passent par ces
+// deux fonctions pour une transition d'ouverture/fermeture cohérente. La
+// classe modal-overlay--visible porte la transition CSS (style.css).
+function showModalOverlay(overlay) {
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add("modal-overlay--visible"));
+}
+function closeModalOverlay(overlay) {
+  overlay.classList.remove("modal-overlay--visible");
+  setTimeout(() => overlay.remove(), 200);
+}
+
 // ---------- CONFIRM MODAL (générique) ----------
 function showConfirm(message, { confirmLabel = "Oui", cancelLabel = "Non" } = {}) {
   return new Promise((resolve) => {
@@ -2758,9 +2786,9 @@ function showConfirm(message, { confirmLabel = "Oui", cancelLabel = "Non" } = {}
         </div>
       </div>
     `;
-    document.body.appendChild(overlay);
+    showModalOverlay(overlay);
     const close = (result) => {
-      overlay.remove();
+      closeModalOverlay(overlay);
       resolve(result);
     };
     overlay.querySelector("#confirm-no").addEventListener("click", () => close(false));
@@ -3302,11 +3330,11 @@ function openLifetimeCard() {
               </svg>
             </div>
           </div>
-        </div>
+         </div>
       </div>
     </div>`;
-  document.body.appendChild(overlay);
-  overlay.addEventListener("click", (e) => e.target === overlay && overlay.remove());
+  showModalOverlay(overlay);
+  overlay.addEventListener("click", (e) => e.target === overlay && closeModalOverlay(overlay));
 }
 
 // ---------- SÉLECTEURS BANNIÈRE / AVATAR (recherche TMDB) ----------
@@ -3323,9 +3351,9 @@ function openBannerPicker() {
         <button id="banner-cancel" class="btn btn--ghost">Annuler</button>
       </div>
     </div>`;
-  document.body.appendChild(overlay);
-  overlay.querySelector("#banner-cancel").addEventListener("click", () => overlay.remove());
-  overlay.addEventListener("click", (e) => e.target === overlay && overlay.remove());
+  showModalOverlay(overlay);
+  overlay.querySelector("#banner-cancel").addEventListener("click", () => closeModalOverlay(overlay));
+  overlay.addEventListener("click", (e) => e.target === overlay && closeModalOverlay(overlay));
 
   const body = qs("#banner-modal-body", overlay);
   const subtitle = qs("#banner-modal-subtitle", overlay);
@@ -3335,7 +3363,7 @@ function openBannerPicker() {
     try {
       await DB.updateProfile({ banner_path: path });
       toast("Bannière mise à jour 🎟️", "success");
-      overlay.remove();
+      closeModalOverlay(overlay);
       App.session = await DB.getSession();
       App.route();
     } catch (err) {
@@ -3348,11 +3376,16 @@ function openBannerPicker() {
     backBtn.onclick = null;
     subtitle.textContent = "Cherche un film ou une série.";
     body.innerHTML = `
-      <input type="search" id="banner-search-input" class="search-input" placeholder="Cherche un titre…" autofocus />
+      <div class="search-input-wrap">
+        <input type="search" id="banner-search-input" class="search-input" placeholder="Cherche un titre…" autofocus />
+        <button type="button" class="search-clear-btn" aria-label="Effacer la recherche"><i data-lucide="x"></i></button>
+      </div>
       <div id="banner-search-results" class="picker-grid"></div>
     `;
     const input = qs("#banner-search-input", body);
     const results = qs("#banner-search-results", body);
+    initSearchClear(qs(".search-input-wrap", body));
+    if (typeof lucide !== "undefined") lucide.createIcons();
     input.addEventListener(
       "input",
       debounce(async () => {
@@ -3393,6 +3426,7 @@ function openBannerPicker() {
     const hasEpisodes = mediaType === "tv";
     body.innerHTML = `
       <div class="picker-tabs">
+        <div class="tab-pill"></div>
         <button class="picker-tab picker-tab--active" data-tab="backdrops">Fonds d'écran</button>
         ${hasEpisodes ? `<button class="picker-tab" data-tab="episodes">Épisodes</button>` : ""}
       </div>
@@ -3414,16 +3448,19 @@ function openBannerPicker() {
       try {
         const images = await TMDB.getImages(mediaType, id);
         const backdrops = (images.backdrops || []).slice(0, 30);
-        grid.innerHTML = backdrops.length
-          ? backdrops
-              .map(
-                (img) => `
+        revealContent(
+          grid,
+          backdrops.length
+            ? backdrops
+                .map(
+                  (img) => `
               <div class="picker-item picker-item--image" data-path="${img.file_path}">
                 <img src="${TMDB.backdropUrl(img.file_path, "w300")}" alt="" loading="lazy" />
               </div>`
-              )
-              .join("")
-          : emptyState("Aucune image disponible pour ce titre.");
+                )
+                .join("")
+            : emptyState("Aucune image disponible pour ce titre.")
+        );
       } catch {
         grid.innerHTML = emptyState("Erreur TMDB.");
       }
@@ -3441,7 +3478,9 @@ function openBannerPicker() {
         const seasonOptions = Array.from({ length: numberOfSeasons }, (_, i) => i + 1)
           .map((n) => `<option value="${n}" ${n === season ? "selected" : ""}>Saison ${n}</option>`)
           .join("");
-        grid.innerHTML = `
+                revealContent(
+          grid,
+          `
           <select id="banner-season-select" class="banner-season-select">${seasonOptions}</select>
           <div class="picker-grid picker-grid--wide">
             ${
@@ -3457,8 +3496,9 @@ function openBannerPicker() {
                     .join("")
                 : emptyState("Pas de vignettes disponibles pour cette saison.")
             }
-          </div>
-        `;
+                   </div>
+        `
+        );
         qs("#banner-season-select", grid).addEventListener("change", (e) => loadEpisodes(Number(e.target.value)));
       } catch {
         grid.innerHTML = emptyState("Erreur TMDB.");
@@ -3489,18 +3529,23 @@ function openAvatarPicker() {
     <div class="modal modal--picker">
       <h2>Choisir un avatar</h2>
       <p class="modal-subtitle">Cherche un film ou une série, puis choisis un personnage dans son casting.</p>
-      <input type="search" id="avatar-search-input" class="search-input" placeholder="Cherche un titre…" autofocus />
+      <div class="search-input-wrap">
+        <input type="search" id="avatar-search-input" class="search-input" placeholder="Cherche un titre…" autofocus />
+        <button type="button" class="search-clear-btn" aria-label="Effacer la recherche"><i data-lucide="x"></i></button>
+      </div>
       <div id="avatar-step-results" class="picker-grid"></div>
       <div class="modal-actions">
         <button id="avatar-cancel" class="btn btn--ghost">Annuler</button>
       </div>
     </div>`;
-  document.body.appendChild(overlay);
-  overlay.querySelector("#avatar-cancel").addEventListener("click", () => overlay.remove());
-  overlay.addEventListener("click", (e) => e.target === overlay && overlay.remove());
+  showModalOverlay(overlay);
+  overlay.querySelector("#avatar-cancel").addEventListener("click", () => closeModalOverlay(overlay));
+  overlay.addEventListener("click", (e) => e.target === overlay && closeModalOverlay(overlay));
 
   const input = qs("#avatar-search-input", overlay);
   const resultsEl = qs("#avatar-step-results", overlay);
+  initSearchClear(qs(".search-input-wrap", overlay));
+  if (typeof lucide !== "undefined") lucide.createIcons();
 
   input.addEventListener(
     "input",
@@ -3549,19 +3594,22 @@ function openAvatarPicker() {
           await getCastForDisplay(type === "movie" ? "movie" : "series", showItem.dataset.id, title, rawCast)
         ).slice(0, 20);
 
-        resultsEl.innerHTML = cast.length
-          ? cast
-              .map(
-                (actor) => `
+        revealContent(
+          resultsEl,
+          cast.length
+            ? cast
+                .map(
+                  (actor) => `
             <div class="picker-item picker-item--actor" data-image="${actor.image}">
               <img src="${actor.image}" alt="" loading="lazy" />
               <span class="cast-name">${escapeHtml(actor.role)}</span>
               <br>
               <span>${escapeHtml(actor.name)}</span>
             </div>`
-              )
-              .join("")
-          : emptyState("Pas de photos de casting disponibles pour ce titre.");
+                )
+                .join("")
+            : emptyState("Pas de photos de casting disponibles pour ce titre.")
+        );
       } catch {
         resultsEl.innerHTML = emptyState("Erreur TMDB.");
       }
@@ -3573,7 +3621,7 @@ function openAvatarPicker() {
       try {
         await DB.updateProfile({ avatar_url: actorItem.dataset.image, avatar_path: null });
         toast("Avatar mis à jour 🎟️", "success");
-        overlay.remove();
+        closeModalOverlay(overlay);
         App.session = await DB.getSession();
         App.route();
       } catch (err) {

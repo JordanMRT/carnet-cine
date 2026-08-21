@@ -30,7 +30,7 @@ const [, , seriesIdArg, userIdArg, ...flags] = process.argv;
 const includeSpecials = flags.includes("--include-specials");
 
 if (!seriesIdArg || !userIdArg) {
-  console.error("Usage : node mark-series-watched.mjs <TMDB_SERIES_ID> <SUPABASE_USER_ID> [--include-specials]");
+  console.error("Usage : node mark-series-watched.mjs <TMDB_SERIES_ID> <9cf5e60b-8e68-4743-9894-a43e9320d319> [--include-specials]");
   process.exit(1);
 }
 
