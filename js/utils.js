@@ -514,3 +514,52 @@ function createOtpInput(container, { length = 6, mode = "numeric", onComplete, o
 function isStandalone() {
   return window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
 }
+
+// ---------- HAPTICS ----------
+// permet de contourner la limitation haptic de Safari/WebKit/PWA
+// en déposant un input invisible par-dessus l'élément ciblé, et le tap sur l'élément déclenche le switch caché → haptic natif,
+// sans aucune API privée ni wrapper.
+
+function isIOS() {
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+}
+
+function hapticTrigger(element) {
+  if (!element || !isIOS()) return;
+
+  const switchEl = document.createElement('input');
+  switchEl.type = 'checkbox';
+  switchEl.setAttribute('switch', '');
+  switchEl.setAttribute('aria-hidden', 'true');
+  switchEl.tabIndex = -1;
+
+  Object.assign(switchEl.style, {
+    position: 'absolute',
+    inset: '0',
+    width: '100%',
+    height: '100%',
+    margin: '0',
+    opacity: '0',
+    clipPath: 'inset(0 round 999px)',
+    touchAction: 'manipulation',
+  });
+  switchEl.style.setProperty('-webkit-tap-highlight-color', 'transparent');
+
+  if (getComputedStyle(element).position === 'static') {
+    element.style.position = 'relative';
+  }
+
+  element.insertAdjacentElement('beforeend', switchEl);
+}
+
+// ------ MAILTO -----
+function buildContactMailto() {
+  const subject = encodeURIComponent("Time To Binge - Question / Suggestion");
+  const body = encodeURIComponent(
+    "Bonjour,\n\n[Décris ici ta question ou ta suggestion]\n\n—\nEnvoyé depuis Time To Binge 🎟"
+  );
+  return `mailto:${CONFIG.CONTACT_EMAIL}?subject=${subject}&body=${body}`;
+}

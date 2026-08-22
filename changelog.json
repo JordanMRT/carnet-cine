@@ -1,9 +1,9 @@
 {
-  "version": "2026-08-21",
+  "version": "2026-08-22",
   "highlights": [
-    "What's new (v 2.3) ?",
-    "Continue d'enregistrer tes visionnages, et retrouve ton wrapped en fin d'année (disponible le 30 décembre jusqu'au 31 janvier) !",
-    "Correction de la navigation avec un retour en haut de page automatique.",
+    "What's new (v 2.4) ?",
+    "Ajout d'un bouton 'contact' sur le profil : un accès direct pour tes questions & suggestions.",
+    "Ajout du retour haptic (vibrations) sur certains éléments.",
     "Correction de bug et logiques mineurs."
   ]
 }

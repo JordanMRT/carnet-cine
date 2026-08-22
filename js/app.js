@@ -1301,7 +1301,7 @@ async function renderShowDetail(param, gen) {
           ${[1, 2, 3, 4, 5]
             .map(
               (n) =>
-                `<button class="rating-star ${n <= userRating ? "rating-star--filled" : ""}" data-value="${n}" ${canRate ? "" : "disabled"} title="${n} étoile${n > 1 ? "s" : ""}">${n <= userRating ? "★" : "☆"}</button>`
+                `<button class="rating-star ${n <= userRating ? "rating-star--filled" : ""}" data-value="${n}" ${canRate ? "" : "disabled"} title="${n} étoile${n > 1 ? "s" : ""}"><span class="rating-star-glyph">${n <= userRating ? "★" : "☆"}</span></button>`
             )
             .join("")}
         </div>
@@ -1534,9 +1534,16 @@ if (typeof lucide !== "undefined") lucide.createIcons();
         }
       };
 
-      qs("#quick-log-btn")?.addEventListener("click", () => logMovieEntry(false));
-      qs("#movie-rewatch-btn")?.addEventListener("click", () => logMovieEntry(true));
-      qs("#movie-undo-btn")?.addEventListener("click", () =>
+      const quickLogBtn = qs("#quick-log-btn");
+      hapticTrigger(quickLogBtn);
+      quickLogBtn?.addEventListener("click", () => logMovieEntry(false));
+
+      const movieRewatchBtn = qs("#movie-rewatch-btn");
+      hapticTrigger(movieRewatchBtn);
+      movieRewatchBtn?.addEventListener("click", () => logMovieEntry(true));
+      const movieUndoBtn = qs("#movie-undo-btn");
+      hapticTrigger(movieUndoBtn);
+      movieUndoBtn?.addEventListener("click", () =>
         undoLastMovieWatch({ tmdb_id: Number(id) }, () => {
           refreshShowDetailUI();
           App.refreshSilently();
@@ -1549,14 +1556,19 @@ if (typeof lucide !== "undefined") lucide.createIcons();
       if (!widget || widget.classList.contains("rating-widget--disabled")) return;
       const starEls = qsa(".rating-star", widget);
       const applyPreview = (value) =>
-        starEls.forEach((s) => {
-          const filled = Number(s.dataset.value) <= value;
-          s.classList.toggle("rating-star--filled", filled);
-          s.textContent = filled ? "★" : "☆";
-        });
+  starEls.forEach((s) => {
+    const filled = Number(s.dataset.value) <= value;
+    s.classList.toggle("rating-star--filled", filled);
+    // On ne touche qu'au span interne, jamais au bouton lui-même : le
+    // switch invisible de hapticTrigger() vit comme frère de ce span,
+    // à l'abri de toute mise à jour visuelle.
+    const glyph = s.querySelector(".rating-star-glyph");
+    if (glyph) glyph.textContent = filled ? "★" : "☆";
+  });
       const currentRating = starEls.filter((s) => s.classList.contains("rating-star--filled")).length;
       starEls.forEach((btn) => {
         const value = Number(btn.dataset.value);
+        hapticTrigger(btn);
         btn.addEventListener("mouseenter", () => applyPreview(value));
         btn.addEventListener("click", async () => {
           applyPreview(value); // affichage immédiat, avant la réponse Supabase
@@ -2164,7 +2176,7 @@ async function renderEpisodeDetail(param, gen) {
           ${[1, 2, 3, 4, 5]
             .map(
               (n) =>
-                `<button class="rating-star ${n <= rating ? "rating-star--filled" : ""}" data-value="${n}" ${isWatched ? "" : "disabled"} title="${n} étoile${n > 1 ? "s" : ""}">${n <= rating ? "★" : "☆"}</button>`
+                `<button class="rating-star ${n <= rating ? "rating-star--filled" : ""}" data-value="${n}" ${isWatched ? "" : "disabled"} title="${n} étoile${n > 1 ? "s" : ""}"><span class="rating-star-glyph">${n <= rating ? "★" : "☆"}</span></button>`
             )
             .join("")}
         </div>
@@ -2298,15 +2310,21 @@ async function renderEpisodeDetail(param, gen) {
       if (typeof lucide !== "undefined") lucide.createIcons();
     }
 
-    function bindEpisodeActionButtons() {
-      qs("#episode-toggle-btn")?.addEventListener("click", async (e) => {
+      function bindEpisodeActionButtons() {
+      const toggleBtn = qs("#episode-toggle-btn");
+      hapticTrigger(toggleBtn);
+      toggleBtn?.addEventListener("click", async (e) => {
         await toggleEpisodeWatched(episodeCtx);
         refreshEpisodeDetailUI();
       });
-      qs("#episode-undo-btn")?.addEventListener("click", async () => {
+      const episodeUndoBtn = qs("#episode-undo-btn");
+      hapticTrigger(episodeUndoBtn);
+      episodeUndoBtn?.addEventListener("click", async () => {
         await undoLastEpisodeWatch(episodeCtx, refreshEpisodeDetailUI);
       });
-      qs("#episode-rewatch-btn")?.addEventListener("click", async () => {
+      const rewatchBtn = qs("#episode-rewatch-btn");
+      hapticTrigger(rewatchBtn);
+      rewatchBtn?.addEventListener("click", async () => {
         await addEpisodeRewatch(episodeCtx, refreshEpisodeDetailUI);
       });
     }
@@ -2316,14 +2334,19 @@ async function renderEpisodeDetail(param, gen) {
       if (!widget || widget.classList.contains("rating-widget--disabled")) return;
       const starEls = qsa(".rating-star", widget);
       const applyPreview = (value) =>
-        starEls.forEach((s) => {
-          const filled = Number(s.dataset.value) <= value;
-          s.classList.toggle("rating-star--filled", filled);
-          s.textContent = filled ? "★" : "☆";
-        });
+  starEls.forEach((s) => {
+    const filled = Number(s.dataset.value) <= value;
+    s.classList.toggle("rating-star--filled", filled);
+    // On ne touche qu'au span interne, jamais au bouton lui-même : le
+    // switch invisible de hapticTrigger() vit comme frère de ce span,
+    // à l'abri de toute mise à jour visuelle.
+    const glyph = s.querySelector(".rating-star-glyph");
+    if (glyph) glyph.textContent = filled ? "★" : "☆";
+  });
       const currentRating = starEls.filter((s) => s.classList.contains("rating-star--filled")).length;
       starEls.forEach((btn) => {
         const value = Number(btn.dataset.value);
+        hapticTrigger(btn);
         btn.addEventListener("mouseenter", () => applyPreview(value));
         btn.addEventListener("click", async () => {
           applyPreview(value);
@@ -2483,7 +2506,7 @@ async function renderSeasonsInto(container, tvId, numberOfSeasons, title, poster
           <div class="episode-row-actions">
             ${count > 1 ? `<span class="episode-rewatch-badge">×${count}</span>` : ""}
             ${watched ? `<button class="episode-rewatch-btn" title="Ajouter un revisionnage" data-season="${selectedSeason}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}" data-air-date="${ep.air_date || ""}"><i data-lucide="refresh-cw"></i></button>` : ""}
-            <button class="episode-check-toggle ${watched ? "is-watched" : ""}" title="${watched ? "Marquer comme non vu" : "Marquer comme vu"}" data-season="${selectedSeason}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}" data-air-date="${ep.air_date || ""}">${watched ? '<i data-lucide="circle-check-big"></i>' : ""}</button>
+            <button class="episode-check-toggle ${watched ? "is-watched" : ""}" title="${watched ? "Marquer comme non vu" : "Marquer comme vu"}" data-season="${selectedSeason}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}" data-air-date="${ep.air_date || ""}"><span class="check-icon">${watched ? '<i data-lucide="circle-check-big"></i>' : ""}</span></button>
           </div>
         </div>`;
       })
@@ -2506,7 +2529,8 @@ if (typeof lucide !== "undefined") lucide.createIcons();
       renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, Number(e.target.value));
     });
 
-    qsa(".episode-check-toggle", container).forEach((btn) =>
+    qsa(".episode-check-toggle", container).forEach((btn) => {
+      hapticTrigger(btn);
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
         await toggleEpisodeWatched({
@@ -2519,10 +2543,11 @@ if (typeof lucide !== "undefined") lucide.createIcons();
   runtime_minutes: Number(btn.dataset.runtime) || null,
   seasonEpisodes: season.episodes || [],
 }, btn);
-      })
-    );
+      });
+    });
 
-    qsa(".episode-rewatch-btn", container).forEach((btn) =>
+    qsa(".episode-rewatch-btn", container).forEach((btn) => {
+      hapticTrigger(btn);
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
         await addEpisodeRewatch({
@@ -2535,8 +2560,8 @@ if (typeof lucide !== "undefined") lucide.createIcons();
           runtime_minutes: Number(btn.dataset.runtime) || null,
           air_date: btn.dataset.airDate || null,
         }, () => renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, selectedSeason));
-      })
-    );
+      });
+    });
 
     qsa(".episode-row", container).forEach((row) =>
   row.addEventListener("click", (e) => {
@@ -2695,10 +2720,17 @@ async function toggleEpisodeWatched(ctx, btnEl) {
 // Bascule visuellement une coche d'épisode sans toucher au réseau.
 function setEpisodeCheckVisual(btnEl, watched) {
   btnEl.classList.toggle("is-watched", watched);
-  btnEl.innerHTML = watched ? '<i data-lucide="circle-check-big" class="check-pop"></i>' : "";
   btnEl.title = watched ? "Marquer comme non vu" : "Marquer comme vu";
   btnEl.closest(".episode-row")?.classList.toggle("episode-row--watched", watched);
-  if (typeof lucide !== "undefined") lucide.createIcons();
+
+  // On ne touche qu'au span interne (.check-icon), jamais au bouton
+  // lui-même : le switch invisible de hapticTrigger() vit comme frère de
+  // ce span, à l'abri de toute mise à jour visuelle.
+  const iconWrap = btnEl.querySelector(".check-icon");
+  if (iconWrap) {
+    iconWrap.innerHTML = watched ? '<i data-lucide="circle-check-big" class="check-pop"></i>' : "";
+    if (typeof lucide !== "undefined") lucide.createIcons();
+  }
 }
 
 // Retire uniquement le DERNIER visionnage d'un épisode (contrairement à
@@ -3038,7 +3070,8 @@ async function renderUpcoming(gen) {
       })
     );
 
-    qsa(".upcoming-check-toggle", view).forEach((btn) =>
+    qsa(".upcoming-check-toggle", view).forEach((btn) => {
+      hapticTrigger(btn);
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
         await toggleEpisodeWatched({
@@ -3051,8 +3084,8 @@ async function renderUpcoming(gen) {
           runtime_minutes: Number(btn.dataset.runtime) || null,
           air_date: btn.dataset.airDate || null,
         });
-      })
-    );
+      });
+    });
 
     if (typeof lucide !== "undefined") lucide.createIcons();
   } catch (err) {
@@ -3676,17 +3709,24 @@ function statsTemplate(diary, library) {
 
       ${
         activeWrappedYear() !== null
-          ? `<button id="open-wrapped-btn" class="btn btn--ghost settings-entry-btn">
+          ? `<button id="open-wrapped-btn" class="btn btn--ghost wrapped-entry-btn">
         <i data-lucide="sparkles"></i>
         Time To Binge Wrapped
       </button>`
           : ""
       }
 
-      <button id="open-settings-btn" class="btn btn--ghost settings-entry-btn">
-        <i data-lucide="settings"></i>
-        Paramètres généraux
-      </button>
+      <section class="stats-section-button">
+  <button id="open-settings-btn" class="btn btn--ghost settings-entry-btn">
+    <i data-lucide="settings"></i>
+    Paramètres
+  </button>
+
+  <a href="${buildContactMailto()}" class="btn btn--ghost settings-entry-btn">
+    <i data-lucide="mail-question-mark"></i>
+    Contact
+  </a>
+</section>
       
       <footer class="app-attribution">
         <p>

@@ -19,4 +19,5 @@ const CONFIG = {
   SUPABASE_URL: "https://zhlhmoafhlidixwhynxi.supabase.co/",
   SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpobGhtb2FmaGxpZGl4d2h5bnhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwNjQ4NjgsImV4cCI6MjA5ODY0MDg2OH0.zH0RftbT1rZmtlU_RdN3BzICbZR9fnUNgalBU03Y5tI",
   VAPID_PUBLIC_KEY: "BE0EQUOg23rCgYnus25Xje9WngRRMMc7aA1iSuu8W-LDVPQJREl6eTGp9dIShiIRJcMgQznI_JArxpxQIOaOEXc",
+  CONTACT_EMAIL: "projet.jordanmrt@gmail.com",
 };
