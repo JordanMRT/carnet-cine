@@ -1,9 +1,9 @@
 {
   "version": "2026-08-22",
   "highlights": [
-    "What's new (v 2.4) ?",
+    "What's new (v 2.5) ?",
     "Ajout d'un bouton 'contact' sur le profil : un accès direct pour tes questions & suggestions.",
-    "Ajout du retour haptic (vibrations) sur certains éléments.",
+    "Choisis comment partager ton ticket : format standard, ou story ?",
     "Correction de bug et logiques mineurs."
   ]
 }

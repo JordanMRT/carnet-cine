@@ -1014,6 +1014,8 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   color: var(--cream);
 }
 .modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1rem; }
+.modal-actions--stacked { flex-direction: column-reverse; }
+.modal-actions--stacked .btn { width: 100%; justify-content: center; }
 
 /* ---------- TICKETS (diary) ---------- */
 .ticket-list { display: grid;

@@ -2829,6 +2829,32 @@ function showConfirm(message, { confirmLabel = "Oui", cancelLabel = "Non" } = {}
   });
 }
 
+// ---------- CHOIX DU FORMAT DE PARTAGE (ticket classique / story 9:16) ----------
+// Renvoie "ticket", "story" ou null (annulé) via une modale à deux options.
+function showShareFormatPicker() {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal modal--confirm">
+        <p class="modal-confirm-text">Quel format veux-tu utiliser ?</p>
+        <div class="modal-actions modal-actions--stacked">
+          <button id="share-format-ticket" class="btn btn--primary">Ticket classique</button>
+          <button id="share-format-story" class="btn btn--primary">Story Instagram (9:16)</button>
+        </div>
+      </div>
+    `;
+    showModalOverlay(overlay);
+    const close = (result) => {
+      closeModalOverlay(overlay);
+      resolve(result);
+    };
+    overlay.querySelector("#share-format-ticket").addEventListener("click", () => close("ticket"));
+    overlay.querySelector("#share-format-story").addEventListener("click", () => close("story"));
+    overlay.addEventListener("click", (e) => e.target === overlay && close(null));
+  });
+}
+
 // ---------- LIBRARY ----------
 let libraryFilter = "all"; // "all" | "movie" | "tv"
 
@@ -3229,7 +3255,10 @@ function bindDiaryEvents() {
       e.stopPropagation();
       const [type, tmdbId] = shareBtn.dataset.ticketId.split("-");
       const item = App.library.find((l) => l.media_type === type && String(l.tmdb_id) === tmdbId);
-      if (item) await TicketShare.generate(item);
+      if (!item) return;
+      const format = await showShareFormatPicker();
+      if (format === "ticket") await TicketShare.generate(item);
+      else if (format === "story") await TicketStory.generate(item);
       return;
     }
 
