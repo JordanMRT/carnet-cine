@@ -239,3 +239,4 @@ exactement où compléter :
 Tout le reste (recherche, ajout bibliothèque, journal en tickets, notes,
 rewatch, 12 badges, stats avec graphique mensuel et genres favoris) est
 fonctionnel une fois les clés API renseignées.
+
