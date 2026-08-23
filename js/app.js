@@ -2866,8 +2866,8 @@ function showShareFormatPicker() {
       <div class="modal modal--confirm">
         <p class="modal-confirm-text">Quel format veux-tu utiliser ?</p>
         <div class="modal-actions modal-actions--stacked">
-          <button id="share-format-ticket" class="btn btn--primary">Ticket classique</button>
-          <button id="share-format-story" class="btn btn--primary">Story Instagram (9:16)</button>
+          <button id="share-format-ticket" class="btn btn--primary">Ticket classique (bannière)</button>
+          <button id="share-format-story" class="btn btn--primary">Story Instagram (vertical)</button>
         </div>
       </div>
     `;
