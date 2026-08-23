@@ -189,6 +189,47 @@ const LibraryBuilder = {
       }
     }
 
+    // Éléments de la bibliothèque qui avaient une progression avant (film vu
+    // au moins une fois / série avec des épisodes vus) mais qui n'ont plus
+    // AUCUNE entrée de journal maintenant (ex: le seul visionnage d'un film
+    // vient d'être annulé) : sans ça, ils ne passeraient jamais par la boucle
+    // ci-dessus ni par le recalcul de statut plus bas, et resteraient
+    // bloqués sur leur ancien statut ("Terminé" alors que watch_count est
+    // retombé à 0). On les réintègre avec une progression à zéro pour
+    // qu'ils suivent exactement la même logique (y compris la protection
+    // sticky sur un statut choisi manuellement). Les éléments jamais
+    // regardés (ajoutés en watchlist sans historique de journal) ne sont
+    // volontairement PAS concernés ici, pour ne pas re-traiter toute la
+    // watchlist à chaque rafraîchissement.
+    for (const item of existingLibrary) {
+      const key = `${item.media_type}_${item.tmdb_id}`;
+      if (works.has(key)) continue;
+      const hadProgressBefore =
+        item.media_type === "movie" ? (item.watch_count || 0) > 0 : (item.watched_episodes || 0) > 0;
+      if (!hadProgressBefore) continue;
+      works.set(key, {
+        user_id: userId,
+        tmdb_id: item.tmdb_id,
+        media_type: item.media_type,
+        title: item.title,
+        poster_path: item.poster_path,
+        first_watched_date: item.first_watched_date,
+        last_watched_date: null,
+        watch_count: 0,
+        watched_episodes: 0,
+        seenEpisodeKeys: new Set(),
+        total_episodes: item.total_episodes || 0,
+        total_seasons: item.total_seasons || 0,
+        progress: 0,
+        status: "watching",
+        ratingSum: 0,
+        ratingCount: 0,
+        lastNote: null,
+        lastNoteDate: null,
+        lastNoteCreatedAt: null,
+      });
+    }
+
     // Résout les métadonnées TMDB (nb d'épisodes/saisons) de toutes les
     // séries en parallèle plutôt qu'une par une : avec un journal de 50
     // séries, ça remplace 50 allers-retours séquentiels par 1 seul batch,

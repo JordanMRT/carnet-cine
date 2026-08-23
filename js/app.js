@@ -1428,6 +1428,13 @@ if (typeof lucide !== "undefined") lucide.createIcons();
       const progressWrap = qs("#show-progress-wrap");
       if (progressWrap) progressWrap.innerHTML = progressBlockMarkup(inLibNow);
 
+      // Le select est peint une seule fois au chargement initial — sans
+      // cette ligne, il reste bloqué sur l'ancien statut (ex: "Terminé")
+      // même quand App.library vient d'être recalculé (ex: après une
+      // annulation qui ramène le film à "watchlist").
+      const statusSelect = qs("#status-select");
+      if (statusSelect) statusSelect.value = inLibNow?.status || "";
+
       const actionsWrap = qs("#movie-actions");
       if (actionsWrap) {
         actionsWrap.innerHTML = movieActionsMarkup(watchCountNow);
@@ -1554,9 +1561,13 @@ if (typeof lucide !== "undefined") lucide.createIcons();
       const movieUndoBtn = qs("#movie-undo-btn");
       hapticTrigger(movieUndoBtn);
       movieUndoBtn?.addEventListener("click", () =>
-        undoLastMovieWatch({ tmdb_id: Number(id) }, () => {
+        undoLastMovieWatch({ tmdb_id: Number(id) }, async () => {
+          // Même bug que logMovieEntry/toggleEpisodeWatched : App.library
+          // doit être reconstruit (recalcul du statut) avant
+          // refreshShowDetailUI(), sinon il lit encore l'ancien statut
+          // sticky "completed" et le select reste bloqué dessus.
+          await App.refreshSilently();
           refreshShowDetailUI();
-          App.refreshSilently();
         })
       );
     }
@@ -2768,8 +2779,11 @@ async function undoLastEpisodeWatch(ctx, onDone) {
       existing.length > 1 ? "Dernier visionnage annulé." : "Épisode marqué comme non vu.",
       "success"
     );
-    onDone ? onDone() : App.refreshSilently();
-    if (onDone) App.refreshSilently();
+    // Même bug que côté film : App.library doit être reconstruit avant
+    // d'appeler onDone() (refreshEpisodeDetailUI), sinon il travaille sur
+    // des données obsolètes.
+    await App.refreshSilently();
+    if (onDone) onDone();
   } catch (err) {
     toast(err.message, "error");
   }
