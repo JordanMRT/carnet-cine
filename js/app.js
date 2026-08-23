@@ -1527,8 +1527,18 @@ if (typeof lucide !== "undefined") lucide.createIcons();
             air_date: data.release_date || null,
           });
           toast(rewatch ? "Nouveau visionnage ajouté 🎟️" : "Marqué comme vu 🎟️", "ticket");
+          // Attendu (et non fire-and-forget) : App.diary doit être à jour
+          // avant refreshShowDetailUI(), sinon il recalcule watchCountNow
+          // sur des données obsolètes et le bouton ne change pas de forme.
+          await App.refreshSilently();
+          // Le bouton qu'on vient de taper va être détruit (remplacé par
+          // rewatch/annuler) — contrairement à la coche d'épisode, impossible
+          // ici de préserver le switch invisible en isolant le contenu dans
+          // un span (le bouton change carrément d'identité). On laisse à
+          // Safari une frame pour terminer le geste natif du switch avant de
+          // retirer l'élément du DOM.
+          await new Promise((resolve) => requestAnimationFrame(resolve));
           refreshShowDetailUI();
-          App.refreshSilently();
         } catch (err) {
           toast(err.message, "error");
         }
@@ -2702,7 +2712,10 @@ async function toggleEpisodeWatched(ctx, btnEl) {
       await DB.deleteDiaryEntries(existing.map((e) => e.id));
       toast("Épisode marqué comme non vu.", "success");
     }
-    App.refreshSilently();
+    // Attendu (et non fire-and-forget) : App.diary doit être à jour avant
+    // que l'appelant ne recalcule l'UI (refreshEpisodeDetailUI, etc.), sinon
+    // il travaille sur des données obsolètes et le bouton ne change pas.
+    await App.refreshSilently();
   } catch (err) {
     // Échec : on annule la coche optimiste posée juste avant, y compris
     // celle des épisodes précédents rattrapés le cas échéant.

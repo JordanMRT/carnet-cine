@@ -210,6 +210,9 @@ const LibraryBuilder = {
       })
     );
 
+    const existingWatchCounts = new Map(
+      existingLibrary.map((l) => [`${l.media_type}_${l.tmdb_id}`, l.watch_count || 0])
+    );
     const library = [];
 
     for (const work of works.values()) {
@@ -239,7 +242,17 @@ const LibraryBuilder = {
       const STICKY_STATUSES = new Set(["dropped", "completed"]);
       const previousStatus = existingStatus.get(`${work.media_type}_${work.tmdb_id}`);
       const previousWatchedEpisodes = existingWatchedEpisodes.get(`${work.media_type}_${work.tmdb_id}`) ?? 0;
-      const hasNewProgress = work.watched_episodes > previousWatchedEpisodes;
+      const previousWatchCount = existingWatchCounts.get(`${work.media_type}_${work.tmdb_id}`) ?? 0;
+      // Pour un film, watched_episodes ne bouge jamais (seul watch_count
+      // compte) : s'y fier ici rendrait "completed" inamovible pour de bon
+      // dès le premier visionnage, y compris après une annulation qui
+      // ramène watch_count à 0. On compare donc watch_count pour un film
+      // (dans les deux sens, hausse ou baisse), watched_episodes pour une
+      // série (uniquement en hausse, comportement inchangé).
+      const hasNewProgress =
+        work.media_type === "movie"
+          ? work.watch_count !== previousWatchCount
+          : work.watched_episodes > previousWatchedEpisodes;
 
       library.push({
         user_id: work.user_id,
