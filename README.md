@@ -1,4 +1,7 @@
-# Carnet Ciné 🎟️
+![Logo](./ttb-logo-ticketcorn-shadow.png)
+[Time To Binge](https://jordanmrt.github.io/carnet-cine/)
+
+# Time To Binge 🎟️
 
 Journal de séries et de films façon TV Time — recherche TMDB, bibliothèque,
 journal de visionnage en tickets de cinéma, statistiques et badges.
@@ -25,15 +28,24 @@ tvtime-clone/
     └── poster-placeholder.svg
 ```
 
-## Note sur `package.json` / `vite.config.ts`
+## Configuration initiale
 
-Ces deux fichiers sont présents dans le dossier mais **ne sont pas
-utilisés actuellement** : `index.html` charge toujours les scripts un
-par un (`<script src="js/...">`), pas de build. Ils semblent être un
-début de migration vers Vite + React + PWA installable, jamais
-branché. Je les ai laissés de côté pour ne rien casser — dis-moi si tu
-veux qu'on aille au bout de cette migration (ça permettrait une vraie
-appli installable hors-ligne), sinon tu peux les supprimer sans risque.
+1. Copie le modèle de configuration :
+   ```bash
+   cp js/config.example.js js/config.js
+   ```
+
+2. Ouvre `js/config.js` et remplace les valeurs `*_PLACEHOLDER` par tes propres clés :
+   - **TMDB_API_KEY** → ta clé API TMDB (v3 auth)  
+   - **SUPABASE_URL** → l’URL de ton projet Supabase (ex. `https://xxxx.supabase.co`)  
+   - **SUPABASE_ANON_KEY** → la clé *anon* publique de Supabase  
+   - **VAPID_PUBLIC_KEY** → la clé publique VAPID générée via le panel Supabase → *Settings → Push* (ou via le service worker si tu l’utilises)  
+   - **CONTACT_EMAIL** → libre à toi de le garder ou de le changer  
+
+3. Enregistre le fichier.  
+   Tu peux maintenant lancer l’application (Live Server, double‑clic sur `index.html`, etc.) et elle utilisera tes clés.
+
+> **⚠️ Ne jamais commiter `js/config.js`** : il est listé dans `.gitignore`. Si tu as besoin de partager ton modèle, utilise `js/config.example.js`.
 
 ## 1. Configurer TMDB
 
@@ -147,16 +159,10 @@ génère une image PNG du ticket (affiche, titre, date, note, code-barres
 décoratif) et propose le partage natif du téléphone (réseaux sociaux,
 messages…) si disponible, ou un téléchargement direct sinon.
 
-## À venir (noté, pas encore implémenté)
-
-**Fiches détails enrichies** — ajout du casting, de vignettes par
-épisode, et conservation des titres originaux (non traduits) sur les
-fiches film/série.
-
-**Calendrier "à venir"** — un calendrier listant les films de ta
-watchlist pas encore sortis et les prochains épisodes des séries que tu
-suis.
-
+**Photo de profil et réglages de compte** — tu peux maintenant
+modifier ton avatar, ta bannière, ton pseudo et ajuster tes paramètres
+de confidentialité (visibilité du profil : public, abonnés uniquement,
+privé) directement depuis l’application.
 
 **Coche rapide** — chaque épisode a maintenant un rond à droite : un
 clic le marque vu (ou non vu) instantanément, sans ouvrir de modale, et
@@ -172,11 +178,23 @@ vu : chaque clic ajoute un nouveau visionnage, affiché en badge "×2",
 les stats comptent bien chaque revisionnage (donc un épisode vu 3 fois
 compte 3 fois sa durée).
 
+**Genres favoris en %** — la page stats affiche désormais le
+pourcentage de chaque genre plutôt qu'un chiffre brut, et résout les
+noms de genre correctement (avant, les entrées importées affichaient
+parfois un id numérique à la place du nom).
+
+**Fiches détails enrichies** — ajout du casting, de vignettes par
+épisode, et conservation des titres originaux (non traduits) sur les
+fiches film/série.
+
+**Calendrier "à venir"** — un calendrier listant les films de ta
+watchlist pas encore sortis et les prochains épisodes des séries que tu
+suis.
+
 **Confirmation à la complétion** — passer une série sur "Terminé"
 propose de marquer tous les épisodes de toutes les saisons comme vus
 d'un coup (utile pour une série que tu as déjà vue avant d'utiliser
 l'appli). Si tu réponds non, seul le statut change.
-
 
 **Navigation saisons/épisodes complète** — la fiche série propose
 maintenant un sélecteur de saison (toutes les saisons, plus seulement
@@ -198,10 +216,7 @@ manquantes sur les entrées du journal (utile surtout pour les entrées
 importées). Les stats affichent maintenant le temps total **séries**
 et **films** séparément.
 
-**Genres favoris en %** — la page stats affiche désormais le
-pourcentage de chaque genre plutôt qu'un chiffre brut, et résout les
-noms de genre correctement (avant, les entrées importées affichaient
-parfois un id numérique à la place du nom).
+---
 
 ## Ce qui n'est PAS inclus / à faire toi-même
 
@@ -229,14 +244,12 @@ exactement où compléter :
    l'URL affichée dans ton navigateur doit être dans la liste des
    Redirect URLs de ton projet Supabase.
 
-5. **Pas de mode hors-ligne / PWA** — contrairement à MonPass, ce n'est
-   pas une PWA installable pour l'instant. Ajoutable facilement si tu
-   veux (manifest.json + service worker), dis-moi.
-
-6. **Photo de profil / réglages de compte** — non implémentés, juste
-   l'auth email/mot de passe minimale.
+5. **Fonctionnalités PWA avancées** — l'application est déjà installable
+   comme PWA et supporte les notifications push (si autorisées). Certaines
+   fonctionnalités hors‑ligne avancées (background sync, etc.) ne sont pas
+   implémentées, mais l'expérience de base fonctionne hors‑ligne grâce au
+   service worker.
 
 Tout le reste (recherche, ajout bibliothèque, journal en tickets, notes,
 rewatch, 12 badges, stats avec graphique mensuel et genres favoris) est
 fonctionnel une fois les clés API renseignées.
-
