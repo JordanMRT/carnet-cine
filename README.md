@@ -1,5 +1,9 @@
-![Logo](./ttb-logo-ticketcorn-shadow.png)
-[Time To Binge](https://jordanmrt.github.io/carnet-cine/)
+<div align="center">
+  <img src="./ttb-logo-ticketcorn-shadow.png" alt="Logo" width="120"/>
+</div>
+<div align="center">
+  [Accéder à Time To Binge](https://jordanmrt.github.io/carnet-cine/)
+</div>
 
 # Time To Binge 🎟️
 
