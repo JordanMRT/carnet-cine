@@ -1,11 +1,4 @@
-<div align="center">
-  <img src="./ttb-logo-ticketcorn-shadow.png" alt="Logo" width="120"/>
-</div>
-<p align="center">
-  <a href="https://jordanmrt.github.io/carnet-cine/" target="blank">Accéder à Time To Binge</a>
-</p>
-
-# Time To Binge 🎟️
+# Carnet Ciné 🎟️
 
 Journal de séries et de films façon TV Time — recherche TMDB, bibliothèque,
 journal de visionnage en tickets de cinéma, statistiques et badges.
@@ -257,3 +250,4 @@ exactement où compléter :
 Tout le reste (recherche, ajout bibliothèque, journal en tickets, notes,
 rewatch, 12 badges, stats avec graphique mensuel et genres favoris) est
 fonctionnel une fois les clés API renseignées.
+
