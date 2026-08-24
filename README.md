@@ -1,7 +1,7 @@
-<div align="center">
+<div align="center" markdown="1">
   <img src="./ttb-logo-ticketcorn-shadow.png" alt="Logo" width="120"/>
 </div>
-<div align="center">
+<div align="center" markdown="1">
   [Accéder à Time To Binge](https://jordanmrt.github.io/carnet-cine/)
 </div>
 
@@ -139,7 +139,7 @@ ou IMDb (série trop obscure, id `-1`, mauvais matching…), l'entrée est
 quand même importée mais avec un titre générique et sans affiche. La
 liste des titres non reconnus s'affiche dans la console du navigateur
 (clic droit → Inspecter → Console) juste après l'import, pour que tu
-puisses vérifier ou corriger à la main dans Supabase si besoin.
+puisses vérifier ou corriger à la manuel dans Supabase si besoin.
 
 ---
 
