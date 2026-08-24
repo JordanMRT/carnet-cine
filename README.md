@@ -1,9 +1,9 @@
-<div align="center" markdown="1">
+<div align="center">
   <img src="./ttb-logo-ticketcorn-shadow.png" alt="Logo" width="120"/>
 </div>
-<div align="center" markdown="1">
-  [Accéder à Time To Binge](https://jordanmrt.github.io/carnet-cine/)
-</div>
+<p align="center">
+  <a href="https://jordanmrt.github.io/carnet-cine/">Accéder à Time To Binge</a>
+</p>
 
 # Time To Binge 🎟️
 
@@ -113,7 +113,7 @@ Ton site sera en ligne sur `https://TON_PSEUDO.github.io/carnet-cine/`.
 ⚠️ Tes clés `TMDB_API_KEY` et `SUPABASE_ANON_KEY` seront visibles dans le
 code source côté client — c'est normal et attendu pour ce type de clés
 publiques (elles sont conçues pour ça), à condition d'avoir bien activé
-le Row Level Security sur Supabase (déjà fait dans `schema.sql`). Ne mets
+le Row Level Security on Supabase (déjà fait dans `schema.sql`). Ne mets
 en revanche **jamais** une clé `service_role` dans un repo public.
 
 ## 5. Importer ton export TV Time
