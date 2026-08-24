@@ -691,6 +691,28 @@ function bindSettingsEvents() {
       toast(err.message, "error");
     }
   });
+
+  qs("#export-data-btn")?.addEventListener("click", async () => {
+    try {
+      const data = {
+        library: App.library,
+        diary: App.diary
+      };
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const date = new Date().toISOString().slice(0, 10);
+      const filename = `ttb-backup-${date}.json`;
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast("Données exportées avec succès.", "success");
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
 }
 
 function pendingRequestsHTML() {
@@ -3858,6 +3880,15 @@ function settingsTemplate() {
           <button id="import-shows-btn" class="btn btn--ghost">Importer mes séries</button>
           <button id="import-movies-btn" class="btn btn--ghost">Importer mes films</button>
         </div>
+      </section>
+
+      <section class="stats-section-export">
+        <h2>Sauvegarder mes données</h2>
+        <p class="import-hint">
+          Télécharge une copie de ta bibliothèque et de ton journal au format JSON.
+          <br><em>(Utile pour avoir une copie de sécurité à importer en cas de besoin.)</em>
+        </p>
+        <button id="export-data-btn" class="btn btn--ghost">Exporter mes données</button>
       </section>
 
       <section class="stats-section-danger">

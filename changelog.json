@@ -1,9 +1,8 @@
 {
-  "version": "2026-08-23",
+  "version": "2026-08-24",
   "highlights": [
-    "What's new (v 2.5) ?",
-    "Ajout d'un bouton 'contact' sur le profil : un accès direct pour tes questions & suggestions.",
-    "Choisis comment partager ton ticket : format standard, ou story ?",
+    "What's new (v 2.5.1) ?",
+    "Amélioration de la réactivité et de la fluidité.",
     "Correction de bug et logiques mineurs."
   ]
 }

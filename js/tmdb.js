@@ -4,14 +4,80 @@
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 
+/**
+ * TMDB fetch avec timeout, retry, et gestion intelligente des erreurs.
+ * - timeout de 8 s par tentative (AbortController)
+ * - jusqu'à 3 tentatives (essai initial + 2 retries)
+ * - back‑off progressif (500 ms, 1 s, 2 s)
+ * - retry uniquement sur : erreurs de réseau, timeout, 5xx, 429
+ * - ne pas retry sur 4xx autres que 429 (ex. 404, 400, 401, 403)
+ */
 async function tmdbFetch(path, params = {}) {
   const url = new URL(TMDB_BASE + path);
   url.searchParams.set("api_key", CONFIG.TMDB_API_KEY);
   url.searchParams.set("language", "fr-FR");
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Erreur TMDB (${res.status})`);
-  return res.json();
+
+  const maxAttempts = 3;          // 1 essai + 2 nouvelles tentatives
+  const baseDelay = 500;          // ms
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        return await response.json();
+      }
+
+      // Décider si on doit réessayer en fonction du statut
+      const status = response.status;
+      const shouldRetry =
+        status === 429 || // dépassement de quota
+        (status >= 500);  // erreurs serveur
+
+      // Pour les erreurs 4xx autres que 429, on considère l'erreur comme définitive
+      if (!shouldRetry) {
+        throw new Error(`Erreur TMDB (${status})`);
+      }
+      // sinon poursuivre vers la gestion des nouvelles tentatives
+    } catch (err) {
+      clearTimeout(timeoutId);
+      const isTimeout = err.name === 'AbortError';
+      const isNetworkError = err instanceof TypeError; // échec de fetch
+
+      // Déterminer si on doit réessayer cette erreur
+      const shouldRetry =
+        isTimeout ||
+        isNetworkError ||
+        (err instanceof Error &&
+          err.message.startsWith('Erreur TMDB (') &&
+          // extraire le code de statut du message s'il est présent
+          ['429', ...Array.from({ length: 10 }, (_, i) => 500 + i)].includes(
+            err.message.match(/\((\d+)\)/)?.[1] ?? ''
+          ));
+
+      // Si c'était la dernière tentative ou si l'erreur n'est pas réessayable, relancer l'erreur
+      if (attempt === maxAttempts - 1 || !shouldRetry) {
+        // Préserver la même forme d'erreur qu'auparavant
+        if (err.name === 'AbortError') {
+          throw new Error('Requête TMDB timeout');
+        }
+        if (err instanceof Error && err.message.startsWith('Erreur TMDB (')) {
+          throw err;
+        }
+        throw new Error(`Erreur TMDB (${err.message || 'unknown'})`);
+      }
+
+      // Attendre avant la prochaine tentative (back‑off exponentiel)
+      await new Promise(resolve =>
+        setTimeout(resolve, baseDelay * Math.pow(2, attempt))
+      );
+    }
+  }
 }
 
 const TMDB = {
@@ -23,7 +89,7 @@ const TMDB = {
   _imagesCache: new Map(),
   _externalIdsCache: new Map(),
   _aggregateCreditsCache: new Map(),
- _releaseDatesCache: new Map(),
+  _releaseDatesCache: new Map(),
   _personCache: new Map(),
   _recommendationsCache: new Map(),
   _watchProvidersCache: new Map(),
@@ -106,177 +172,177 @@ const TMDB = {
 
   async getMovie(id) {
 
-  if (this._movieCache.has(id)) {
-    return this._movieCache.get(id);
-  }
-
-  const promise = (async () => {
-
-    const movie = await tmdbFetch(`/movie/${id}`, {
-      append_to_response: "credits"
-    });
-
-    try {
-
-      const releases = await this.getReleaseDates(id);
-
-// On privilégie les dates de sortie publiques dans les principaux pays
-// francophones puis anglophones afin d'ignorer les avant-premières,
-// festivals et sorties anticipées dans certains territoires.
-const preferredCountries = ["FR", "BE", "CH", "CA", "US", "GB"];
-
-let bestDate = null;
-
-for (const countryCode of preferredCountries) {
-
-  const country = releases.results.find(
-    r => r.iso_3166_1 === countryCode
-  );
-
-  if (!country) continue;
-
-  const publicRelease = country.release_dates.find(
-    rd => rd.type === 3 || rd.type === 4
-  );
-
-  if (publicRelease) {
-    bestDate = publicRelease.release_date.slice(0, 10);
-    break;
-  }
-}
-
-if (bestDate) {
-  movie.release_date = bestDate;
-}
-
-    } catch (e) {
-      console.warn("Impossible de déterminer la meilleure date de sortie :", e);
+    if (this._movieCache.has(id)) {
+      return this._movieCache.get(id);
     }
 
-    return movie;
+    const promise = (async () => {
 
-  })();
+      const movie = await tmdbFetch(`/movie/${id}`, {
+        append_to_response: "credits"
+      });
 
-  this._movieCache.set(id, promise);
-  promise.catch(() => this._movieCache.delete(id));
+      try {
 
-  return promise;
-},
+        const releases = await this.getReleaseDates(id);
 
-async getReleaseDates(id) {
+        // On privilégie les dates de sortie publiques dans les principaux pays
+        // francophones puis anglophones afin d'ignorer les avant-premières,
+        // festivals et sorties anticipées dans certains territoires.
+        const preferredCountries = ["FR", "BE", "CH", "CA", "US", "GB"];
 
-  if (this._releaseDatesCache.has(id)) {
-    return this._releaseDatesCache.get(id);
-  }
+        let bestDate = null;
 
-  const promise = tmdbFetch(`/movie/${id}/release_dates`);
+        for (const countryCode of preferredCountries) {
 
-  this._releaseDatesCache.set(id, promise);
-  promise.catch(() => this._releaseDatesCache.delete(id));
+          const country = releases.results.find(
+            r => r.iso_3166_1 === countryCode
+          );
 
-  return promise;
-},
+          if (!country) continue;
+
+          const publicRelease = country.release_dates.find(
+            rd => rd.type === 3 || rd.type === 4
+          );
+
+          if (publicRelease) {
+            bestDate = publicRelease.release_date.slice(0, 10);
+            break;
+          }
+        }
+
+        if (bestDate) {
+          movie.release_date = bestDate;
+        }
+
+      } catch (e) {
+        console.warn("Impossible de déterminer la meilleure date de sortie :", e);
+      }
+
+      return movie;
+
+    })();
+
+    this._movieCache.set(id, promise);
+    promise.catch(() => this._movieCache.delete(id));
+
+    return promise;
+  },
+
+  async getReleaseDates(id) {
+
+    if (this._releaseDatesCache.has(id)) {
+      return this._releaseDatesCache.get(id);
+    }
+
+    const promise = tmdbFetch(`/movie/${id}/release_dates`);
+
+    this._releaseDatesCache.set(id, promise);
+    promise.catch(() => this._releaseDatesCache.delete(id));
+
+    return promise;
+  },
 
   async getTv(id, forceRefresh = false) {
 
-  if (!forceRefresh && this._tvCache.has(id)) {
-    return this._tvCache.get(id);
-  }
+    if (!forceRefresh && this._tvCache.has(id)) {
+      return this._tvCache.get(id);
+    }
 
-  const promise = tmdbFetch(`/tv/${id}`, {
-    append_to_response: "credits"
-  });
+    const promise = tmdbFetch(`/tv/${id}`, {
+      append_to_response: "credits"
+    });
 
-  this._tvCache.set(id, promise);
-  promise.catch(() => this._tvCache.delete(id));
+    this._tvCache.set(id, promise);
+    promise.catch(() => this._tvCache.delete(id));
 
-  return promise;
-},
+    return promise;
+  },
 
   async getSeason(tvId, seasonNumber) {
 
-  const key = `${tvId}_${seasonNumber}`;
+    const key = `${tvId}_${seasonNumber}`;
 
-  if (this._seasonCache.has(key)) {
-    return this._seasonCache.get(key);
-  }
+    if (this._seasonCache.has(key)) {
+      return this._seasonCache.get(key);
+    }
 
-  const promise = tmdbFetch(`/tv/${tvId}/season/${seasonNumber}`);
+    const promise = tmdbFetch(`/tv/${tvId}/season/${seasonNumber}`);
 
-  this._seasonCache.set(key, promise);
-  promise.catch(() => this._seasonCache.delete(key));
+    this._seasonCache.set(key, promise);
+    promise.catch(() => this._seasonCache.delete(key));
 
-  return promise;
-},
+    return promise;
+  },
 
   async getImages(mediaType, id) {
 
-  const key = `${mediaType}_${id}`;
+    const key = `${mediaType}_${id}`;
 
-  if (this._imagesCache.has(key)) {
-    return this._imagesCache.get(key);
-  }
+    if (this._imagesCache.has(key)) {
+      return this._imagesCache.get(key);
+    }
 
-  const promise = tmdbFetch(`/${mediaType}/${id}/images`, {
-    include_image_language: "en,fr,null"
-  });
+    const promise = tmdbFetch(`/${mediaType}/${id}/images`, {
+      include_image_language: "en,fr,null"
+    });
 
-  this._imagesCache.set(key, promise);
-  promise.catch(() => this._imagesCache.delete(key));
+    this._imagesCache.set(key, promise);
+    promise.catch(() => this._imagesCache.delete(key));
 
-  return promise;
-},
+    return promise;
+  },
 
   // Pour les séries : contrairement à /tv/{id}?append_to_response=credits
   // (qui renvoie un instantané limité), cet endpoint agrège le casting
   // sur l'ensemble des épisodes diffusés — plus complet.
   async getAggregateCredits(tvId) {
 
-  if (this._aggregateCreditsCache.has(tvId)) {
-    return this._aggregateCreditsCache.get(tvId);
-  }
+    if (this._aggregateCreditsCache.has(tvId)) {
+      return this._aggregateCreditsCache.get(tvId);
+    }
 
-  const promise = tmdbFetch(`/tv/${tvId}/aggregate_credits`);
+    const promise = tmdbFetch(`/tv/${tvId}/aggregate_credits`);
 
-  this._aggregateCreditsCache.set(tvId, promise);
-  promise.catch(() => this._aggregateCreditsCache.delete(tvId));
+    this._aggregateCreditsCache.set(tvId, promise);
+    promise.catch(() => this._aggregateCreditsCache.delete(tvId));
 
-  return promise;
-},
+    return promise;
+  },
 
   // Fiche comédien + filmographie complète (films + séries), utilisée
   // par la page acteur ouverte depuis un cast-card.
   async getPerson(id) {
 
-  if (this._personCache.has(id)) {
-    return this._personCache.get(id);
-  }
+    if (this._personCache.has(id)) {
+      return this._personCache.get(id);
+    }
 
-  const promise = tmdbFetch(`/person/${id}`, {
-    append_to_response: "combined_credits"
-  });
+    const promise = tmdbFetch(`/person/${id}`, {
+      append_to_response: "combined_credits"
+    });
 
-  this._personCache.set(id, promise);
-  promise.catch(() => this._personCache.delete(id));
+    this._personCache.set(id, promise);
+    promise.catch(() => this._personCache.delete(id));
 
-  return promise;
-},
+    return promise;
+  },
 
   async getExternalIds(mediaType, id) {
 
-  const key = `${mediaType}_${id}`;
+    const key = `${mediaType}_${id}`;
 
-  if (this._externalIdsCache.has(key)) {
-    return this._externalIdsCache.get(key);
-  }
+    if (this._externalIdsCache.has(key)) {
+      return this._externalIdsCache.get(key);
+    }
 
-  const promise = tmdbFetch(`/${mediaType}/${id}/external_ids`);
+    const promise = tmdbFetch(`/${mediaType}/${id}/external_ids`);
 
-  this._externalIdsCache.set(key, promise);
-  promise.catch(() => this._externalIdsCache.delete(key));
+    this._externalIdsCache.set(key, promise);
+    promise.catch(() => this._externalIdsCache.delete(key));
 
-  return promise;
-},
+    return promise;
+  },
 
   async getTrending(mediaType = "all", window = "week") {
     const data = await tmdbFetch(`/trending/${mediaType}/${window}`);
