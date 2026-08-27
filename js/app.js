@@ -1595,7 +1595,7 @@ async function renderShowDetail(param, gen) {
     const inLibrary = App.library.find(
       (l) => String(l.tmdb_id) === String(id) && l.media_type === type
     );
-    const cast = (await getCastForDisplay(type === "movie" ? "movie" : "series", id, title, rawCast)).slice(0, 12);
+    const cast = (await getCastForDisplay(type === "movie" ? "movie" : "series", id, originalTitle || title, rawCast)).slice(0, 12);
     const castHTML = cast.length
       ? `
       <div class="cast-strip">
@@ -2548,7 +2548,7 @@ async function renderEpisodeDetail(param, gen) {
       seenIds.add(actor.id);
       return true;
     });
-    const episodeCast = (await getCastForDisplay("series", tvId, show.name, tmdbFallbackCast)).slice(0, 12);
+    const episodeCast = (await getCastForDisplay("series", tvId, show.original_name || show.name, tmdbFallbackCast)).slice(0, 12);
     const castHTML = episodeCast.length
       ? `
       <div class="cast-strip">
@@ -3428,7 +3428,7 @@ async function renderUpcoming(gen) {
                 // avant de le compter comme réellement sorti.
                 let actuallyAired = true;
                 if (found.air_date === today) {
-                  if (tvdbAirsTime === undefined) tvdbAirsTime = await resolveAirsTime(show.tmdb_id, data.name);
+                  if (tvdbAirsTime === undefined) tvdbAirsTime = await resolveAirsTime(show.tmdb_id, data.original_name || data.name);
                   if (tvdbAirsTime) {
                     const now = new Date();
                     actuallyAired =
@@ -4075,8 +4075,9 @@ function openAvatarPicker(onDone) {
           rawCast = data.cast || [];
         }
 
+        const originalTitleForCast = type === "movie" ? data.original_title : data.original_name;
         const cast = (
-          await getCastForDisplay(type === "movie" ? "movie" : "series", showItem.dataset.id, title, rawCast)
+          await getCastForDisplay(type === "movie" ? "movie" : "series", showItem.dataset.id, originalTitleForCast || title, rawCast)
         ).slice(0, 20);
 
         revealContent(
