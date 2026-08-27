@@ -107,6 +107,34 @@ async verifyOtp(email, code) {
     return data.session;
   },
 
+  // Comme getSession(), mais force un rafraîchissement explicite du token
+  // si celui stocké est expiré ou sur le point de l'être (marge de 60s).
+  // Nécessaire au tout premier chargement : le rafraîchissement automatique
+  // de Supabase en arrière-plan n'a pas toujours le temps de se faire avant
+  // que les premières requêtes ne partent avec un token périmé (→ 401).
+  async ensureFreshSession() {
+    const { data } = await supabaseClient.auth.getSession();
+    const session = data.session;
+    if (!session) return null;
+
+    const expiringSoon = !session.expires_at || session.expires_at * 1000 < Date.now() + 60000;
+    if (!expiringSoon) return session;
+
+    try {
+      const { data: refreshed, error } = await supabaseClient.auth.refreshSession();
+      if (error) throw error;
+      return refreshed.session;
+    } catch {
+      // Le rafraîchissement a échoué (réseau capricieux au pire moment,
+      // refresh token invalide, etc.) : on repart avec la session existante
+      // plutôt que de faire planter le chargement. Si elle est vraiment
+      // périmée, les requêtes échoueront comme avant et l'utilisateur
+      // retombera sur le bouton "Réessayer" habituel — pas de nouveau mode
+      // de plantage introduit.
+      return session;
+    }
+  },
+
   onAuthChange(callback) {
     supabaseClient.auth.onAuthStateChange((_event, session) => callback(session));
   },
@@ -487,6 +515,51 @@ async upsertLibraryItems(items) {
   async getEarnedBadges(userId) {
     const { data, error } = await supabaseClient
       .from("badges")
+      .select("*")
+      .eq("user_id", userId);
+    if (error) throw error;
+    return data;
+  },
+
+  // Ajouter aux favoris
+  async addFavorite(userId, tmdbId, mediaType) {
+    const { error } = await supabaseClient
+      .from("favorites")
+      .insert({ user_id: userId, tmdb_id: tmdbId, media_type: mediaType });
+    if (error) throw error;
+  },
+
+  // Retirer des favoris
+  async removeFavorite(userId, tmdbId, mediaType) {
+    const { error } = await supabaseClient
+      .from("favorites")
+      .delete()
+      .eq("user_id", userId)
+      .eq("tmdb_id", tmdbId)
+      .eq("media_type", mediaType);
+    if (error) throw error;
+  },
+
+  // Vérifier si un élément est en favori
+  async isFavorite(userId, tmdbId, mediaType) {
+    const { data, error } = await supabaseClient
+      .from("favorites")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("tmdb_id", tmdbId)
+      .eq("media_type", mediaType)
+      .single();
+
+    if (error && error.code !== "PGRST116") { // PGRST116 = no rows returned
+      throw error;
+    }
+    return !!data;
+  },
+
+  // Récupérer tous les favoris d'un utilisateur
+  async getFavorites(userId) {
+    const { data, error } = await supabaseClient
+      .from("favorites")
       .select("*")
       .eq("user_id", userId);
     if (error) throw error;

@@ -25,7 +25,7 @@ async function resolveTvdbShow(tvdbId) {
     if (show) {
       resolved = {
         tmdb_id: show.id,
-        title: show.original_name || show.name,
+        title: resolveDisplayTitle(show.name, show.original_name, show.original_language),
         poster_path: show.poster_path,
         genres: (show.genre_ids || []).map(String),
       };
@@ -46,7 +46,7 @@ async function resolveImdbMovie(imdbId) {
     if (movie) {
       resolved = {
         tmdb_id: movie.id,
-        title: movie.original_title || movie.title,
+        title: resolveDisplayTitle(movie.title, movie.original_title, movie.original_language),
         poster_path: movie.poster_path,
         genres: (movie.genre_ids || []).map(String),
       };
@@ -205,7 +205,7 @@ async function importShowsCsvRows(rows, userId, onProgress) {
         if (found) {
           resolved = {
             tmdb_id: found.id,
-            title: found.original_name || found.name,
+            title: resolveDisplayTitle(found.name, found.original_name, found.original_language),
             poster_path: found.poster_path,
             genres: (found.genre_ids || []).map(String),
           };
@@ -280,7 +280,7 @@ async function importMoviesCsvRows(rows, userId, onProgress) {
         if (found) {
           resolved = {
             tmdb_id: found.id,
-            title: found.original_title || found.title,
+            title: resolveDisplayTitle(found.title, found.original_title, found.original_language),
             poster_path: found.poster_path,
             genres: (found.genre_ids || []).map(String),
           };

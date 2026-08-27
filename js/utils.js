@@ -8,6 +8,16 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// Choisit le titre à afficher/stocker : l'original s'il est en anglais
+// (largement reconnu même sans le parler), sinon le titre français
+// récupéré via TMDB (fr-FR) — un original en allemand, italien,
+// espagnol... n'est pas plus lisible qu'un titre en japonais pour un
+// public francophone, malgré l'alphabet latin.
+function resolveDisplayTitle(localizedTitle, originalTitle, originalLanguage) {
+  if (originalTitle && originalLanguage === "en") return originalTitle;
+  return localizedTitle || originalTitle;
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return "";
   const d = new Date(dateStr);

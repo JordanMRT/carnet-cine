@@ -120,6 +120,25 @@ create table if not exists sent_notifications (
   created_at timestamptz default now()
 );
 
+-- Films et séries favoris
+create table if not exists favorites (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade not null,
+  tmdb_id bigint not null,
+  media_type text not null check (media_type in ('movie', 'tv')),
+  created_at timestamptz default now(),
+  unique (user_id, tmdb_id, media_type)
+);
+
+-- Activer la sécurité au niveau des lignes pour la table favorites
+alter table favorites enable row level security;
+
+drop policy if exists "Users manage their own favorites" on favorites;
+create policy "Users manage their own favorites"
+  on favorites for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
 -- Index utiles
 create index if not exists idx_library_user on library(user_id);
 create index if not exists idx_diary_user on diary_entries(user_id);

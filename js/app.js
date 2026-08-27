@@ -35,14 +35,17 @@ _lastRoutedHash: null,
       const wasLoggedIn = !!this.session;
       const isLoggedIn = !!session;
       this.session = session;
-      // Un simple rafraîchissement de token (déjà connecté avant/après) ne
-      // doit pas relancer tout le rendu — seule une vraie transition
-      // connecté/déconnecté le justifie.
       if (wasLoggedIn && isLoggedIn) return;
+      // On gère nous-mêmes le rendu suite à un verifyOtp() en cours
+      // (le temps de savoir si le compte est nouveau ou existant) —
+      // sans ce garde-fou, l'événement SIGNED_IN différé de Supabase
+      // provoque un re-render intempestif de l'écran code en pleine
+      // vérification.
+      if (Onboarding.suspendAutoRender) return;
       initialRenderDone = true;
       this.renderShell();
     });
-    this.session = await DB.getSession();
+    this.session = await DB.ensureFreshSession();
     if (!initialRenderDone) {
       await this.renderShell();
     }
@@ -94,8 +97,32 @@ maybeShowInstallPrompt();
     try {
       const root = qs("#root");
       if (!this.session) {
-        root.innerHTML = authTemplate();
-        bindAuthEvents();
+        Onboarding.step = "welcome";
+        root.innerHTML = onboardingTemplate();
+        bindOnboardingEvents();
+        return;
+      }
+      if (!Onboarding.active) {
+        // On ne force l'onboarding que pour un compte SANS profil ET créé
+        // très récemment (onboarding interrompu par un reload) — jamais pour
+        // un vieux compte qui n'a simplement jamais eu de ligne `profiles`
+        // (pseudo/avatar jamais personnalisés avant que l'onboarding existe).
+        // Sans cette double condition, n'importe quel utilisateur existant
+        // sans ligne `profiles` se retrouverait renvoyé sur l'écran pseudo
+        // dès ce déploiement.
+        const accountAgeMs = Date.now() - new Date(this.session.user.created_at).getTime();
+        const isRecentAccount = accountAgeMs < 24 * 60 * 60 * 1000; // 24h
+        if (isRecentAccount) {
+          const existingProfile = await DB.getMyProfile(this.session.user.id);
+          if (!existingProfile) {
+            Onboarding.active = true;
+            Onboarding.step = "username";
+          }
+        }
+      }
+      if (Onboarding.active) {
+        root.innerHTML = onboardingTemplate();
+        bindOnboardingEvents();
         return;
       }
       root.innerHTML = shellTemplate();
@@ -147,13 +174,24 @@ maybeShowInstallPrompt();
     try {
       await this.loadData();
     } catch (err) {
-      console.error("Chargement des données impossible :", err);
-      qs("#view").innerHTML =
-        emptyState("Chargement impossible pour le moment (problème réseau ou Supabase).") +
-        `<div style="text-align:center;margin-top:1rem;"><button id="retry-load" class="btn btn--accent">Réessayer</button></div>`;
-      qs("#retry-load")?.addEventListener("click", () => this.syncAndRoute());
-      hideSplash();
-      return;
+      // Certaines erreurs sont transitoires côté infra Supabase (ex : léger
+      // décalage d'horloge entre leurs propres services, "JWT issued at
+      // future" / PGRST303) et se résolvent en général en quelques secondes.
+      // On retente automatiquement une fois avant d'afficher l'échec — ça
+      // reproduit ce que "Réessayer" fait déjà à la main, en automatique.
+      console.warn("Premier chargement échoué, nouvelle tentative dans 1.5s :", err);
+      await new Promise((r) => setTimeout(r, 1500));
+      try {
+        await this.loadData();
+      } catch (err2) {
+        console.error("Chargement des données impossible :", err2);
+        qs("#view").innerHTML =
+          emptyState("Chargement impossible pour le moment (problème réseau ou Supabase).") +
+          `<div style="text-align:center;margin-top:1rem;"><button id="retry-load" class="btn btn--accent">Réessayer</button></div>`;
+        qs("#retry-load")?.addEventListener("click", () => this.syncAndRoute());
+        hideSplash();
+        return;
+      }
     }
     // Premier affichage immédiat avec les données déjà en base : l'utilisateur
     // voit son journal tout de suite, sans attendre la reconstruction de la
@@ -542,7 +580,7 @@ function bindStatsEvents() {
   if (typeof lucide !== "undefined") lucide.createIcons();
 }
 
-async function runImport(e, kind) {
+async function runImport(e, kind, { refresh = true } = {}) {
   const file = e.target.files[0];
   if (!file) return;
   try {
@@ -559,7 +597,7 @@ async function runImport(e, kind) {
     } else {
       toast(`${inserted} entrées importées avec succès.`, "success");
     }
-    await App.refresh();
+    if (refresh) await App.refresh();
   } catch (err) {
     toast(err.message, "error");
   }
@@ -684,6 +722,16 @@ function bindSettingsEvents() {
     if (!confirmed) return;
     try {
       await DB.deleteAccount();
+      // Le compte n'existe plus côté serveur, mais la session reste en
+      // local tant qu'on ne se déconnecte pas explicitement — sans ça,
+      // le reload rouvre l'app sur un compte fantôme (pas d'option de
+      // déconnexion visible sur mobile/PWA pour s'en sortir).
+      try {
+        await DB.signOut();
+      } catch {
+        // Le compte n'existe déjà plus côté serveur : on ignore l'erreur,
+        // seul compte le nettoyage de la session locale avant le reload.
+      }
       toast("Compte supprimé.", "success");
       location.hash = "#/";
       location.reload();
@@ -722,6 +770,284 @@ function pendingRequestsHTML() {
         <div class="request-list">${App.pendingRequests.map(requestCard).join("")}</div>
       </section>`
     : "";
+}
+
+// ---------- ONBOARDING ----------
+const ONBOARDING_STEPS = ["welcome", "email", "code", "username", "avatar", "import", "done"];
+// Points de progression : uniquement les étapes "de fond" du parcours,
+// pas les écrans d'accueil et de fin (comme des bookends sans dots).
+const ONBOARDING_DOT_STEPS = ["email", "code", "username", "avatar", "import"];
+
+const Onboarding = {
+  step: "welcome",
+  active: false, // true dès qu'une session existe mais que l'onboarding n'est pas terminé
+  suspendAutoRender: false, // true pendant qu'on gère nous-mêmes la suite d'un verifyOtp()
+  data: {}, // infos accumulées pendant le parcours (email, pseudo choisi, etc.)
+};
+
+function onboardingTemplate() {
+  const showDots = ONBOARDING_DOT_STEPS.includes(Onboarding.step);
+  return `
+    <div class="auth-screen onboarding-screen">
+      <div class="auth-card onboarding-card">
+        ${showDots ? onboardingDotsHTML() : ""}
+        <div id="onboarding-step-content">
+          ${onboardingStepHTML(Onboarding.step)}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function onboardingDotsHTML() {
+  return `
+    <div class="onboarding-progress-dots">
+      ${ONBOARDING_DOT_STEPS.map(
+        (s) => `<span class="d ${s === Onboarding.step ? "active" : ""}"></span>`
+      ).join("")}
+    </div>
+  `;
+}
+
+function onboardingStepHTML(step) {
+  switch (step) {
+    case "welcome":
+      return `
+        <div class="auth-ticket"><img src="ttb-logo-ticketcorn-shadow.png"></div>
+        <h1>Time To Binge</h1>
+        <p class="auth-sub">Ton journal de séries et de films, un ticket à la fois.</p>
+        <div class="onboarding-actions">
+          <button id="onboarding-start-btn" class="btn btn--primary-log">Commencer</button>
+        </div>
+      `;
+    case "email":
+      return `
+        <div class="auth-ticket"><img src="ttb-logo-ticketcorn-shadow.png"></div>
+        <h2>Ton adresse email</h2>
+        <p class="auth-sub">On t'envoie un code de vérification à 8 chiffres.</p>
+        <form id="onboarding-email-form" class="auth-form">
+          <input type="email" id="onboarding-email" placeholder="Email" required autofocus />
+          <button type="submit" class="btn btn--primary-log">Recevoir le code</button>
+        </form>
+        <p id="onboarding-error" class="auth-error"></p>
+        <div class="onboarding-actions">
+          <button id="onboarding-back-btn" class="btn btn--ghost">Retour</button>
+        </div>
+      `;
+    case "code":
+      return `
+        <h2>Le code reçu par email</h2>
+        <p class="auth-sub">Vérifie tes mails, et entre les 8 chiffres reçus.</p>
+        <form id="onboarding-code-form" class="auth-form">
+          <div id="onboarding-otp" class="otp-input"></div>
+          <button type="submit" class="btn btn--primary-log">Valider le code</button>
+        </form>
+        <p id="onboarding-error" class="auth-error"></p>
+        <p id="onboarding-success" class="auth-success"></p>
+        <div class="onboarding-actions">
+          <button id="onboarding-back-btn" class="btn btn--ghost">Retour</button>
+        </div>
+      `;
+    case "username":
+      return `
+        <h2>Choisis ton pseudo</h2>
+        <p class="auth-sub">C'est comme ça que les autres te retrouveront sur Time To Binge.</p>
+        <form id="onboarding-username-form" class="auth-form">
+          <input type="text" id="onboarding-username" placeholder="Pseudo" required autofocus />
+          <button type="submit" class="btn btn--primary-log">Valider</button>
+        </form>
+        <p id="onboarding-error" class="auth-error"></p>
+      `;
+    case "avatar":
+      return `
+        <h2>Choisis ta photo de profil</h2>
+        <p class="auth-sub">Reprends le portrait d'un personnage de casting, comme ton avatar.</p>
+        <div class="onboarding-actions">
+          <button id="onboarding-avatar-btn" class="btn btn--primary-log">Choisir un avatar</button>
+        </div>
+        <button id="onboarding-avatar-skip-btn" class="onboarding-skip-btn">Passer</button>
+      `;
+    case "import":
+      return `
+        <h2>Importe ton historique</h2>
+        <p class="import-hint">
+          Depuis un export TV Time, séries et films séparément : au format JSON, ou au format CSV de ton export GDPR.<br />
+          <br><em>(CSV : Décompresse le ZIP et choisis
+          <code>tracking-prod-records-v2.csv</code> pour les séries et
+          <code>tracking-prod-records.csv</code> pour les films).</em>
+        </p>
+        <div class="import-actions-onboarding">
+          <button id="onboarding-import-shows-btn" class="btn btn--ghost">Importer mes séries</button>
+          <button id="onboarding-import-movies-btn" class="btn btn--ghost">Importer mes films</button>
+        </div>
+        <input type="file" id="onboarding-import-shows-input" accept=".json,.csv" hidden />
+        <input type="file" id="onboarding-import-movies-input" accept=".json,.csv" hidden />
+        <div class="onboarding-actions">
+          <button id="onboarding-later-btn" class="onboarding-skip-btn">Plus tard</button>
+        </div>
+      `;
+    case "done":
+      return `
+        <div class="auth-ticket"><img src="ttb-logo-ticketcorn-shadow.png"></div>
+        <h1>Prêt à binger ?</h1>
+        <p class="auth-sub">Ta bibliothèque t'attend.</p>
+        <div class="onboarding-actions">
+          <button id="onboarding-finish-btn" class="btn btn--primary-log">C'est parti</button>
+        </div>
+      `;
+  }
+}
+
+function goToOnboardingStep(step) {
+  Onboarding.step = step;
+  const root = qs("#root");
+  root.innerHTML = onboardingTemplate();
+  bindOnboardingEvents();
+}
+
+function bindOnboardingEvents() {
+  qs("#onboarding-start-btn")?.addEventListener("click", () => goToOnboardingStep("email"));
+  qs("#onboarding-next-btn")?.addEventListener("click", () => {
+    const idx = ONBOARDING_STEPS.indexOf(Onboarding.step);
+    goToOnboardingStep(ONBOARDING_STEPS[idx + 1]);
+  });
+  qs("#onboarding-back-btn")?.addEventListener("click", () => {
+    const idx = ONBOARDING_STEPS.indexOf(Onboarding.step);
+    goToOnboardingStep(ONBOARDING_STEPS[idx - 1]);
+  });
+
+  // ---- Étape email : envoi du code ----
+  qs("#onboarding-email-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorEl = qs("#onboarding-error");
+    errorEl.textContent = "";
+    const btn = qs("#onboarding-email-form button");
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = "Envoi…";
+
+    try {
+      const email = qs("#onboarding-email").value.trim();
+      await DB.sendOtp(email);
+      Onboarding.data.email = email;
+      goToOnboardingStep("code");
+    } catch (err) {
+      errorEl.textContent = err.message;
+      btn.disabled = false;
+      btn.textContent = "Recevoir le code";
+    }
+  });
+
+  // ---- Étape avatar ----
+  qs("#onboarding-avatar-btn")?.addEventListener("click", () => {
+    openAvatarPicker(() => goToOnboardingStep("import"));
+  });
+  qs("#onboarding-avatar-skip-btn")?.addEventListener("click", () => goToOnboardingStep("import"));
+
+  // ---- Étape finale ----
+  qs("#onboarding-finish-btn")?.addEventListener("click", async () => {
+    Onboarding.active = false;
+    await App.renderShell();
+  });
+
+  // ---- Étape import ----
+  qs("#onboarding-import-shows-btn")?.addEventListener("click", () =>
+    qs("#onboarding-import-shows-input").click()
+  );
+  qs("#onboarding-import-movies-btn")?.addEventListener("click", () =>
+    qs("#onboarding-import-movies-input").click()
+  );
+  qs("#onboarding-import-shows-input")?.addEventListener("change", (e) =>
+    runImport(e, "shows", { refresh: false })
+  );
+  qs("#onboarding-import-movies-input")?.addEventListener("change", (e) =>
+    runImport(e, "movies", { refresh: false })
+  );
+  qs("#onboarding-later-btn")?.addEventListener("click", () => goToOnboardingStep("done"));
+
+  // ---- Étape pseudo ----
+  qs("#onboarding-username-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorEl = qs("#onboarding-error");
+    errorEl.textContent = "";
+    const btn = qs("#onboarding-username-form button");
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = "Validation…";
+
+    try {
+      const username = qs("#onboarding-username").value.trim();
+      await DB.updateUsername(username);
+      App.session = await DB.getSession();
+      goToOnboardingStep("avatar");
+    } catch (err) {
+      errorEl.textContent = err.message;
+      btn.disabled = false;
+      btn.textContent = "Valider";
+    }
+  });
+
+  // ---- Étape code : vérification + détection nouveau compte / compte existant ----
+  const codeForm = qs("#onboarding-code-form");
+  if (codeForm) {
+    const errorEl = qs("#onboarding-error");
+    const successEl = qs("#onboarding-success");
+
+    // Cases du code : saisie ET collage fonctionnent, validation auto aux 8 chiffres
+    const otpControl = createOtpInput(qs("#onboarding-otp"), {
+      length: 8,
+      mode: "numeric",
+      onComplete: () => codeForm.requestSubmit(),
+    });
+    otpControl.focus();
+
+    codeForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errorEl.textContent = "";
+      const btn = qs("#onboarding-code-form button");
+      if (btn.disabled) return;
+      btn.disabled = true;
+      btn.textContent = "Vérification…";
+
+      // Posé AVANT verifyOtp() : Supabase déclenche l'événement SIGNED_IN
+      // (et donc renderShell() via onAuthChange) pendant l'appel, pas après.
+      // Si le flag n'est pas déjà à true à ce moment-là, renderShell() bascule
+      // direct sur l'app et court-circuite le reste de l'onboarding.
+      Onboarding.active = true;
+      // Empêche tout renderShell() automatique tant qu'on n'a pas nous-mêmes
+      // décidé (et affiché) la suite — voir le garde-fou dans onAuthChange.
+      Onboarding.suspendAutoRender = true;
+
+      try {
+        const { user } = await DB.verifyOtp(Onboarding.data.email, otpControl.value.trim());
+
+        // Aucune ligne dans `profiles` = onboarding jamais terminé (compte
+        // tout juste créé, ou créé puis abandonné en route) : on continue.
+        // Une ligne existe déjà = compte pleinement configuré : connexion
+        // classique, direct dans l'app.
+        const existingProfile = await DB.getMyProfile(user.id);
+
+        Onboarding.suspendAutoRender = false;
+        if (!existingProfile) {
+          goToOnboardingStep("username");
+        } else {
+          Onboarding.active = false;
+          successEl.textContent = "Connexion réussie !";
+          await App.renderShell();
+        }
+      } catch (err) {
+        Onboarding.suspendAutoRender = false;
+        Onboarding.active = false;
+        errorEl.textContent = err.message;
+        btn.disabled = false;
+        btn.textContent = "Valider le code";
+        const wrap = qs("#onboarding-otp");
+        wrap.classList.add("otp-input--shake");
+        setTimeout(() => wrap.classList.remove("otp-input--shake"), 350);
+        otpControl.clear();
+      }
+    });
+  }
 }
 
 // ---------- AUTH ----------
@@ -1070,7 +1396,7 @@ function bindSocialEvents() {
 }
 
 function posterCard(item) {
-  const title = item.original_title || item.original_name || item.title || item.name;
+  const title = resolveDisplayTitle(item.title || item.name, item.original_title || item.original_name, item.original_language);
   const date = item.release_date || item.first_air_date || "";
   return `
     <div class="poster-card" data-id="${item.id}" data-type="${item.media_type}">
@@ -1262,7 +1588,8 @@ async function renderShowDetail(param, gen) {
       friendIds.length ? DB.getFriendsActivityForWork(friendIds, Number(id), type).catch(() => []) : Promise.resolve([]),
       type === "tv" ? TMDB.getAggregateCredits(id).then((r) => r.cast || []) : dataPromise.then((d) => d.credits?.cast || []),
     ]);
-    const title = data.original_title || data.original_name || data.title || data.name;
+    const originalTitle = data.original_title || data.original_name;
+    const title = resolveDisplayTitle(data.title || data.name, originalTitle, data.original_language);
     const genreNames = (data.genres || []).map((g) => g.name);
     const genreIds = (data.genres || []).map((g) => String(g.id));
     const inLibrary = App.library.find(
@@ -1301,15 +1628,14 @@ async function renderShowDetail(param, gen) {
     // Ces trois fonctions génèrent le HTML à partir de l'état courant : elles
     // sont réutilisées au premier rendu ET pour patcher localement l'affichage
     // après une action, sans re-fetch TMDB ni redessiner toute la page.
-    function movieActionsMarkup(watchCount) {
-      if (type !== "movie") return "";
+    function mediaActionsMarkup(watchCount) {
       return watchCount > 0
         ? `
         <span class="movie-watch-info"><i data-lucide="circle-check-big"></i> vu${watchCount > 1 ? ` • ${watchCount} visionnages` : ""}</span>
-        <button id="movie-rewatch-btn" class="btn btn--accent">
+        <button id="media-rewatch-btn" class="btn btn--accent">
           Rewatch <i data-lucide="refresh-cw"></i>
         </button>
-        <button id="movie-undo-btn" class="btn btn--ghost">
+        <button id="media-undo-btn" class="btn btn--ghost">
         Annuler un visionnage <i data-lucide="refresh-cw-off"></i>
         </button>`
         : `<button id="quick-log-btn" class="btn btn--accent">Marquer comme vu</button>`;
@@ -1360,6 +1686,16 @@ async function renderShowDetail(param, gen) {
     const movieWatchCount = type === "movie" ? App.diary.filter((e) => String(e.tmdb_id) === String(id) && e.media_type === "movie").length : 0;
     const userRating = inLibrary?.avg_rating != null ? Math.round(inLibrary.avg_rating / 2) : 0;
     const canRate = type === "movie" ? movieWatchCount > 0 : (inLibrary?.watched_episodes || 0) > 0;
+    // Vérifier si l'élément est en favori (gérer les erreurs séparément pour ne pas bloquer l'affichage)
+    let isFavorite = false;
+    if (inLibrary) {
+      try {
+        isFavorite = await DB.isFavorite(App.session.user.id, Number(inLibrary.tmdb_id), inLibrary.media_type);
+      } catch (favErr) {
+        console.warn("Erreur lors de la vérification du statut favori (non bloquante):", favErr);
+        // On garde isFavorite = false par défaut
+      }
+    }
 
     // Une navigation plus récente a eu lieu pendant ces appels TMDB : on
     // n'écrase pas un rendu plus à jour avec ce résultat devenu obsolète.
@@ -1368,9 +1704,13 @@ async function renderShowDetail(param, gen) {
     view.innerHTML = `
       <div class="show-detail" style="--backdrop:url('${TMDB.backdropUrl(data.backdrop_path)}')">
         <div class="show-detail-overlay">
+        <button id="favorite-btn" class="btn btn--ghost favorite-btn${isFavorite ? " is-favorite" : ""}">
+          <i data-lucide="heart"></i>
+          </button>
           <img class="show-detail-poster" src="${TMDB.posterUrl(data.poster_path)}" alt="" fetchpriority="high" />
           <div class="show-detail-info">
             <h1>${escapeHtml(title)}</h1>
+            ${originalTitle && originalTitle !== title ? `<p class="show-detail-original-title">${escapeHtml(originalTitle)}</p>` : ""}
             ${type === "movie" && data.tagline ? `<p class="show-detail-tagline">${escapeHtml(data.tagline)}</p>` : ""}
             <p class="show-detail-meta">${genreNames.join(" · ")}${type === "movie" && formatRuntime(data.runtime) ? ` · ${formatRuntime(data.runtime)}` : ""}</p>
             ${type === "movie" && data.release_date ? `<p class="show-detail-release">Sorti le ${formatDate(data.release_date)}</p>` : ""}
@@ -1404,7 +1744,7 @@ async function renderShowDetail(param, gen) {
                 <option value="completed" ${inLibrary?.status === "completed" ? "selected" : ""}>Terminé</option>
                 <option value="dropped" ${inLibrary?.status === "dropped" ? "selected" : ""}>Abandonné</option>
               </select>
-              <span id="movie-actions">${movieActionsMarkup(movieWatchCount)}</span>
+              <span id="movie-actions">${mediaActionsMarkup(movieWatchCount)}</span>
             </div>
           </div>
         </div>
@@ -1447,6 +1787,10 @@ if (typeof lucide !== "undefined") lucide.createIcons();
       const canRateNow = type === "movie" ? watchCountNow > 0 : (inLibNow?.watched_episodes || 0) > 0;
       const userRatingNow = inLibNow?.avg_rating != null ? Math.round(inLibNow.avg_rating / 2) : 0;
 
+      // Mettre à jour l'état visuel du bouton favori (ne dépend pas de
+      // App.library, donc pas besoin de repasser par Supabase ici : le
+      // clic sur le bouton maintient déjà la classe à jour en temps réel).
+
       const progressWrap = qs("#show-progress-wrap");
       if (progressWrap) progressWrap.innerHTML = progressBlockMarkup(inLibNow);
 
@@ -1459,8 +1803,8 @@ if (typeof lucide !== "undefined") lucide.createIcons();
 
       const actionsWrap = qs("#movie-actions");
       if (actionsWrap) {
-        actionsWrap.innerHTML = movieActionsMarkup(watchCountNow);
-        bindMovieActionButtons();
+        actionsWrap.innerHTML = mediaActionsMarkup(watchCountNow);
+        bindMediaActionButtons();
       }
 
       const ratingWrap = qs("#rating-widget-block");
@@ -1534,26 +1878,26 @@ if (typeof lucide !== "undefined") lucide.createIcons();
       }
     });
 
-    function bindMovieActionButtons() {
-      if (type !== "movie") return;
+    function bindMediaActionButtons() {
+      if (type !== "movie" && type !== "tv") return;
 
-      const logMovieEntry = async (rewatch) => {
+      const logMediaEntry = async (rewatch) => {
         try {
           await DB.addDiaryEntry({
             user_id: App.session.user.id,
             tmdb_id: Number(id),
-            media_type: "movie",
+            media_type: type,
             title,
             poster_path: data.poster_path,
-            season: null,
-            episode: null,
+            season: type === "tv" ? null : null, // Pour les films, saison/episode sont toujours null
+            episode: type === "tv" ? null : null,
             watched_date: new Date().toISOString().slice(0, 10),
             rating: null,
             rewatch,
             note: null,
             genres: genreIds,
-            runtime_minutes: data.runtime || null,
-            air_date: data.release_date || null,
+            runtime_minutes: type === "movie" ? (data.runtime || null) : null,
+            air_date: type === "movie" ? (data.release_date || null) : null,
           });
           toast(rewatch ? "Nouveau visionnage ajouté 🎟️" : "Marqué comme vu 🎟️", "ticket");
           // Attendu (et non fire-and-forget) : App.diary doit être à jour
@@ -1575,23 +1919,53 @@ if (typeof lucide !== "undefined") lucide.createIcons();
 
       const quickLogBtn = qs("#quick-log-btn");
       hapticTrigger(quickLogBtn);
-      quickLogBtn?.addEventListener("click", () => logMovieEntry(false));
+      quickLogBtn?.addEventListener("click", () => logMediaEntry(false));
 
-      const movieRewatchBtn = qs("#movie-rewatch-btn");
-      hapticTrigger(movieRewatchBtn);
-      movieRewatchBtn?.addEventListener("click", () => logMovieEntry(true));
-      const movieUndoBtn = qs("#movie-undo-btn");
-      hapticTrigger(movieUndoBtn);
-      movieUndoBtn?.addEventListener("click", () =>
-        undoLastMovieWatch({ tmdb_id: Number(id) }, async () => {
-          // Même bug que logMovieEntry/toggleEpisodeWatched : App.library
-          // doit être reconstruit (recalcul du statut) avant
-          // refreshShowDetailUI(), sinon il lit encore l'ancien statut
-          // sticky "completed" et le select reste bloqué dessus.
-          await App.refreshSilently();
-          refreshShowDetailUI();
-        })
+      const mediaRewatchBtn = qs("#media-rewatch-btn");
+      hapticTrigger(mediaRewatchBtn);
+      mediaRewatchBtn?.addEventListener("click", () => logMediaEntry(true));
+      const mediaUndoBtn = qs("#media-undo-btn");
+      hapticTrigger(mediaUndoBtn);
+      mediaUndoBtn?.addEventListener("click", () =>
+        type === "movie"
+          ? undoLastMovieWatch({ tmdb_id: Number(id) }, async () => {
+              // Même bug que logMovieEntry/toggleEpisodeWatched : App.library
+              // doit être reconstruit (recalcul du statut) avant
+              // refreshShowDetailUI(), sinon il lit encore l'ancien statut
+              // sticky "completed" et le select reste bloqué dessus.
+              await App.refreshSilently();
+              refreshShowDetailUI();
+            })
+          : undoLastEpisodeWatch({
+              tmdb_id: Number(id),
+              title,
+              poster_path: data.poster_path,
+              genres: genreIds,
+              season: 1, // Pour les séries, on aurait besoin de la saison actuelle
+              episode: 1, // et de l'épisode actuel - mais cette fonction n'est pas utilisée pour les séries dans l'UI actuelle
+              runtime_minutes: null,
+              air_date: null,
+            }, refreshShowDetailUI)
       );
+
+      // Gestion du bouton favori
+      const favoriteBtn = qs("#favorite-btn");
+      if (favoriteBtn) {
+        hapticTrigger(favoriteBtn);
+        favoriteBtn.addEventListener("click", async () => {
+          const isCurrentlyFavorite = favoriteBtn.classList.contains("is-favorite");
+          try {
+            if (isCurrentlyFavorite) {
+              await DB.removeFavorite(App.session.user.id, Number(id), type);
+            } else {
+              await DB.addFavorite(App.session.user.id, Number(id), type);
+            }
+            favoriteBtn.classList.toggle("is-favorite", !isCurrentlyFavorite);
+          } catch (err) {
+            toast(err.message, "error");
+          }
+        });
+      }
     }
 
     function bindRatingWidget() {
@@ -1675,7 +2049,7 @@ if (typeof lucide !== "undefined") lucide.createIcons();
       });
     }
 
-    bindMovieActionButtons();
+    bindMediaActionButtons();
     bindRatingWidget();
     bindNoteWidget();
 
@@ -3510,7 +3884,7 @@ function openBannerPicker() {
           results.innerHTML =
             items
               .map((it) => {
-                const title = it.original_title || it.original_name || it.title || it.name;
+                const title = resolveDisplayTitle(it.title || it.name, it.original_title || it.original_name, it.original_language);
                 return `
               <div class="picker-item picker-item--show" data-id="${it.id}" data-type="${it.media_type}" data-title="${escapeHtml(title)}">
                 <img src="${TMDB.posterUrl(it.poster_path, "w185")}" alt="" loading="lazy" />
@@ -3633,7 +4007,7 @@ function openBannerPicker() {
 
 // AVATAR PICKER
 
-function openAvatarPicker() {
+function openAvatarPicker(onDone) {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.innerHTML = `
@@ -3671,7 +4045,7 @@ function openAvatarPicker() {
         resultsEl.innerHTML =
           items
             .map((it) => {
-              const title = it.original_title || it.original_name || it.title || it.name;
+              const title = resolveDisplayTitle(it.title || it.name, it.original_title || it.original_name, it.original_language);
               return `
           <div class="picker-item picker-item--show" data-id="${it.id}" data-type="${it.media_type}" data-title="${escapeHtml(title)}">
             <img src="${TMDB.posterUrl(it.poster_path, "w185")}" alt="" loading="lazy" />
@@ -3734,7 +4108,11 @@ function openAvatarPicker() {
         toast("Avatar mis à jour 🎟️", "success");
         closeModalOverlay(overlay);
         App.session = await DB.getSession();
-        App.route();
+        if (onDone) {
+          onDone();
+        } else {
+          App.route();
+        }
       } catch (err) {
         toast(err.message, "error");
       }

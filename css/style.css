@@ -173,6 +173,16 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
   font-size: 16px;
 }
 
+.otp-input input {
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--ink);
+  color: var(--cream);
+  margin-bottom: .2rem;
+  font-size: 16px;
+}
+
 .otp-input { display: flex; gap: 0.2rem; justify-content: center; margin: 0.4rem 0 0.6rem; }
 .otp-cell {
   width: 2.2rem;
@@ -200,6 +210,29 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
 .auth-actions .btn { flex: 1; }
 .auth-error { color: var(--coral); font-size: 0.85rem; min-height: 1.2em; margin-top: 0.8rem; }
 .auth-success { color: var(--sage); font-size: 0.9rem; margin-top: 0.8rem; line-height: 1.5; }
+
+.onboarding-progress-dots { display: flex; justify-content: center; gap: 8px; margin-bottom: 1.4rem; }
+.onboarding-progress-dots .d {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--border);
+  transition: all 0.2s;
+}
+.onboarding-progress-dots .d.active { background: var(--mustard); width: 22px; border-radius: 4px; }
+.onboarding-actions { display: flex; gap: 0.6rem; margin-top: 1.2rem; }
+.onboarding-actions .btn { flex: 1; }
+.onboarding-skip-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-decoration: underline;
+  cursor: pointer;
+  margin: 0 auto;
+  padding: 0.4rem;
+}
+.onboarding-skip-btn:hover { color: var(--cream); }
+
+.import-actions-onboarding { display: flex; gap: 0.8rem; flex-wrap: nowrap; }
 
 /* ---------- SEARCH / GRID ---------- */
 .search-input-wrap { position: relative; margin-bottom: .9rem; }
@@ -609,6 +642,7 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 }
 
 .show-detail-tagline { font-style: italic; color: var(--muted); margin: 0.2rem 0 0.4rem; }
+.show-detail-original-title { font-style: italic; color: var(--muted); font-size: 0.8rem; margin: 0.1rem 0 0; }
 .episode-meta-row {
   display: flex;
   align-items: center;
@@ -617,6 +651,23 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   gap: 0.6rem;
 }
 .episode-meta-row-btn { flex-shrink: 0; }
+
+.favorite-btn {position: absolute;
+  top: 1.2rem;
+  right: 1.2rem;
+  left: auto;
+  backdrop-filter: blur(2px);
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  border: 1px solid var(--muted);
+  width: 35px;
+  height: 35px;
+  z-index: 5;
+}
+.favorite-btn svg { transition: fill .15s ease, color .15s ease; }
+.favorite-btn.is-favorite svg {
+  fill: var(--coral);
+  color: var(--coral);
+}
 
 @media (max-width: 640px) {
   .episode-meta-row { flex-direction: column; align-items: flex-start; }
