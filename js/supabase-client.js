@@ -496,19 +496,27 @@ async upsertLibraryItems(items) {
     if (error) throw error;
   },
 
-  async bulkInsertDiary(entries) {
+  // Retourne aussi les lignes insérées (avec leur id généré par la base) :
+  // utile pour que l'appelant puisse mettre à jour App.diary en mémoire
+  // sans avoir à tout recharger depuis Supabase.
+  // onChunkInserted(rows) est appelé après CHAQUE lot réussi (pas seulement
+  // à la fin) : si un lot échoue au milieu d'un gros import, l'appelant a
+  // quand même pu synchroniser ce qui est déjà réellement en base avant
+  // que l'erreur ne remonte.
+  async bulkInsertDiary(entries, onChunkInserted) {
     // Insère par lots de 500 pour éviter les limites de payload
     const chunks = [];
     for (let i = 0; i < entries.length; i += 500) {
       chunks.push(entries.slice(i, i + 500));
     }
-    let inserted = 0;
+    let rows = [];
     for (const chunk of chunks) {
-      const { error } = await supabaseClient.from("diary_entries").insert(chunk);
+      const { data, error } = await supabaseClient.from("diary_entries").insert(chunk).select();
       if (error) throw error;
-      inserted += chunk.length;
+      rows = rows.concat(data);
+      onChunkInserted?.(data);
     }
-    return inserted;
+    return { inserted: rows.length, rows };
   },
 
   // ---------- BADGES ----------
@@ -522,10 +530,10 @@ async upsertLibraryItems(items) {
   },
 
   // Ajouter aux favoris
-  async addFavorite(userId, tmdbId, mediaType) {
+  async addFavorite(userId, tmdbId, mediaType, title, posterPath) {
     const { error } = await supabaseClient
       .from("favorites")
-      .insert({ user_id: userId, tmdb_id: tmdbId, media_type: mediaType });
+      .insert({ user_id: userId, tmdb_id: tmdbId, media_type: mediaType, title, poster_path: posterPath });
     if (error) throw error;
   },
 

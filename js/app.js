@@ -6,6 +6,7 @@ const App = {
   session: null,
   library: [],
   diary: [],
+  favorites: [],
   earnedBadges: [],
   genreMaps: { movie: {}, tv: {} },
   _rendering: false, // évite les rendus concurrents (plusieurs événements d'auth d'affilée)
@@ -156,12 +157,13 @@ maybeShowInstallPrompt();
 
   async loadData() {
     const userId = this.session.user.id;
-    [this.library, this.diary, this.profile, this.pendingRequests, this.following] = await Promise.all([
+    [this.library, this.diary, this.profile, this.pendingRequests, this.following, this.favorites] = await Promise.all([
       DB.getLibrary(userId),
       DB.getDiary(userId),
       DB.getMyProfile(userId),
       DB.getPendingRequests(userId),
       DB.getMyFollowingList(userId),
+      DB.getFavorites(userId),
     ]);
     const earned = await evaluateBadges(this.diary, this.library, userId);
     this.earnedBadges = earned;
@@ -231,7 +233,7 @@ maybeShowInstallPrompt();
 
   route() {
     const gen = ++this._renderGen;
-    const hash = location.hash.slice(2) || "diary";
+    const hash = location.hash.slice(2) || "library";
     const [view, param] = hash.split("/");
     if (hash !== this._lastRoutedHash) window.scrollTo(0, 0);
     this._lastRoutedHash = hash;
@@ -585,17 +587,20 @@ async function runImport(e, kind, { refresh = true } = {}) {
   if (!file) return;
   try {
     toast("Import en cours, ça peut prendre un moment (résolution TMDB)…");
-    const { inserted, unresolved } = await handleImportFile(file, App.session.user.id, kind, (msg) =>
+    const { inserted, skipped, unresolved } = await handleImportFile(file, App.session.user.id, kind, (msg) =>
       toast(msg)
     );
+    const skippedSuffix = skipped ? ` (${skipped} déjà présentes, ignorées)` : "";
     if (unresolved.length) {
       toast(
-        `${inserted} entrées importées. ${unresolved.length} non reconnues sur TMDB (voir console).`,
+        `${inserted} entrées importées${skippedSuffix}. ${unresolved.length} non reconnues sur TMDB (voir console).`,
         "success"
       );
       console.warn(`Titres non résolus sur TMDB (${kind}) :`, unresolved);
+    } else if (inserted === 0) {
+      toast(`Rien à importer : ces entrées sont déjà dans ton journal.`, "success");
     } else {
-      toast(`${inserted} entrées importées avec succès.`, "success");
+      toast(`${inserted} entrées importées avec succès${skippedSuffix}.`, "success");
     }
     if (refresh) await App.refresh();
   } catch (err) {
@@ -740,25 +745,17 @@ function bindSettingsEvents() {
     }
   });
 
-  qs("#export-data-btn")?.addEventListener("click", async () => {
+  qs("#export-data-btn")?.addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
     try {
-      const data = {
-        library: App.library,
-        diary: App.diary
-      };
-      const json = JSON.stringify(data, null, 2);
-      const blob = new Blob([json], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const date = new Date().toISOString().slice(0, 10);
-      const filename = `ttb-backup-${date}.json`;
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      link.click();
-      URL.revokeObjectURL(url);
+      await exportDiaryAsZip(App.diary, (msg) => (btn.textContent = msg));
       toast("Données exportées avec succès.", "success");
     } catch (err) {
       toast(err.message, "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Exporter mes données";
     }
   });
 }
@@ -1228,6 +1225,7 @@ function bindSearchEvents() {
     try {
       const items = await TMDB.searchMulti(q);
       results.innerHTML = items.map(posterCard).join("") || emptyState("Aucun résultat.");
+      if (typeof lucide !== "undefined") lucide.createIcons();
     } catch (err) {
       results.innerHTML = emptyState("Erreur TMDB — vérifie ta clé API dans js/config.js.");
     }
@@ -1395,12 +1393,19 @@ function bindSocialEvents() {
   render();
 }
 
+// Lookup rapide contre App.favorites (petite liste, pas besoin d'index dédié
+// pour l'instant — comme le reste du code, ex. movieWatchCount).
+function isFavoriteItem(tmdbId, mediaType) {
+  return App.favorites.some((f) => String(f.tmdb_id) === String(tmdbId) && f.media_type === mediaType);
+}
+
 function posterCard(item) {
   const title = resolveDisplayTitle(item.title || item.name, item.original_title || item.original_name, item.original_language);
   const date = item.release_date || item.first_air_date || "";
   return `
     <div class="poster-card" data-id="${item.id}" data-type="${item.media_type}">
       <img src="${TMDB.posterUrl(item.poster_path)}" alt="${escapeHtml(title)}" loading="lazy" />
+      ${isFavoriteItem(item.id, item.media_type) ? `<span class="poster-card-favorite" aria-hidden="true"><i data-lucide="heart"></i></span>` : ""}
       <div class="poster-card-info">
         <span class="poster-card-title">${escapeHtml(title)}</span>
         <span class="poster-card-year">${date ? date.slice(0, 4) : ""}</span>
@@ -1628,10 +1633,15 @@ async function renderShowDetail(param, gen) {
     // Ces trois fonctions génèrent le HTML à partir de l'état courant : elles
     // sont réutilisées au premier rendu ET pour patcher localement l'affichage
     // après une action, sans re-fetch TMDB ni redessiner toute la page.
+    function watchInfoMarkup(watchCount) {
+      return watchCount > 0
+        ? `<span class="movie-watch-info"><i data-lucide="circle-check"></i>Vu${watchCount > 1 ? ` ${watchCount} fois` : ""}</span>`
+        : "";
+    }
+
     function mediaActionsMarkup(watchCount) {
       return watchCount > 0
         ? `
-        <span class="movie-watch-info"><i data-lucide="circle-check-big"></i> vu${watchCount > 1 ? ` • ${watchCount} visionnages` : ""}</span>
         <button id="media-rewatch-btn" class="btn btn--accent">
           Rewatch <i data-lucide="refresh-cw"></i>
         </button>
@@ -1744,6 +1754,7 @@ async function renderShowDetail(param, gen) {
                 <option value="completed" ${inLibrary?.status === "completed" ? "selected" : ""}>Terminé</option>
                 <option value="dropped" ${inLibrary?.status === "dropped" ? "selected" : ""}>Abandonné</option>
               </select>
+              <span id="movie-watch-info-wrap">${watchInfoMarkup(movieWatchCount)}</span>
               <span id="movie-actions">${mediaActionsMarkup(movieWatchCount)}</span>
             </div>
           </div>
@@ -1800,6 +1811,9 @@ if (typeof lucide !== "undefined") lucide.createIcons();
       // annulation qui ramène le film à "watchlist").
       const statusSelect = qs("#status-select");
       if (statusSelect) statusSelect.value = inLibNow?.status || "";
+
+      const watchInfoWrap = qs("#movie-watch-info-wrap");
+      if (watchInfoWrap) watchInfoWrap.innerHTML = watchInfoMarkup(watchCountNow);
 
       const actionsWrap = qs("#movie-actions");
       if (actionsWrap) {
@@ -1957,8 +1971,12 @@ if (typeof lucide !== "undefined") lucide.createIcons();
           try {
             if (isCurrentlyFavorite) {
               await DB.removeFavorite(App.session.user.id, Number(id), type);
+              App.favorites = App.favorites.filter(
+                (f) => !(String(f.tmdb_id) === String(id) && f.media_type === type)
+              );
             } else {
-              await DB.addFavorite(App.session.user.id, Number(id), type);
+              await DB.addFavorite(App.session.user.id, Number(id), type, title, data.poster_path);
+              App.favorites.push({ tmdb_id: Number(id), media_type: type, title, poster_path: data.poster_path });
             }
             favoriteBtn.classList.toggle("is-favorite", !isCurrentlyFavorite);
           } catch (err) {
@@ -2054,7 +2072,13 @@ if (typeof lucide !== "undefined") lucide.createIcons();
     bindNoteWidget();
 
     if (type === "tv") {
-      const initialSeason = lastViewedSeason[id] || 1;
+      const watchedSeasons = App.diary
+        .filter((e) => String(e.tmdb_id) === String(id) && e.media_type === "tv")
+        .map((e) => e.season || 1);
+      const progressSeason = watchedSeasons.length
+        ? Math.min(Math.max(...watchedSeasons), data.number_of_seasons || 1)
+        : 1;
+      const initialSeason = lastViewedSeason[id] || progressSeason;
       await renderSeasonsInto(qs("#seasons-container"), id, data.number_of_seasons, title, data.poster_path, genreIds, initialSeason);
     }
   } catch (err) {
@@ -2574,7 +2598,7 @@ async function renderEpisodeDetail(param, gen) {
     function episodeActionsMarkup(isWatched, count) {
       return isWatched
         ? `
-        <span class="episode-watch-info"><i data-lucide="circle-check-big"></i> vu${count > 1 ? ` • ${count} visionnages` : ""}</span>
+        <span class="episode-watch-info"><i data-lucide="circle-check"></i>Vu${count > 1 ? ` ${count} fois` : ""}</span>
         <button id="episode-rewatch-btn" class="btn btn--accent">
           Rewatch <i data-lucide="refresh-cw"></i>
         </button>
@@ -3316,6 +3340,7 @@ function libraryTemplate(library) {
                 return `
               <div class="poster-card" data-id="${l.tmdb_id}" data-type="${l.media_type}" data-lib-id="${l.id}">
                 <img src="${TMDB.posterUrl(l.poster_path)}" alt="${escapeHtml(l.title)}" loading="lazy" />
+                ${isFavoriteItem(l.tmdb_id, l.media_type) ? `<span class="poster-card-favorite" aria-hidden="true"><i data-lucide="heart"></i></span>` : ""}
                 ${
                   showProgress
                     ? `<div class="poster-card-progress" title="${clampedWatched}/${l.total_episodes} épisodes">
@@ -4264,8 +4289,8 @@ function settingsTemplate() {
       <section class="stats-section-export">
         <h2>Sauvegarder mes données</h2>
         <p class="import-hint">
-          Télécharge une copie de ta bibliothèque et de ton journal au format JSON.
-          <br><em>(Utile pour avoir une copie de sécurité à importer en cas de besoin.)</em>
+          Télécharge un ZIP contenant deux CSV (séries et films).<br>
+          <br><em>(Réimportable directement via les boutons "Importer mes séries"/"Importer mes films" ci-dessus.<br>Note : les notes attribuées ne sont pas conservées, les revisionnages oui.)</em>
         </p>
         <button id="export-data-btn" class="btn btn--ghost">Exporter mes données</button>
       </section>

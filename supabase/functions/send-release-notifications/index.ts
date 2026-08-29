@@ -55,6 +55,25 @@ function parseAirsTime(raw: string | null) {
 // TheTVDB ne garantit pas le fuseau d'origine — mieux que de supposer
 // minuit, mais imparfait pour une série dont le réseau d'origine est
 // dans un fuseau très différent.
+// Même logique de préférence que côté client (js/tmdb.js) : on ignore
+// avant-premières/festivals pour ne garder que la sortie publique dans
+// les principaux pays francophones puis anglophones.
+async function getPublicReleaseDate(movieId: string | number) {
+  try {
+    const releases = await tmdb(`/movie/${movieId}/release_dates`);
+    const preferredCountries = ["FR", "BE", "CH", "CA", "US", "GB"];
+    for (const countryCode of preferredCountries) {
+      const country = releases.results.find((r: any) => r.iso_3166_1 === countryCode);
+      if (!country) continue;
+      const publicRelease = country.release_dates.find((rd: any) => rd.type === 3 || rd.type === 4);
+      if (publicRelease) return publicRelease.release_date.slice(0, 10);
+    }
+  } catch (e) {
+    console.error(`TMDB release_dates film ${movieId}`, e);
+  }
+  return null;
+}
+
 async function getAirsTime(showTmdbId: string | number) {
   try {
     const externalIds = await tmdb(`/tv/${showTmdbId}/external_ids`);
@@ -155,7 +174,8 @@ serve(async (req) => {
     for (const movie of watchlistMovies || []) {
       try {
         const data = await tmdb(`/movie/${movie.tmdb_id}`);
-        if (data.release_date === today) {
+        const publicReleaseDate = (await getPublicReleaseDate(movie.tmdb_id)) || data.release_date;
+        if (publicReleaseDate === today) {
           candidates.push({
             title: `${movie.title} est sorti aujourd'hui 🎬`,
             body: "C'est dans ta watchlist ! Direction la fiche ?",

@@ -1,8 +1,9 @@
 {
-  "version": "2026-08-27",
+  "version": "2026-08-29",
   "highlights": [
-    "What's new (v 2.5.2) ?",
-    "Amélioration de la réactivité, de la stabilité et de la fluidité.",
+    "What's new (v 2.5.3) ?",
+    "On ouvre la bibliothèque en premier, ce sera plus simple que de fouiller dans tes tickets.",
+    "Reprend où tu en étais : quand tu ouvres une fiche série, tu arrives directement sur la saison où tu en es.",
     "Correction de bug et logiques mineurs."
   ]
 }

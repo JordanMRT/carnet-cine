@@ -323,6 +323,32 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
 .poster-card-year { font-size: 0.75rem; color: var(--muted); font-family: var(--font-mono); }
 .remove-btn { background: none; border: none; color: var(--coral); cursor: pointer; font-size: 0.9rem; }
 
+/* Indicateur favori sur les poster-cards : purement visuel (pointer-events:
+   none), n'apparaît que si l'élément est déjà favori — voir isFavoriteItem()
+   dans app.js. Le clic traverse jusqu'à la carte pour ouvrir la fiche
+   normalement, comme un bouton favori interactif casserait ce comportement. */
+.poster-card-favorite {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  backdrop-filter: blur(2px);
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  pointer-events: none;
+}
+.poster-card-favorite svg {
+  width: 14px;
+  height: 14px;
+  fill: var(--coral);
+  color: var(--coral);
+}
+
 .empty-state { color: var(--muted); text-align: center; padding: 3rem 1rem; font-size: 0.95rem; }
 .loading { color: var(--muted); padding: 2rem; text-align: center; }
 
@@ -628,6 +654,8 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
     background-repeat: no-repeat;
     background-position: right 0.8em center;
     background-size: 1em;
+    flex: 1 1 auto;
+    min-width: 140px;
 }
 
 /* MOVIE/SHOW/EPISODES PAGE ENRICHMENTS */
@@ -985,7 +1013,13 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
     align-items: center;
     justify-content: flex-start;
     gap: .5rem;
-    margin-bottom: .9rem;
+    padding: .3rem;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+#movie-watch-info-wrap:empty {
+  display: none;
 }
 
 
@@ -1921,7 +1955,6 @@ code {
     align-items: center;
     justify-content: center;
     gap: .5rem;
-    margin-bottom: .9rem;
 }
 
   .ticket{

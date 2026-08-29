@@ -319,6 +319,167 @@ async function importMoviesCsvRows(rows, userId, onProgress) {
   return { entries, unresolvedMovies };
 }
 
+// ============================================
+// EXPORT — génère un ZIP réimportable via les boutons
+// "Importer mes séries" / "Importer mes films" ci-dessus, sans toucher à
+// leur logique : on reconstruit simplement les CSV au format GDPR TV Time
+// (mêmes colonnes que tracking-prod-records-v2.csv / tracking-prod-records.csv)
+// à partir d'App.diary.
+//
+// ⚠️ Le format CSV ne porte pas de champ rating : seul le rewatch est
+// préservé (voir importShowsCsvRows / importMoviesCsvRows ci-dessus, qui
+// forcent `rating: null`). C'est un choix assumé : les entrées rewatch
+// n'ont de toute façon jamais de rating dans l'app (voir logMediaEntry),
+// donc c'était rating (JSON) ou rewatch (CSV), pas les deux à la fois.
+// ============================================
+
+// Charge JSZip à la demande seulement (~30 Ko gzippés) : inutile d'alourdir
+// le chargement de l'app pour une action qu'on fait rarement. Le navigateur
+// mettra ensuite le script en cache HTTP pour les exports suivants.
+let jszipLoadPromise = null;
+function loadJSZip() {
+  if (typeof JSZip !== "undefined") return Promise.resolve();
+  if (jszipLoadPromise) return jszipLoadPromise;
+  jszipLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
+    script.onload = () => resolve();
+    script.onerror = () => {
+      jszipLoadPromise = null;
+      reject(new Error("Impossible de charger l'outil de compression (JSZip)."));
+    };
+    document.head.appendChild(script);
+  });
+  return jszipLoadPromise;
+}
+
+// Colonnes calquées sur tracking-prod-records-v2.csv (voir importShowsCsvRows).
+function buildShowsCsv(diary) {
+  const rows = diary
+    .filter((e) => e.media_type === "tv" && e.season != null && e.episode != null)
+    .map((e) => ({
+      key: `${e.rewatch ? "rewatch" : "watch"}-episode-${e.id}`,
+      series_name: e.title || "",
+      s_id: String(e.tmdb_id ?? ""),
+      season_number: e.season,
+      episode_number: e.episode,
+      created_at: `${e.watched_date}T00:00:00.000Z`,
+      runtime: e.runtime_minutes ? e.runtime_minutes * 60 : "",
+    }));
+  return Papa.unparse(rows, { columns: ["key", "series_name", "s_id", "season_number", "episode_number", "created_at", "runtime"] });
+}
+
+// Colonnes calquées sur tracking-prod-records.csv (voir importMoviesCsvRows).
+// On ajoute une ligne "follow" par film avec sa release_date : c'est ce que
+// importMoviesCsvRows utilise comme indice d'année pour désambiguïser la
+// résolution TMDB par titre au réimport.
+function buildMoviesCsv(diary) {
+  const movieEntries = diary.filter((e) => e.media_type === "movie");
+  const rows = [];
+  const seenTitles = new Set();
+
+  for (const e of movieEntries) {
+    if (e.title && e.air_date && !seenTitles.has(e.title)) {
+      seenTitles.add(e.title);
+      rows.push({
+        movie_name: e.title,
+        type: "follow",
+        created_at: `${e.watched_date}T00:00:00.000Z`,
+        release_date: e.air_date,
+        runtime: "",
+      });
+    }
+  }
+
+  for (const e of movieEntries) {
+    rows.push({
+      movie_name: e.title || "",
+      type: e.rewatch ? "rewatch" : "watch",
+      created_at: `${e.watched_date}T00:00:00.000Z`,
+      release_date: e.air_date || "",
+      runtime: e.runtime_minutes ? e.runtime_minutes * 60 : "",
+    });
+  }
+
+  return Papa.unparse(rows, { columns: ["movie_name", "type", "created_at", "release_date", "runtime"] });
+}
+
+// Point d'entrée : construit le zip ttb-export-{date}.zip et déclenche le
+// téléchargement. `onProgress` est optionnel (ex: pour afficher un toast
+// "Préparation de l'export…" pendant le chargement de JSZip).
+async function exportDiaryAsZip(diary, onProgress) {
+  onProgress?.("Préparation de l'export…");
+  await loadJSZip();
+
+  const zip = new JSZip();
+  zip.file("ttb-series.csv", buildShowsCsv(diary));
+  zip.file("ttb-films.csv", buildMoviesCsv(diary));
+
+  const blob = await zip.generateAsync({ type: "blob" });
+  const date = new Date().toISOString().slice(0, 10);
+  const filename = `ttb-export-${date}.zip`;
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+
+  return filename;
+}
+
+// ---------- DÉDOUBLONNAGE ----------
+// Aucune contrainte unique en base sur diary_entries : sans ce filtre,
+// réimporter un fichier qui recoupe des entrées déjà présentes (son propre
+// export, un export TV Time déjà importé avant, etc.) créerait des lignes
+// en double. Signature volontairement simple (pas de note de temps précise
+// disponible dans ces formats) : media_type + identifiant (tmdb_id, ou titre
+// si non résolu) + saison/épisode + date + rewatch.
+function diarySignature(e) {
+  return [e.media_type, e.tmdb_id ?? e.title, e.season, e.episode, e.watched_date, e.rewatch ? 1 : 0].join("|");
+}
+
+// Filtre les entrées déjà présentes dans App.diary (et les doublons internes
+// au fichier lui-même), insère le reste, puis met à jour App.diary en
+// mémoire directement — sans dépendre d'un App.refresh() ultérieur. Important
+// pour l'étape import de l'onboarding, qui enchaîne deux imports
+// (séries puis films) avec { refresh: false }.
+// Solution de repli en cas d'erreur en cours de route (ex : coupure réseau
+// au milieu d'un gros import) : App.diary est mis à jour lot par lot, pas
+// seulement à la fin. Si un lot échoue, les lots précédents sont déjà
+// synchronisés — donc si l'utilisateur relance le même fichier, le filtre
+// de signature ci-dessus ignorera automatiquement ce qui a déjà été inséré,
+// sans créer de doublon.
+async function insertNewEntriesOnly(entries) {
+  const existing = new Set(App.diary.map(diarySignature));
+  const seenInBatch = new Set();
+  const toInsert = [];
+  for (const entry of entries) {
+    const sig = diarySignature(entry);
+    if (existing.has(sig) || seenInBatch.has(sig)) continue;
+    seenInBatch.add(sig);
+    toInsert.push(entry);
+  }
+
+  const skipped = entries.length - toInsert.length;
+  if (toInsert.length === 0) return { inserted: 0, skipped };
+
+  let insertedSoFar = 0;
+  try {
+    const { rows } = await DB.bulkInsertDiary(toInsert, (chunkRows) => {
+      App.diary.push(...chunkRows);
+      insertedSoFar += chunkRows.length;
+    });
+    return { inserted: rows.length, skipped };
+  } catch (err) {
+    if (insertedSoFar > 0) {
+      err.message = `${err.message} (${insertedSoFar} entrée(s) déjà enregistrée(s) avant l'erreur — tu peux relancer le même fichier sans risque de doublon.)`;
+    }
+    throw err;
+  }
+}
+
 // ---------- POINT D'ENTRÉE COMMUN ----------
 async function handleImportFile(file, userId, kind, onProgress) {
   const isCsv = file.name.toLowerCase().endsWith(".csv");
@@ -340,8 +501,8 @@ async function handleImportFile(file, userId, kind, onProgress) {
         throw new Error("Aucun épisode vu trouvé dans ce fichier.");
       }
       onProgress?.(`Écriture de ${result.entries.length} entrées dans le journal…`);
-      const inserted = await DB.bulkInsertDiary(result.entries);
-      return { inserted, unresolved: result.unresolvedShows };
+      const { inserted, skipped } = await insertNewEntriesOnly(result.entries);
+      return { inserted, skipped, unresolved: result.unresolvedShows };
     }
 
     const required = ["movie_name", "type", "created_at"];
@@ -355,8 +516,8 @@ async function handleImportFile(file, userId, kind, onProgress) {
       throw new Error('Aucun film vu (type "watch"/"rewatch") trouvé dans ce fichier.');
     }
     onProgress?.(`Écriture de ${result.entries.length} entrées dans le journal…`);
-    const inserted = await DB.bulkInsertDiary(result.entries);
-    return { inserted, unresolved: result.unresolvedMovies };
+    const { inserted, skipped } = await insertNewEntriesOnly(result.entries);
+    return { inserted, skipped, unresolved: result.unresolvedMovies };
   }
 
   // ---- JSON (comportement existant, inchangé) ----
@@ -382,7 +543,7 @@ async function handleImportFile(file, userId, kind, onProgress) {
   }
 
   onProgress?.(`Écriture de ${result.entries.length} entrées dans le journal…`);
-  const inserted = await DB.bulkInsertDiary(result.entries);
+  const { inserted, skipped } = await insertNewEntriesOnly(result.entries);
   const unresolved = result.unresolvedShows || result.unresolvedMovies || [];
-  return { inserted, unresolved };
+  return { inserted, skipped, unresolved };
 }

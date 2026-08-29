@@ -1,4 +1,4 @@
-const SW_VERSION = "2026-08-27-2"; // ⚠️ change cette valeur à chaque déploiement
+const SW_VERSION = "2026-08-29-1"; // ⚠️ change cette valeur à chaque déploiement
 const CACHE_NAME = `timetobinge-${SW_VERSION}`;
 
 // App shell : fichiers statiques du projet, mis en cache dès l'installation
@@ -38,10 +38,22 @@ const APP_SHELL = [
 self.addEventListener("install", (event) => {
   console.log("Service Worker installé");
   event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
-      .catch((err) => console.warn("Précache app shell impossible :", err))
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.all(
+        APP_SHELL.map((url) =>
+          // { cache: "reload" } force le navigateur à ignorer son cache HTTP
+          // disque et à retélécharger vraiment le fichier, pour ne pas
+          // précacher par erreur une ancienne version encore "fraîche" selon
+          // les en-têtes Cache-Control de GitHub Pages (cf. bug de mise à
+          // jour incomplète après tap sur "Mettre à jour").
+          fetch(url, { cache: "reload" })
+            .then((res) => {
+              if (res && res.ok) return cache.put(url, res);
+            })
+            .catch((err) => console.warn(`Précache impossible pour ${url} :`, err))
+        )
+      )
+    )
   );
 });
 
