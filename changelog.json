@@ -1,9 +1,9 @@
 {
-  "version": "2026-08-29",
+  "version": "2026-09-01",
   "highlights": [
-    "What's new (v 2.5.3) ?",
-    "On ouvre la bibliothèque en premier, ce sera plus simple que de fouiller dans tes tickets.",
-    "Reprend où tu en étais : quand tu ouvres une fiche série, tu arrives directement sur la saison où tu en es.",
+    "What's new (v 2.5.4) ?",
+    "Une fausse manip ? Tape sur 'Annuler' dans le message en haut de l'écran après une action.",
+    "Swipe à droite sur un épisode sur une fiche série pour noter un revisionnage, à gauche pour retirer le dernier visionnage.",
     "Correction de bug et logiques mineurs."
   ]
 }

@@ -267,7 +267,7 @@ async verifyOtp(email, code) {
     if (!friendIds.length) return [];
     const { data: rows, error } = await supabaseClient
       .from("library")
-      .select("user_id, status, avg_rating, last_note")
+      .select("user_id, status, avg_rating, series_rating, last_note")
       .eq("tmdb_id", tmdbId)
       .eq("media_type", mediaType)
       .in("user_id", friendIds)
@@ -345,9 +345,21 @@ async verifyOtp(email, code) {
     if (error) throw error;
   },
 
-  // Applique une note à TOUS les visionnages enregistrés d'un film/série
-  // (note globale par œuvre, pas par épisode).
+  // Applique une note à l'œuvre. Pour un film, pas de granularité en
+  // dessous à protéger : on écrit sur diary_entries comme avant. Pour une
+  // série, on écrit uniquement sur library.series_rating, jamais sur
+  // diary_entries, pour ne plus écraser les notes d'épisodes individuelles.
   async setWorkRating(userId, tmdbId, mediaType, rating) {
+    if (mediaType === "tv") {
+      const { error } = await supabaseClient
+        .from("library")
+        .update({ series_rating: rating })
+        .eq("user_id", userId)
+        .eq("tmdb_id", tmdbId)
+        .eq("media_type", "tv");
+      if (error) throw error;
+      return;
+    }
     const { error } = await supabaseClient
       .from("diary_entries")
       .update({ rating })

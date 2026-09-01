@@ -109,17 +109,40 @@ function mulberry32(a) {
 }
 
 let toastTimer;
-function toast(message, type = "info") {
+function toast(message, type = "info", options = {}) {
+  const { actionLabel, onAction } = options;
+
   let el = document.getElementById("toast");
   if (!el) {
     el = document.createElement("div");
     el.id = "toast";
     document.body.appendChild(el);
   }
-  el.textContent = message;
+
+  el.innerHTML = "";
   el.className = `toast toast--${type} toast--visible`;
+
+  const msgEl = document.createElement("span");
+  msgEl.textContent = message;
+  el.appendChild(msgEl);
+
+  const hasAction = actionLabel && typeof onAction === "function";
+  if (hasAction) {
+    el.classList.add("toast--with-action");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "toast__action";
+    btn.textContent = actionLabel;
+    btn.addEventListener("click", () => {
+      clearTimeout(toastTimer);
+      el.classList.remove("toast--visible");
+      onAction();
+    });
+    el.appendChild(btn);
+  }
+
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove("toast--visible"), 3000);
+  toastTimer = setTimeout(() => el.classList.remove("toast--visible"), hasAction ? 4000 : 3000);
 }
 
 // Pluie de confettis, déclenchée quand une série passe en "Terminé" en
@@ -147,6 +170,42 @@ function celebrateCompletion() {
 
   document.body.appendChild(container);
   setTimeout(() => container.remove(), 3600);
+}
+
+// Burst de particules au tap — générique, utilisé par le rating widget et
+// le bouton favoris. Ancré sur l'élément cliqué mais ajouté à document.body
+// en position:fixed (même convention que celebrateCompletion() ci-dessus) :
+// on évite ainsi tout risque de clipping via overflow:hidden ou d'interférence
+// avec un éventuel switch haptique niché dans l'élément cliqué.
+function burstFromElement(el, colorVar, count = 8) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const rect = el.getBoundingClientRect();
+  const originX = rect.left + rect.width / 2;
+  const originY = rect.top + rect.height / 2;
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.3;
+    const distance = 22 + Math.random() * 14;
+    const p = document.createElement("span");
+    p.className = "tap-burst-particle";
+    p.style.left = `${originX}px`;
+    p.style.top = `${originY}px`;
+    p.style.setProperty("--burst-color", `var(${colorVar})`);
+    p.style.setProperty("--tx", `${Math.cos(angle) * distance}px`);
+    p.style.setProperty("--ty", `${Math.sin(angle) * distance}px`);
+    document.body.appendChild(p);
+    setTimeout(() => p.remove(), 620);
+  }
+}
+
+// Petit helper pour rejouer un pop CSS même en cas de clics rapides
+// (reflow trick : void el.offsetWidth force le navigateur à "oublier"
+// l'état d'animation précédent avant de réappliquer la classe).
+function popElement(el, duration = 260) {
+  if (!el) return;
+  el.classList.remove("pop");
+  void el.offsetWidth;
+  el.classList.add("pop");
+  setTimeout(() => el.classList.remove("pop"), duration);
 }
 
 // Easter egg : carte "Abonnement à vie", débloquée après 50 jours
@@ -565,7 +624,179 @@ function hapticTrigger(element) {
   element.insertAdjacentElement('beforeend', switchEl);
 }
 
-// ------ MAILTO -----
+// ---------- SWIPE HORIZONTAL SUR LIGNE (tactile uniquement) ----------
+// Geste générique réutilisable sur toute ligne pleine largeur (episode-row,
+// et plus tard ticket). Ne s'attache que sur device tactile — desktop/souris
+// reste inchangé. N'autorise le glissement que dans les directions passées
+// en config (onSwipeLeft / onSwipeRight) : si une direction n'a pas de
+// callback, elle reste totalement inerte (pas de carte affichée pour rien).
+
+const SWIPE_TRIGGER_DISTANCE = 80; // px de tirage avant déclenchement
+const SWIPE_DIRECTION_LOCK = 10;   // px avant de figer horizontal vs vertical
+
+function isTouchDevice() {
+  return window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+}
+
+function bindRowSwipe(rowEl, { onSwipeLeft, onSwipeRight, leftLabel, rightLabel, leftIcon = "refresh-cw", rightIcon = "x" } = {}) {
+  if (!rowEl || !isTouchDevice()) return;
+  if (!onSwipeLeft && !onSwipeRight) return;
+
+  if (!rowEl.querySelector(".swipe-feedback")) {
+    rowEl.classList.add("swipe-row");
+
+    // Regroupe tout le contenu existant (thumb/info/actions) dans un seul
+    // bloc qui glisse d'un seul tenant, plutôt que 3 éléments séparés :
+    // évite les coutures visibles entre colonnes, et background-color/
+    // border-radius: inherit reprennent automatiquement l'apparence de la
+    // ligne (y compris la teinte "vu" en --sage), sans jamais désynchroniser.
+    const content = document.createElement("div");
+    content.className = "swipe-row-content";
+    while (rowEl.firstChild) content.appendChild(rowEl.firstChild);
+    rowEl.appendChild(content);
+
+    const feedback = document.createElement("div");
+    feedback.className = "swipe-feedback";
+    feedback.innerHTML = `
+      <div class="swipe-feedback-side swipe-feedback-left">
+        <div class="swipe-feedback-content">
+          <i data-lucide="${leftIcon}"></i>
+          <span>${escapeHtml(leftLabel || "")}</span>
+        </div>
+      </div>
+      <div class="swipe-feedback-side swipe-feedback-right">
+        <div class="swipe-feedback-content">
+          <i data-lucide="${rightIcon}"></i>
+          <span>${escapeHtml(rightLabel || "")}</span>
+        </div>
+      </div>
+    `;
+    rowEl.insertBefore(feedback, rowEl.firstChild);
+    if (typeof lucide !== "undefined") lucide.createIcons();
+  }
+
+  const leftEl = rowEl.querySelector(".swipe-feedback-left");
+  const rightEl = rowEl.querySelector(".swipe-feedback-right");
+
+  let startX = 0, startY = 0, deltaX = 0, dragging = false, lockedAxis = null, triggered = false;
+  rowEl.style.touchAction = "pan-y";
+
+  rowEl.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("button")) return;
+    startX = e.clientX;
+    startY = e.clientY;
+    deltaX = 0;
+    dragging = true;
+    lockedAxis = null;
+    triggered = false;
+    rowEl.classList.add("swipe-row--dragging");
+  });
+
+  rowEl.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    if (!lockedAxis) {
+      if (Math.abs(dx) < SWIPE_DIRECTION_LOCK && Math.abs(dy) < SWIPE_DIRECTION_LOCK) return;
+      lockedAxis = Math.abs(dx) > Math.abs(dy) ? "horizontal" : "vertical";
+      if (lockedAxis === "vertical") {
+        dragging = false;
+        rowEl.classList.remove("swipe-row--dragging");
+        return;
+      }
+    }
+    if (lockedAxis !== "horizontal") return;
+
+    if (dx < 0 && !onSwipeLeft) return;
+    if (dx > 0 && !onSwipeRight) return;
+
+    deltaX = dx;
+    const width = Math.min(Math.abs(deltaX), rowEl.clientWidth);
+    leftEl.style.width = deltaX < 0 ? `${width}px` : "0px";
+    rightEl.style.width = deltaX > 0 ? `${width}px` : "0px";
+    rowEl.style.setProperty("--swipe-x", `${deltaX}px`);
+    triggered = Math.abs(deltaX) >= SWIPE_TRIGGER_DISTANCE;
+  });
+
+  const endDrag = async () => {
+    if (!dragging) return;
+    dragging = false;
+    rowEl.classList.remove("swipe-row--dragging");
+
+    const shouldTrigger = triggered;
+    const direction = deltaX < 0 ? "left" : "right";
+
+    rowEl.style.setProperty("--swipe-x", "0px");
+    leftEl.style.width = "0px";
+    rightEl.style.width = "0px";
+    deltaX = 0;
+    triggered = false;
+
+    if (shouldTrigger) {
+      if (direction === "left" && onSwipeLeft) await onSwipeLeft();
+      if (direction === "right" && onSwipeRight) await onSwipeRight();
+    }
+  };
+
+  rowEl.addEventListener("pointerup", endDrag);
+  rowEl.addEventListener("pointercancel", endDrag);
+}
+
+// Anime brièvement une ligne swipeable (léger décalage + révélation de la
+// couleur --sage, puis retour) pour indiquer que le geste existe, sans
+// déclencher l'action. Le swipe gauche (revisionnage) est toujours actif
+// dès qu'une ligne est swipeable (voir les 3 états définis avec Jordan :
+// non vu → pas de swipe du tout, donc si .swipe-row existe, gauche l'est).
+// Hint à deux vitesses : "big" (première découverte de ce geste précis,
+// voir hasSeenSwipeHint) révèle l'icône + le texte en entier — la distance
+// est mesurée sur la largeur réelle du contenu plutôt que devinée, pour
+// s'adapter à la longueur du label. "small" (rappel, toutes les fois
+// suivantes) reste un sliver de couleur discret, une fois le geste appris.
+function peekRowSwipe(rowEl, direction = "left", { big = false } = {}) {
+  const sideEl = rowEl.querySelector(direction === "left" ? ".swipe-feedback-left" : ".swipe-feedback-right");
+  if (!sideEl) return;
+  const contentEl = sideEl.querySelector(".swipe-feedback-content");
+  const SMALL_PEEK_DISTANCE = 28;
+  const SMALL_PEEK_DURATION = 420;
+  const BIG_PEEK_DURATION = 1800; // le temps de lire l'icône + le texte
+  const distance = big
+    ? Math.min((contentEl?.offsetWidth || 120) + 4, rowEl.clientWidth * 0.7)
+    : SMALL_PEEK_DISTANCE;
+  const duration = big ? BIG_PEEK_DURATION : SMALL_PEEK_DURATION;
+  const sign = direction === "left" ? -1 : 1;
+  requestAnimationFrame(() => {
+    sideEl.style.width = `${distance}px`;
+    rowEl.style.setProperty("--swipe-x", `${sign * distance}px`);
+    setTimeout(() => {
+      sideEl.style.width = "0px";
+      rowEl.style.setProperty("--swipe-x", "0px");
+    }, duration);
+  });
+  return duration;
+}
+
+// Mémorise si le hint "complet" (icône + texte) a déjà été montré pour
+// chaque direction — gauche et droite sont suivis séparément, puisqu'on
+// peut swiper à gauche pendant des mois avant de croiser un épisode revu
+// deux fois (condition d'activation du swipe droite).
+function hasSeenSwipeHint(direction) {
+  try {
+    return localStorage.getItem(`ttb-swipe-hint-seen-${direction}`) === "1";
+  } catch {
+    return false;
+  }
+}
+function markSwipeHintSeen(direction) {
+  try {
+    localStorage.setItem(`ttb-swipe-hint-seen-${direction}`, "1");
+  } catch {
+    // localStorage indisponible (navigation privée, quota...) : tant pis,
+    // le hint complet se réaffichera simplement à la prochaine visite.
+  }
+}
+
+// --- MAILTO
 function buildContactMailto() {
   const subject = encodeURIComponent("Time To Binge - Question / Suggestion");
   const body = encodeURIComponent(

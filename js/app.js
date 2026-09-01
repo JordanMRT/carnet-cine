@@ -1458,7 +1458,8 @@ function friendsActivityHTML(activity) {
             const p = a.profile;
             const username = p?.username || "Utilisateur";
             const avatarUrl = p?.avatar_url || (p?.avatar_path ? TMDB.posterUrl(p.avatar_path, "w185") : null);
-            const starsLabel = a.avg_rating != null ? "★".repeat(Math.round(a.avg_rating / 2)) : "";
+            const friendRatingRaw = a.series_rating ?? a.avg_rating;
+            const starsLabel = friendRatingRaw != null ? "★".repeat(Math.round(friendRatingRaw / 2)) : "";
             return `
               <a href="#/u/${p?.id}" class="friend-activity-card">
                 <div class="user-result-avatar-activity" style="${avatarUrl ? `background-image:url('${avatarUrl}')` : ""}">
@@ -1694,7 +1695,8 @@ async function renderShowDetail(param, gen) {
     }
 
     const movieWatchCount = type === "movie" ? App.diary.filter((e) => String(e.tmdb_id) === String(id) && e.media_type === "movie").length : 0;
-    const userRating = inLibrary?.avg_rating != null ? Math.round(inLibrary.avg_rating / 2) : 0;
+    const workRatingRaw = type === "tv" ? inLibrary?.series_rating : inLibrary?.avg_rating;
+    const userRating = workRatingRaw != null ? Math.round(workRatingRaw / 2) : 0;
     const canRate = type === "movie" ? movieWatchCount > 0 : (inLibrary?.watched_episodes || 0) > 0;
     // Vérifier si l'élément est en favori (gérer les erreurs séparément pour ne pas bloquer l'affichage)
     let isFavorite = false;
@@ -1796,7 +1798,8 @@ if (typeof lucide !== "undefined") lucide.createIcons();
       const inLibNow = App.library.find((l) => String(l.tmdb_id) === String(id) && l.media_type === type);
       const watchCountNow = type === "movie" ? App.diary.filter((e) => String(e.tmdb_id) === String(id) && e.media_type === "movie").length : 0;
       const canRateNow = type === "movie" ? watchCountNow > 0 : (inLibNow?.watched_episodes || 0) > 0;
-      const userRatingNow = inLibNow?.avg_rating != null ? Math.round(inLibNow.avg_rating / 2) : 0;
+      const workRatingRawNow = type === "tv" ? inLibNow?.series_rating : inLibNow?.avg_rating;
+      const userRatingNow = workRatingRawNow != null ? Math.round(workRatingRawNow / 2) : 0;
 
       // Mettre à jour l'état visuel du bouton favori (ne dépend pas de
       // App.library, donc pas besoin de repasser par Supabase ici : le
@@ -1979,6 +1982,12 @@ if (typeof lucide !== "undefined") lucide.createIcons();
               App.favorites.push({ tmdb_id: Number(id), media_type: type, title, poster_path: data.poster_path });
             }
             favoriteBtn.classList.toggle("is-favorite", !isCurrentlyFavorite);
+
+            // Pop + burst uniquement en passant à favori, jamais au retrait
+            if (!isCurrentlyFavorite) {
+              popElement(favoriteBtn.querySelector("svg"));
+              burstFromElement(favoriteBtn, "--coral");
+            }
           } catch (err) {
             toast(err.message, "error");
           }
@@ -2000,18 +2009,34 @@ if (typeof lucide !== "undefined") lucide.createIcons();
     const glyph = s.querySelector(".rating-star-glyph");
     if (glyph) glyph.textContent = filled ? "★" : "☆";
   });
-      const currentRating = starEls.filter((s) => s.classList.contains("rating-star--filled")).length;
+      let currentRating = starEls.filter((s) => s.classList.contains("rating-star--filled")).length;
       starEls.forEach((btn) => {
         const value = Number(btn.dataset.value);
         hapticTrigger(btn);
         btn.addEventListener("mouseenter", () => applyPreview(value));
         btn.addEventListener("click", async () => {
-          applyPreview(value); // affichage immédiat, avant la réponse Supabase
+          // Retap sur l'étoile qui représente déjà la note posée = suppression
+          const isRemoving = currentRating === value;
+          const nextValue = isRemoving ? 0 : value;
+          applyPreview(nextValue); // affichage immédiat, avant la réponse Supabase
+
+          // Pop + burst uniquement quand on pose une note, jamais au retrait
+          if (!isRemoving) {
+            popElement(btn.querySelector(".rating-star-glyph"));
+            burstFromElement(btn, "--mustard");
+          }
+
           try {
-            await DB.setWorkRating(App.session.user.id, Number(id), type, value * 2);
+            const ratingValue = isRemoving ? null : nextValue * 2;
+            await DB.setWorkRating(App.session.user.id, Number(id), type, ratingValue);
             const idx = App.library.findIndex((l) => String(l.tmdb_id) === String(id) && l.media_type === type);
-            if (idx >= 0) App.library[idx] = { ...App.library[idx], avg_rating: value * 2 };
-            toast("Note enregistrée 🎟️", "success");
+            if (idx >= 0) {
+              App.library[idx] = type === "tv"
+                ? { ...App.library[idx], series_rating: ratingValue }
+                : { ...App.library[idx], avg_rating: ratingValue };
+            }
+            currentRating = nextValue;
+            toast(isRemoving ? "Note retirée" : "Note enregistrée 🎟️", "success");
             App.refreshSilently();
           } catch (err) {
             applyPreview(currentRating);
@@ -2216,7 +2241,7 @@ function otherUserTicketCard(item) {
         <div class="ticket-row ticket-row--meta">
           <span class="ticket-date">${formatDate(item.last_watched_date)}</span>
         </div>
-        ${item.avg_rating != null ? `<div class="ticket-stars">${stars(item.avg_rating)}</div>` : ""}
+        ${(item.series_rating ?? item.avg_rating) != null ? `<div class="ticket-stars">${stars(item.series_rating ?? item.avg_rating)}</div>` : ""}
         ${item.last_note ? `<p class="ticket-note">${escapeHtml(item.last_note)}</p>` : ""}
         <div class="ticket-barcode">${barcodeSVG(ticketId + item.last_watched_date)}</div>
         ${rewatchCount > 1 ? `<div class="ticket-rewatch-stamp"><span class="ticket-rewatch-stamp-label">VISIONNÉ</span><span class="ticket-rewatch-stamp-count">${rewatchCount} x</span></div>` : ""}
@@ -2784,20 +2809,31 @@ async function renderEpisodeDetail(param, gen) {
     const glyph = s.querySelector(".rating-star-glyph");
     if (glyph) glyph.textContent = filled ? "★" : "☆";
   });
-      const currentRating = starEls.filter((s) => s.classList.contains("rating-star--filled")).length;
+      let currentRating = starEls.filter((s) => s.classList.contains("rating-star--filled")).length;
       starEls.forEach((btn) => {
         const value = Number(btn.dataset.value);
         hapticTrigger(btn);
         btn.addEventListener("mouseenter", () => applyPreview(value));
         btn.addEventListener("click", async () => {
-          applyPreview(value);
+          // Retap sur l'étoile qui représente déjà la note posée = suppression
+          const isRemoving = currentRating === value;
+          const nextValue = isRemoving ? 0 : value;
+          applyPreview(nextValue);
+
+          // Pop + burst uniquement quand on pose une note, jamais au retrait
+          if (!isRemoving) {
+            popElement(btn.querySelector(".rating-star-glyph"));
+            burstFromElement(btn, "--mustard");
+          }
+
           try {
-            await DB.setEpisodeRating(App.session.user.id, Number(tvId), Number(seasonNumber), Number(episodeNumber), value * 2);
+            await DB.setEpisodeRating(App.session.user.id, Number(tvId), Number(seasonNumber), Number(episodeNumber), isRemoving ? null : nextValue * 2);
             const entry = App.diary.find(
               (e) => String(e.tmdb_id) === String(tvId) && e.media_type === "tv" && e.season === Number(seasonNumber) && e.episode === Number(episodeNumber)
             );
-            if (entry) entry.rating = value * 2;
-            toast("Note enregistrée 🎟️", "success");
+            if (entry) entry.rating = isRemoving ? null : nextValue * 2;
+            currentRating = nextValue;
+            toast(isRemoving ? "Note retirée" : "Note enregistrée 🎟️", "success");
             App.refreshSilently();
           } catch (err) {
             applyPreview(currentRating);
@@ -2911,7 +2947,7 @@ async function markAllEpisodesWatched(tvId, numberOfSeasons, title, posterPath, 
   toast(`${toInsert.length} épisode(s) marqué(s) comme vus.`, "success");
 }
 
-async function renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, selectedSeason = 1) {
+async function renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, selectedSeason = 1, suppressPeek = false) {
   if (!numberOfSeasons) {
     container.innerHTML = "";
     return;
@@ -3003,6 +3039,87 @@ if (typeof lucide !== "undefined") lucide.createIcons();
         }, () => renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, selectedSeason));
       });
     });
+
+    // Swipe tactile : gauche = revisionnage (+1), droite = annule le dernier
+    // visionnage. N'active chaque direction que si l'état le permet (voir
+    // les 3 cas définis avec Jordan : non vu → aucun swipe, vu 1 fois →
+    // gauche seul, vu ≥ 2 fois → les deux).
+    let firstLeftRow = null;
+    let firstRightRow = null;
+
+    qsa(".episode-row", container).forEach((row) => {
+      const count = watchCounts[Number(row.dataset.episode)] || 0;
+      const rowCtx = {
+        tmdb_id: Number(tvId),
+        title,
+        poster_path: posterPath,
+        genres: genreIds,
+        season: Number(row.dataset.season),
+        episode: Number(row.dataset.episode),
+        runtime_minutes: Number(row.dataset.runtime) || null,
+        air_date: row.dataset.airDate || null,
+        seasonEpisodes: season.episodes || [],
+      };
+
+      bindRowSwipe(row, {
+        leftLabel: "Revisionnage +1",
+        rightLabel: "Annuler le dernier visionnage",
+        leftIcon: "refresh-cw",
+        rightIcon: "x",
+        onSwipeLeft: count >= 1
+          ? () => addEpisodeRewatch(rowCtx, () =>
+              renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, selectedSeason, true)
+            )
+          : null,
+        onSwipeRight: count >= 2
+          ? () => undoLastEpisodeWatch(rowCtx, () =>
+              renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, selectedSeason, true)
+            )
+          : null,
+      });
+
+      if (count >= 1 && !firstLeftRow) firstLeftRow = row;
+      if (count >= 2 && !firstRightRow) firstRightRow = row;
+    });
+
+    // Hint de découverte, à deux vitesses. La toute première fois qu'une
+    // direction est croisée (par utilisateur, via hasSeenSwipeHint) : un
+    // hint "complet" qui révèle l'icône + le texte, assez longtemps pour
+    // être lu — ça, ça enseigne le geste. Toutes les fois suivantes, à
+    // chaque arrivée sur une saison utilisable : un sliver discret, comme
+    // un simple rappel que le geste existe. Gauche et droite sont hintés
+    // indépendamment, sur la première ligne où chacun est réellement
+    // possible (pas forcément la même ligne).
+    function observePeek(rowEl, direction, big, delay = 0) {
+      if (!rowEl) return;
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries[0].isIntersecting) {
+            setTimeout(() => {
+              peekRowSwipe(rowEl, direction, { big });
+              if (big) markSwipeHintSeen(direction);
+            }, delay);
+            observer.disconnect();
+          }
+        },
+        { threshold: 0.6 }
+      );
+      observer.observe(rowEl);
+    }
+
+    if (!suppressPeek) {
+      const bigLeft = !hasSeenSwipeHint("left");
+      const bigRight = !hasSeenSwipeHint("right");
+      const leftDuration = bigLeft ? 1800 : 420;
+      // Si c'est la même ligne des deux côtés, on attend la fin de
+      // l'animation gauche avant de démarrer la droite, pour ne pas les
+      // superposer.
+      const sameRow = firstRightRow && firstRightRow === firstLeftRow;
+      const rightDelay = sameRow ? leftDuration + 300 : 0;
+
+      observePeek(firstLeftRow, "left", bigLeft);
+      observePeek(firstRightRow, "right", bigRight, rightDelay);
+    }
 
     qsa(".episode-row", container).forEach((row) =>
   row.addEventListener("click", (e) => {
@@ -3119,7 +3236,7 @@ async function toggleEpisodeWatched(ctx, btnEl) {
 
         toast(`${missingEpisodes.length + 1} épisodes marqués comme vus 🎟️`, "ticket");
       } else {
-        await DB.addDiaryEntry({
+        const inserted = await DB.addDiaryEntry({
           user_id: App.session.user.id,
           tmdb_id: ctx.tmdb_id,
           media_type: "tv",
@@ -3136,12 +3253,41 @@ async function toggleEpisodeWatched(ctx, btnEl) {
           air_date: ctx.air_date || null,
         });
 
-        toast("Épisode marqué comme vu 🎟️", "ticket");
+        toast("Épisode marqué comme vu 🎟️", "ticket", {
+          actionLabel: "Annuler",
+          onAction: async () => {
+            try {
+              await DB.deleteDiaryEntries([inserted.id]);
+              App.diary = App.diary.filter((e) => e.id !== inserted.id);
+              if (btnEl) setEpisodeCheckVisual(btnEl, false);
+              await App.refreshSilently();
+              toast("Marqué comme non vu.", "success");
+            } catch (err) {
+              toast(err.message, "error");
+            }
+          },
+        });
       }
     } else {
       if (btnEl) setEpisodeCheckVisual(btnEl, false);
-      await DB.deleteDiaryEntries(existing.map((e) => e.id));
-      toast("Épisode marqué comme non vu.", "success");
+      const deletedIds = existing.map((e) => e.id);
+      await DB.deleteDiaryEntries(deletedIds);
+      toast("Épisode marqué comme non vu.", "success", {
+        actionLabel: "Annuler",
+        onAction: async () => {
+          try {
+            // On réinsère les entrées supprimées telles quelles (sans leur
+            // ancien id, régénéré par Supabase à l'insertion).
+            const restored = existing.map(({ id, ...rest }) => rest);
+            await DB.bulkInsertDiary(restored);
+            if (btnEl) setEpisodeCheckVisual(btnEl, true);
+            await App.refreshSilently();
+            toast("Épisode restauré.", "success");
+          } catch (err) {
+            toast(err.message, "error");
+          }
+        },
+      });
     }
     // Attendu (et non fire-and-forget) : App.diary doit être à jour avant
     // que l'appelant ne recalcule l'UI (refreshEpisodeDetailUI, etc.), sinon
@@ -3652,7 +3798,7 @@ function journalTicketCard(item) {
         <div class="ticket-row ticket-row--meta">
           <span class="ticket-date">${formatDate(item.last_watched_date)}</span>
         </div>
-        ${item.avg_rating != null ? `<div class="ticket-stars">${stars(item.avg_rating)}</div>` : ""}
+        ${(item.series_rating ?? item.avg_rating) != null ? `<div class="ticket-stars">${stars(item.series_rating ?? item.avg_rating)}</div>` : ""}
         <div class="ticket-barcode">${barcodeSVG(ticketId + item.last_watched_date)}</div>
         ${rewatchCount > 1 ? `<div class="ticket-rewatch-stamp"><span class="ticket-rewatch-stamp-label">VISIONNÉ</span><span class="ticket-rewatch-stamp-count">${rewatchCount} x</span></div>` : ""}
       
@@ -3687,7 +3833,7 @@ function workTicketCard(item) {
         <div class="ticket-row ticket-row--meta">
           <span class="ticket-date">${formatDate(item.last_watched_date)}</span>
         </div>
-        ${item.avg_rating != null ? `<div class="ticket-stars">${stars(item.avg_rating)}</div>` : ""}
+        ${(item.series_rating ?? item.avg_rating) != null ? `<div class="ticket-stars">${stars(item.series_rating ?? item.avg_rating)}</div>` : ""}
       </div>
     </div>
   `;

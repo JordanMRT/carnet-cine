@@ -118,6 +118,12 @@ const LibraryBuilder = {
     const existingWatchedEpisodes = new Map(
       existingLibrary.map((l) => [`${l.media_type}_${l.tmdb_id}`, l.watched_episodes || 0])
     );
+    // series_rating ne se recalcule jamais depuis le journal (contrairement
+    // à avg_rating) : c'est une donnée posée manuellement par l'utilisateur
+    // via "Ta note", à préserver telle quelle à chaque rebuild.
+    const existingSeriesRating = new Map(
+      existingLibrary.map((l) => [`${l.media_type}_${l.tmdb_id}`, l.series_rating ?? null])
+    );
     const works = new Map();
 
     for (const entry of diary) {
@@ -314,6 +320,7 @@ const LibraryBuilder = {
         progress: work.progress,
         tmdb_last_sync: new Date().toISOString(),
         avg_rating: work.ratingCount > 0 ? Number((work.ratingSum / work.ratingCount).toFixed(1)) : null,
+        series_rating: existingSeriesRating.get(`${work.media_type}_${work.tmdb_id}`) ?? null,
         last_note: work.lastNote,
       });
     }

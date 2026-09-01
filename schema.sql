@@ -61,6 +61,17 @@ create table if not exists diary_entries (
   created_at timestamptz default now()
 );
 
+-- Notes (par série/saison/épisodes)
+
+alter table library add column if not exists series_rating numeric(3,1);
+
+-- Préserve la note actuelle de chaque utilisateur : la valeur de avg_rating
+-- aujourd'hui correspond exactement à ce qu'ils ont cliqué sur "Ta note"
+-- (le mécanisme actuel écrasait toutes les entrées à cette même valeur).
+update library
+set series_rating = avg_rating
+where avg_rating is not null;
+
 -- Badges obtenus
 create table if not exists badges (
   id uuid primary key default gen_random_uuid(),
