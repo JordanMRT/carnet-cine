@@ -3493,7 +3493,18 @@ function libraryNavBar(active) {
 function libraryTemplate(library) {
   const filterBar = libraryNavBar(libraryFilter);
 
-  const filtered = libraryFilter === "all" ? library : library.filter((l) => l.media_type === libraryFilter);
+  // Tri explicite par dernier visionnage, appliqué à chaque rendu : ça
+  // garantit un ordre identique entre l'affichage immédiat (this.library
+  // trié par updated_at côté Supabase) et celui après LibraryBuilder.rebuild()
+  // (ordonné selon le journal) — sans ce tri commun, les deux critères
+  // divergent et ça provoque un flash de réorganisation au chargement.
+  const sorted = [...library].sort((a, b) => {
+    const dateCompare = (b.last_watched_date || "").localeCompare(a.last_watched_date || "");
+    if (dateCompare !== 0) return dateCompare;
+    return (a.title || "").localeCompare(b.title || "");
+  });
+
+  const filtered = libraryFilter === "all" ? sorted : sorted.filter((l) => l.media_type === libraryFilter);
 
   if (!library.length) return emptyState("Ta bibliothèque est vide pour l'instant — va chercher une série ou un film.");
   if (!filtered.length) return filterBar + emptyState("Rien dans cette catégorie pour l'instant.");
@@ -3502,7 +3513,21 @@ function libraryTemplate(library) {
   const labels = { watching: "En cours", watchlist: "À voir", completed: "Terminé", dropped: "Abandonné" };
   const groupsHTML = groups
     .map((g) => {
-      const items = filtered.filter((l) => l.status === g);
+      // Tri appliqué au même endroit à chaque rendu (voir plus haut pour le
+      // contexte du flash) : "À voir" n'a jamais de last_watched_date, donc
+      // on trie par date d'ajout plutôt que par dernier visionnage. Les
+      // autres groupes suivent le dernier visionnage, avec le titre en
+      // tie-break pour un ordre stable en cas d'égalité.
+      const items = filtered
+        .filter((l) => l.status === g)
+        .sort((a, b) => {
+          if (g === "watchlist") {
+            return (b.added_at || b.first_watched_date || "").localeCompare(a.added_at || a.first_watched_date || "");
+          }
+          const dateCompare = (b.last_watched_date || "").localeCompare(a.last_watched_date || "");
+          if (dateCompare !== 0) return dateCompare;
+          return (a.title || "").localeCompare(b.title || "");
+        });
       if (!items.length) return "";
       return `
         <section class="library-group">
