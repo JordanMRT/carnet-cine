@@ -3019,7 +3019,9 @@ if (typeof lucide !== "undefined") lucide.createIcons();
   episode: Number(btn.dataset.episode),
   runtime_minutes: Number(btn.dataset.runtime) || null,
   seasonEpisodes: season.episodes || [],
-}, btn);
+}, btn, () =>
+          renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, selectedSeason, true)
+        );
       });
     });
 
@@ -3136,7 +3138,7 @@ if (typeof lucide !== "undefined") lucide.createIcons();
 
 // Coche rapide : ajoute une entrée si l'épisode n'est pas vu, ou retire
 // TOUTES les entrées (y compris les revisionnages) si on décoche.
-async function toggleEpisodeWatched(ctx, btnEl) {
+async function toggleEpisodeWatched(ctx, btnEl, onDone) {
   // Hors du bloc try, pour pouvoir annuler la mise à jour optimiste des
   // épisodes rattrapés en cas d'échec de la requête (cf. catch plus bas).
   let catchUpListEl = null;
@@ -3236,7 +3238,7 @@ async function toggleEpisodeWatched(ctx, btnEl) {
 
         toast(`${missingEpisodes.length + 1} épisodes marqués comme vus 🎟️`, "ticket");
       } else {
-        const inserted = await DB.addDiaryEntry({
+        await DB.addDiaryEntry({
           user_id: App.session.user.id,
           tmdb_id: ctx.tmdb_id,
           media_type: "tv",
@@ -3253,46 +3255,72 @@ async function toggleEpisodeWatched(ctx, btnEl) {
           air_date: ctx.air_date || null,
         });
 
-        toast("Épisode marqué comme vu 🎟️", "ticket", {
+        // Pas d'"Annuler" ici : décocher reproduit exactement la même
+        // action (deleteDiaryEntries), donc le geste existe déjà à portée
+        // de main. L'undo garde sa vraie valeur sur le retrait (branche
+        // ci-dessous), où reproduire l'état perdu n'est pas trivial.
+        toast("Épisode marqué comme vu 🎟️", "ticket");
+      }
+    } else {
+      // Décocher un épisode retire TOUT son historique (visionnage +
+      // revisionnages) d'un coup. Pour un simple visionnage, rien à
+      // perdre : coche rapide, undo suffisant en filet de sécurité. Pour
+      // plusieurs, on demande confirmation avant — même réflexe que pour
+      // "marquer les épisodes précédents" — plutôt que de compter
+      // uniquement sur l'undo après coup.
+      const hasRewatches = existing.length > 1;
+      if (hasRewatches) {
+        const confirmed = await showConfirm(
+          `Cet épisode a été regardé ${existing.length} fois. Tout retirer ?`,
+          {
+            confirmLabel: "Oui, tout retirer",
+            cancelLabel: "Annuler",
+            hint: isTouchDevice() ? "Pour ne retirer que le dernier visionnage, swipe la ligne vers la droite." : "",
+          }
+        );
+        if (!confirmed) return;
+      }
+
+      if (btnEl) setEpisodeCheckVisual(btnEl, false);
+      const deletedIds = existing.map((e) => e.id);
+      await DB.deleteDiaryEntries(deletedIds);
+      toast(
+        hasRewatches
+          ? `Épisode et ${existing.length - 1} revisionnage(s) retirés.`
+          : "Épisode marqué comme non vu.",
+        "success",
+        {
           actionLabel: "Annuler",
           onAction: async () => {
             try {
-              await DB.deleteDiaryEntries([inserted.id]);
-              App.diary = App.diary.filter((e) => e.id !== inserted.id);
-              if (btnEl) setEpisodeCheckVisual(btnEl, false);
+              // On réinsère les entrées supprimées telles quelles (sans leur
+              // ancien id, régénéré par Supabase à l'insertion).
+              const restored = existing.map(({ id, ...rest }) => rest);
+              await DB.bulkInsertDiary(restored);
+              if (btnEl) setEpisodeCheckVisual(btnEl, true);
               await App.refreshSilently();
-              toast("Marqué comme non vu.", "success");
+              // Même besoin qu'à la suppression initiale : redessiner
+              // complètement plutôt que de compter sur la seule coche, pour
+              // que badge de revisionnages et disponibilité du swipe
+              // redeviennent justes immédiatement, sans refresh manuel.
+              if (onDone) onDone();
+              toast(hasRewatches ? "Épisode et revisionnages restaurés." : "Épisode restauré.", "success");
             } catch (err) {
               toast(err.message, "error");
             }
           },
-        });
-      }
-    } else {
-      if (btnEl) setEpisodeCheckVisual(btnEl, false);
-      const deletedIds = existing.map((e) => e.id);
-      await DB.deleteDiaryEntries(deletedIds);
-      toast("Épisode marqué comme non vu.", "success", {
-        actionLabel: "Annuler",
-        onAction: async () => {
-          try {
-            // On réinsère les entrées supprimées telles quelles (sans leur
-            // ancien id, régénéré par Supabase à l'insertion).
-            const restored = existing.map(({ id, ...rest }) => rest);
-            await DB.bulkInsertDiary(restored);
-            if (btnEl) setEpisodeCheckVisual(btnEl, true);
-            await App.refreshSilently();
-            toast("Épisode restauré.", "success");
-          } catch (err) {
-            toast(err.message, "error");
-          }
-        },
-      });
+        }
+      );
     }
     // Attendu (et non fire-and-forget) : App.diary doit être à jour avant
     // que l'appelant ne recalcule l'UI (refreshEpisodeDetailUI, etc.), sinon
     // il travaille sur des données obsolètes et le bouton ne change pas.
     await App.refreshSilently();
+    // Si l'appelant fournit onDone (ex: renderSeasonsInto), on redessine
+    // complètement plutôt que de compter sur la seule mise à jour visuelle
+    // de la coche — nécessaire pour que le badge de revisionnages et la
+    // disponibilité du swipe (recalculée à chaque rendu) restent justes.
+    if (onDone) onDone();
   } catch (err) {
     // Échec : on annule la coche optimiste posée juste avant, y compris
     // celle des épisodes précédents rattrapés le cas échéant.
@@ -3398,13 +3426,14 @@ function closeModalOverlay(overlay) {
 }
 
 // ---------- CONFIRM MODAL (générique) ----------
-function showConfirm(message, { confirmLabel = "Oui", cancelLabel = "Non" } = {}) {
+function showConfirm(message, { confirmLabel = "Oui", cancelLabel = "Non", hint = "" } = {}) {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "modal-overlay";
     overlay.innerHTML = `
       <div class="modal modal--confirm">
         <p class="modal-confirm-text">${escapeHtml(message)}</p>
+        ${hint ? `<p class="modal-confirm-hint">${escapeHtml(hint)}</p>` : ""}
         <div class="modal-actions">
           <button id="confirm-no" class="btn btn--ghost">${escapeHtml(cancelLabel)}</button>
           <button id="confirm-yes" class="btn btn--accent">${escapeHtml(confirmLabel)}</button>

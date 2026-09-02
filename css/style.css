@@ -1135,6 +1135,12 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 
 .modal--confirm { max-width: 340px; }
 .modal-confirm-text { font-size: 0.95rem; line-height: 1.5; margin: 0.2rem 0 0.6rem; }
+.modal-confirm-hint {
+  font-style: italic;
+  color: var(--muted);
+  font-size: 0.82em;
+  margin-top: 0.5em;
+}
 
 /* ---------- PROGRESS BAR (fiche série + bibliothèque) ---------- */
 .show-progress { margin: 0.6rem 0 1rem; max-width: 320px; }
@@ -1832,6 +1838,12 @@ code {
   display: flex;
   align-items: center;
   gap: 0.9em;
+  text-align: left;
+  border-radius: 12px; /* moins arrondi que la pilule de base (999px) — plus adapté à 2 lignes + bouton */
+  padding: 0.75em 1.3em;
+}
+.toast--with-action span {
+  flex: 1;
 }
 .toast--with-action.toast--visible {
   pointer-events: auto;
@@ -2054,6 +2066,17 @@ code {
     cursor: pointer;
     align-items: center;
 }
+
+  /* .swipe-row-content redéclare sa propre grille (voir plus haut dans le
+     fichier) et doit donc reprendre les mêmes valeurs responsive que
+     .episode-row ci-dessus sous 768px — sinon elle reste bloquée sur les
+     valeurs desktop (100px / gap 1rem / padding 0.7em 1em) codées en dur,
+     ce qui élargit la colonne image et décale tout le reste. */
+  .episode-row.swipe-row > .swipe-row-content {
+    grid-template-columns: 72px 1fr auto;
+    gap: 0.7rem;
+    padding: 0.6em 0.8em;
+  }
 
 .episode-row--watched {
     border-color: var(--sage);
