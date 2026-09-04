@@ -1847,6 +1847,19 @@ if (typeof lucide !== "undefined") lucide.createIcons();
       const previousStatus = inLibrary?.status || "";
       if (!status) return;
 
+      // Rewatch intégral : on pose un NOUVEAU point de départ uniquement si
+      // on passe "En cours" depuis "Terminé" et qu'aucun rewatch n'est déjà
+      // en pause. On ne l'efface JAMAIS manuellement (un passage à
+      // "Abandonné"/"Terminé" en cours de rewatch le laisse intact, en
+      // pause) — seul le rebuild (library-builder.js) l'efface, et
+      // uniquement quand le rewatch est allé au bout. Ça permet de
+      // reprendre un rewatch interrompu des mois plus tard.
+      const startingNewRewatch =
+        status === "watching" &&
+        type === "tv" &&
+        previousStatus === "completed" &&
+        !inLibrary?.rewatch_started_at;
+
       select.disabled = true;
       try {
         if (status === "completed" && type === "tv") {
@@ -1876,6 +1889,7 @@ if (typeof lucide !== "undefined") lucide.createIcons();
             title,
             poster_path: data.poster_path,
             status,
+            ...(startingNewRewatch ? { rewatch_started_at: new Date().toISOString() } : {}),
             updated_at: new Date().toISOString(),
           });
         }

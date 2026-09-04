@@ -64,6 +64,7 @@ create table if not exists diary_entries (
 -- Notes (par série/saison/épisodes)
 
 alter table library add column if not exists series_rating numeric(3,1);
+alter table library add column if not exists rewatch_started_at timestamptz;
 
 -- Préserve la note actuelle de chaque utilisateur : la valeur de avg_rating
 -- aujourd'hui correspond exactement à ce qu'ils ont cliqué sur "Ta note"

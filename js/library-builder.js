@@ -124,6 +124,14 @@ const LibraryBuilder = {
     const existingSeriesRating = new Map(
       existingLibrary.map((l) => [`${l.media_type}_${l.tmdb_id}`, l.series_rating ?? null])
     );
+    // Rewatch intégral en cours (posé manuellement quand on repasse une
+    // série "Terminé" → "En cours") : tant que cette date est posée, le
+    // statut se recalcule sur les épisodes revus DEPUIS ce moment plutôt
+    // que sur l'historique complet, pour ne pas repasser en "Terminé" dès
+    // le premier rebuild.
+    const existingRewatchStartedAt = new Map(
+      existingLibrary.map((l) => [`${l.media_type}_${l.tmdb_id}`, l.rewatch_started_at ?? null])
+    );
     const works = new Map();
 
     for (const entry of diary) {
@@ -142,6 +150,9 @@ const LibraryBuilder = {
           watch_count: 0,
           watched_episodes: 0,
           seenEpisodeKeys: new Set(),
+          rewatchStartedAt: existingRewatchStartedAt.get(key) ?? null,
+          seenEpisodeKeysSinceRewatch: new Set(),
+          watchedEpisodesSinceRewatch: 0,
           total_episodes: 0,
           total_seasons: 0,
           progress: 0,
@@ -163,6 +174,15 @@ const LibraryBuilder = {
         if (!work.seenEpisodeKeys.has(epKey)) {
           work.seenEpisodeKeys.add(epKey);
           work.watched_episodes++;
+        }
+        if (
+          work.rewatchStartedAt &&
+          entry.created_at &&
+          entry.created_at >= work.rewatchStartedAt &&
+          !work.seenEpisodeKeysSinceRewatch.has(epKey)
+        ) {
+          work.seenEpisodeKeysSinceRewatch.add(epKey);
+          work.watchedEpisodesSinceRewatch++;
         }
       }
 
@@ -272,12 +292,29 @@ const LibraryBuilder = {
           const cappedWatched = Math.min(work.watched_episodes, work.total_episodes);
           work.progress = Number(((cappedWatched / work.total_episodes) * 100).toFixed(1));
           const showHasEnded = this._ENDED_TMDB_STATUSES.has(work.status_tmdb);
-          const caughtUp = work.watched_episodes >= work.total_episodes;
-          // Rattrapé mais la série tourne encore (pause entre deux saisons,
-          // saison suivante pas encore annoncée) : reste "En cours" plutôt
-          // que de basculer en "Terminé" — sinon elle disparaît de la vue
-          // "à venir" dès que de nouveaux épisodes sont annoncés.
-          work.status = caughtUp ? (showHasEnded ? "completed" : "watching") : "watching";
+
+          if (work.rewatchStartedAt) {
+            // Rewatch intégral en cours : on ne regarde que les épisodes
+            // revus depuis le lancement de ce rewatch, pas l'historique
+            // complet (sinon une série déjà terminée repasse "Terminé" dès
+            // le premier épisode revu, puisque tout est déjà dans
+            // seenEpisodeKeys depuis le premier visionnage).
+            const rewatchCaughtUp = work.watchedEpisodesSinceRewatch >= work.total_episodes;
+            if (rewatchCaughtUp) {
+              work.status = showHasEnded ? "completed" : "watching";
+              work.rewatchStartedAt = null;
+            } else {
+              work.status = "watching";
+            }
+          } else {
+            const caughtUp = work.watched_episodes >= work.total_episodes;
+            // Rattrapé mais la série tourne encore (pause entre deux
+            // saisons, saison suivante pas encore annoncée) : reste "En
+            // cours" plutôt que de basculer en "Terminé" — sinon elle
+            // disparaît de la vue "à venir" dès que de nouveaux épisodes
+            // sont annoncés.
+            work.status = caughtUp ? (showHasEnded ? "completed" : "watching") : "watching";
+          }
         }
       }
 
@@ -315,6 +352,7 @@ const LibraryBuilder = {
         last_watched_date: work.last_watched_date || work.first_watched_date,
         watch_count: work.watch_count,
         watched_episodes: work.watched_episodes,
+        rewatch_started_at: work.rewatchStartedAt,
         total_episodes: work.total_episodes,
         total_seasons: work.total_seasons,
         progress: work.progress,
