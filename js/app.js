@@ -3578,11 +3578,352 @@ function libraryTemplate(library) {
   return filterBar + groupsHTML;
 }
 
+let activePosterDock = null;
+let activeDockCloser = null; // référence au closeDock() de bindPosterLongPress en cours, voir le guard anti tap-sur-poster dans bindLibraryEvents
+let pendingWatchPrefetch = null; // { key, promise } — voir prefetchDockWatchAction()
+
+const POSTER_DOCK_ACTIONS = [
+  { id: "watched", icon: "check", label: "Marquer vu" },
+  { id: "rate", icon: "star", label: "Noter" },
+  { id: "status", icon: "list", label: "Changer le statut" },
+];
+
+// Cherche le prochain épisode non vu à partir de la saison la plus avancée
+// déjà atteinte (même logique que progressSeason en fiche détail : si un
+// rewatch intégral est actif, ne compte que les épisodes revus depuis
+// rewatch_started_at). Retourne aussi seasonEpisodes pour pouvoir appeler
+// toggleEpisodeWatched() sans reformuler la logique de rattrapage qu'elle
+// gère déjà. Renvoie null si tout est déjà vu.
+async function findNextUnwatchedEpisode(item) {
+  const tvId = item.tmdb_id;
+  const totalSeasons = item.total_seasons || 1;
+  const rewatchStartedAt = item.rewatch_started_at || null;
+  const entries = App.diary.filter(
+    (e) => String(e.tmdb_id) === String(tvId) && e.media_type === "tv"
+  );
+  const relevant = rewatchStartedAt
+    ? entries.filter((e) => e.created_at && e.created_at >= rewatchStartedAt)
+    : entries;
+  const watchedKeys = new Set(relevant.map((e) => `${e.season}x${e.episode}`));
+  const startSeason = relevant.length
+    ? Math.min(Math.max(...relevant.map((e) => e.season || 1)), totalSeasons)
+    : 1;
+
+  for (let s = startSeason; s <= totalSeasons; s++) {
+    let season;
+    try {
+      season = await TMDB.getSeason(tvId, s);
+    } catch {
+      return null; // saison indisponible côté TMDB : pas d'action plutôt qu'un crash
+    }
+    const episodes = season.episodes || [];
+    const next = episodes.find((ep) => !watchedKeys.has(`${s}x${ep.episode_number}`));
+    if (next) {
+      return {
+        season: s,
+        episode: next.episode_number,
+        runtime: next.runtime || null,
+        air_date: next.air_date || null,
+        seasonEpisodes: episodes,
+      };
+    }
+  }
+  return null; // tout est déjà vu
+}
+
+// Déclenché dès le pointerdown (voir onPressStart dans bindPosterLongPress) :
+// lance le fetch TMDB pendant les ~500ms du hold, pour que le repère
+// "S2E5" soit prêt dès l'ouverture du dock plutôt que de la faire attendre.
+// Rien à précharger pour un film — log direct, sans fetch.
+function prefetchDockWatchAction(card) {
+  const tmdbId = card.dataset.id;
+  const mediaType = card.dataset.type;
+  if (mediaType !== "tv") {
+    pendingWatchPrefetch = null;
+    return;
+  }
+  const item = App.library.find(
+    (l) => String(l.tmdb_id) === String(tmdbId) && l.media_type === "tv"
+  );
+  if (!item) {
+    pendingWatchPrefetch = null;
+    return;
+  }
+  pendingWatchPrefetch = { key: `tv_${tmdbId}`, promise: findNextUnwatchedEpisode(item) };
+}
+
+// Dock contextuel (étape 3) : structure identique à l'étape 2, mais
+// l'action "Marquer vu" est maintenant branchée. Noter/Changer le statut
+// restent inertes (étapes 4 et 5).
+function renderPosterDock(card, closeDock) {
+  activeDockCloser = closeDock;
+  const tmdbId = card.dataset.id;
+  const mediaType = card.dataset.type;
+  const item = App.library.find(
+    (l) => String(l.tmdb_id) === String(tmdbId) && l.media_type === mediaType
+  );
+
+  const rect = card.getBoundingClientRect();
+  const dock = document.createElement("div");
+  dock.className = "poster-dock";
+  dock.style.left = `${rect.left + rect.width / 2}px`;
+  dock.style.top = `${rect.top}px`;
+
+  const radius = 70;
+  const angles = [-50, 0, 50]; // degrés depuis la verticale : arc au-dessus de la carte
+  dock.innerHTML = POSTER_DOCK_ACTIONS.map((action, i) => {
+    const rad = (angles[i] * Math.PI) / 180;
+    const x = (radius * Math.sin(rad)).toFixed(1);
+    const y = (-radius * Math.cos(rad)).toFixed(1);
+    const sublabel = action.id === "watched" && mediaType === "tv" ? `<span class="poster-dock-sublabel"></span>` : "";
+    return `
+      <button type="button" class="poster-dock-btn" data-action="${action.id}"
+        style="--dock-x:${x}px; --dock-y:${y}px; animation-delay:${i * 50}ms"
+        aria-label="${action.label}">
+        <i data-lucide="${action.icon}"></i>
+        ${sublabel}
+      </button>`;
+  }).join("");
+
+  document.body.appendChild(dock);
+  if (typeof lucide !== "undefined") lucide.createIcons();
+  activePosterDock = dock;
+
+  const watchedBtn = dock.querySelector('[data-action="watched"]');
+  let nextEpisode = null; // rempli une fois le prefetch résolu (séries uniquement)
+
+  if (item && mediaType === "tv") {
+    const key = `tv_${tmdbId}`;
+    const prefetch = pendingWatchPrefetch?.key === key ? pendingWatchPrefetch.promise : findNextUnwatchedEpisode(item);
+    prefetch.then((next) => {
+      nextEpisode = next;
+      const sublabelEl = watchedBtn?.querySelector(".poster-dock-sublabel");
+      if (!sublabelEl) return;
+      if (next) {
+        sublabelEl.textContent = `S${next.season}E${next.episode}`;
+      } else {
+        watchedBtn.classList.add("poster-dock-btn--disabled");
+        watchedBtn.setAttribute("aria-label", "Tout est déjà vu");
+      }
+    });
+  }
+
+  // Étape 4 : remplace le contenu du dock (les 3 icônes) par une rangée de
+  // 5 étoiles, en réutilisant telles quelles les classes .rating-star de la
+  // fiche détail pour rester visuellement cohérent. Échelle 0-10 en base
+  // (n * 2, comme DB.setWorkRating l'attend) ; retap sur l'étoile déjà
+  // posée = suppression, même règle qu'ailleurs dans l'app.
+  function renderPosterDockRating() {
+    const rawRating = mediaType === "tv" ? item?.series_rating : item?.avg_rating;
+    let currentRating = rawRating != null ? Math.round(rawRating / 2) : 0;
+
+    dock.innerHTML = `<div class="poster-dock-rating-row" style="width:${rect.width}px">${[1, 2, 3, 4, 5]
+      .map((n) => {
+        const filled = n <= currentRating;
+        return `<button type="button" class="rating-star ${filled ? "rating-star--filled" : ""}" data-value="${n}" aria-label="${n} étoile${n > 1 ? "s" : ""}"><span class="rating-star-glyph">${filled ? "★" : "☆"}</span></button>`;
+      })
+      .join("")}</div>`;
+
+    const starEls = qsa(".rating-star", dock);
+    const applyPreview = (value) => {
+      starEls.forEach((s) => {
+        const filled = Number(s.dataset.value) <= value;
+        s.classList.toggle("rating-star--filled", filled);
+        const glyph = s.querySelector(".rating-star-glyph");
+        if (glyph) glyph.textContent = filled ? "★" : "☆";
+      });
+    };
+
+    starEls.forEach((starBtn) => {
+      const value = Number(starBtn.dataset.value);
+      starBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const isRemoving = currentRating === value;
+        const nextValue = isRemoving ? 0 : value;
+        applyPreview(nextValue);
+        if (!isRemoving) {
+          popElement(starBtn.querySelector(".rating-star-glyph"));
+          burstFromElement(starBtn, "--mustard");
+        }
+        currentRating = nextValue;
+
+        try {
+          const ratingValue = isRemoving ? null : nextValue * 2;
+          await DB.setWorkRating(App.session.user.id, Number(tmdbId), mediaType, ratingValue);
+          toast(isRemoving ? "Note retirée" : "Note enregistrée ⭐", "success");
+          await App.refreshSilently();
+          App.route();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+        // Petit délai pour laisser voir le pop avant de tout refermer.
+        setTimeout(closeDock, 220);
+      });
+    });
+  }
+
+  // Étape 5 : remplace le contenu du dock par un mini-picker des 4 statuts.
+  // Même logique de rewatch que le menu déroulant de la fiche détail
+  // (voir status-select) — un nouveau rewatch ne démarre que depuis
+  // "Terminé" et seulement si aucun rewatch n'est déjà en pause, jamais
+  // effacé manuellement. Pas de confirmation "tout marquer" ici (hors
+  // scope d'un changement de statut rapide depuis la grille) : équivalent
+  // au choix "Non, juste le statut" du menu déroulant.
+  function renderPosterDockStatus() {
+    const currentStatus = item?.status || "";
+    const statuses = [
+      { id: "watchlist", label: "À voir" },
+      { id: "watching", label: "En cours" },
+      { id: "completed", label: "Terminé" },
+      { id: "dropped", label: "Abandonné" },
+    ];
+
+    dock.innerHTML = `<div class="poster-dock-status-row">${statuses
+      .map(
+        (s) =>
+          `<button type="button" class="poster-dock-status-btn ${s.id === currentStatus ? "poster-dock-status-btn--active" : ""}" data-status="${s.id}">${s.label}</button>`
+      )
+      .join("")}</div>`;
+
+    qsa(".poster-dock-status-btn", dock).forEach((statusBtn) => {
+      statusBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const newStatus = statusBtn.dataset.status;
+        if (newStatus === currentStatus) {
+          closeDock();
+          return;
+        }
+
+        const startingNewRewatch =
+          newStatus === "watching" &&
+          mediaType === "tv" &&
+          currentStatus === "completed" &&
+          !item?.rewatch_started_at;
+
+        try {
+          await DB.upsertLibraryItem({
+            user_id: App.session.user.id,
+            tmdb_id: Number(tmdbId),
+            media_type: mediaType,
+            title: item.title,
+            poster_path: item.poster_path,
+            status: newStatus,
+            ...(startingNewRewatch ? { rewatch_started_at: new Date().toISOString() } : {}),
+            updated_at: new Date().toISOString(),
+          });
+          toast("Statut mis à jour", "success");
+          await App.refreshSilently();
+          App.route();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+        closeDock();
+      });
+    });
+  }
+
+  dock.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".poster-dock-btn");
+    if (!btn || btn.classList.contains("poster-dock-btn--disabled")) return;
+    const action = btn.dataset.action;
+
+    if (action === "rate") {
+      renderPosterDockRating(); // le dock reste ouvert, contenu remplacé
+      return;
+    }
+
+    if (action === "status") {
+      if (item) renderPosterDockStatus(); // le dock reste ouvert, contenu remplacé
+      else closeDock();
+      return;
+    }
+
+    if (action === "watched") {
+      try {
+        if (mediaType === "movie") {
+          await DB.addDiaryEntry({
+            user_id: App.session.user.id,
+            tmdb_id: Number(tmdbId),
+            media_type: "movie",
+            title: item?.title || card.querySelector(".poster-card-title")?.textContent || "",
+            poster_path: item?.poster_path || null,
+            season: null,
+            episode: null,
+            watched_date: new Date().toISOString().slice(0, 10),
+            rating: null,
+            rewatch: false,
+            note: null,
+            genres: [],
+            runtime_minutes: null,
+            air_date: null,
+          });
+          toast("Marqué comme vu 🎟️", "ticket");
+          await App.refreshSilently();
+          App.route();
+        } else if (item && nextEpisode) {
+          await toggleEpisodeWatched(
+            {
+              tmdb_id: Number(tmdbId),
+              title: item.title,
+              poster_path: item.poster_path,
+              genres: [],
+              season: nextEpisode.season,
+              episode: nextEpisode.episode,
+              runtime_minutes: nextEpisode.runtime,
+              air_date: nextEpisode.air_date,
+              seasonEpisodes: nextEpisode.seasonEpisodes,
+            },
+            null,
+            async () => {
+              await App.refreshSilently();
+              App.route();
+            }
+          );
+        }
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    }
+
+    closeDock();
+  });
+}
+
+function closePosterDock() {
+  activeDockCloser = null;
+  if (!activePosterDock) return;
+  const dock = activePosterDock;
+  activePosterDock = null;
+  dock.classList.add("poster-dock--closing");
+  setTimeout(() => dock.remove(), 150);
+}
+
 function bindLibraryEvents() {
   const view_el = qs("#view");
   if (view_el.dataset.libraryEventsBound) return;
   view_el.dataset.libraryEventsBound = "1";
+  bindPosterLongPress(view_el, {
+    onOpen: renderPosterDock,
+    onClose: closePosterDock,
+    onPressStart: prefetchDockWatchAction,
+  });
   view_el.addEventListener("click", async (e) => {
+    // Le clic qui suit le relâchement du doigt après un long press ne doit
+    // pas ouvrir la fiche — voir bindPosterLongPress() dans utils.js.
+    if (view_el.dataset.suppressNextClick === "1") {
+      view_el.dataset.suppressNextClick = "";
+      return;
+    }
+    // Un tap sur le poster PENDANT que son dock est encore ouvert (rating,
+    // statut, ou même les 3 icônes) ne doit pas naviguer vers la fiche —
+    // ça laissait le fond assombri et le sous-menu collés par-dessus la
+    // fiche fraîchement ouverte, puisque backdrop/dock vivent sur <body>
+    // et survivent au changement de route. On referme proprement à la
+    // place, comme un tap sur le fond.
+    if (e.target.closest(".poster-card--lifted")) {
+      if (activeDockCloser) activeDockCloser();
+      return;
+    }
     const filterBtn = e.target.closest(".filter-btn");
     if (filterBtn) {
       libraryFilter = filterBtn.dataset.filter;

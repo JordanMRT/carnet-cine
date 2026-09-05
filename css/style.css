@@ -311,7 +311,19 @@ main#view { padding: 2rem; max-width: 1100px; margin: 0 auto; }
   transition: transform 0.15s ease;
 }
 .poster-card:hover { transform: translateY(-3px); }
-.poster-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; background: var(--ink); }
+.poster-card img {
+  width: 100%;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  display: block;
+  background: var(--ink);
+  /* Sans ça, le long press déclenche le menu contextuel natif iOS
+     (Enregistrer l'image, Copier...) par-dessus notre dock — les deux
+     gestes se disputent le même appui long sur l'image. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
 .poster-card-info {
   padding: 0.6em 0.7em;
   display: flex;
@@ -1168,6 +1180,142 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   font-size: 0.7rem;
   color: var(--muted);
 }
+
+/* ---------- DOCK CONTEXTUEL (long press sur un poster, bibliothèque) ---------- */
+/* Étape 1 : lift de la carte + assombrissement du fond. Le dock d'actions
+   (étape 2) viendra s'ancrer sur .poster-card--lifted par-dessus. Même
+   teinte que .modal-overlay pour rester cohérent avec le seul autre
+   "assombrissement plein écran" déjà présent dans l'app. */
+.poster-card-backdrop {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg) 75%, transparent);
+  z-index: 1050;
+  opacity: 0;
+  backdrop-filter: blur(2px);
+  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.poster-card-backdrop--visible { opacity: 1; }
+.poster-card--lifted {
+  position: relative;
+  z-index: 1051;
+  transform: translateY(-8px) scale(1.05);
+  box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.6);
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Étape 2 : le dock lui-même. .poster-dock est un point d'ancrage invisible
+   (0×0) positionné au centre-haut de la carte ; chaque bouton se place par
+   rapport à ce point via --dock-x/--dock-y (calculés en JS, arc en degrés
+   depuis la verticale) plutôt que par une grille flex — ça permet un arc
+   propre avec seulement 3 boutons sans dépendre de leur ordre au DOM. */
+.poster-dock {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: 1052;
+  pointer-events: none;
+}
+.poster-dock-btn {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--cream);
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+  cursor: pointer;
+  opacity: 0;
+  animation: dockPopIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+.poster-dock-btn svg { width: 20px; height: 20px; }
+.poster-dock-btn--disabled { opacity: 0.4; pointer-events: none; }
+.poster-dock-sublabel {
+  position: absolute;
+  bottom: -1.8em;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.poster-dock--closing .poster-dock-btn {
+  animation: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.6);
+}
+@keyframes dockPopIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
+  to { opacity: 1; transform: translate(calc(-50% + var(--dock-x)), calc(-50% + var(--dock-y))) scale(1); }
+}
+/* Étape 4 : la rangée d'étoiles remplace les 3 icônes dans le même point
+   d'ancrage (.poster-dock reste 0×0) — un flex row simple suffit ici,
+   contrairement à l'arc des 3 boutons, vu que les 5 étoiles s'alignent
+   naturellement. Réutilise .rating-star tel quel (voir plus haut dans ce
+   fichier) pour rester visuellement identique au widget de la fiche détail. */
+.poster-dock-rating-row {
+  position: absolute;
+  left: 0;
+  top: 2.5em;
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0.7rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+  opacity: 0;
+  animation: ratingRowPopIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+.poster-dock-rating-row .rating-star { font-size: 1.3rem; }
+@keyframes ratingRowPopIn {
+  from { opacity: 0; transform: translate(-50%, -100%) scale(0.6); }
+  to { opacity: 1; transform: translate(-50%, -100%) scale(1); }
+}
+/* Étape 5 : le mini-picker de statut, même ancrage que la rangée d'étoiles
+   mais en colonne (4 libellés texte, moins compact que des icônes seules). */
+.poster-dock-status-row {
+  position: absolute;
+  left: 2em;
+  top: 8.9em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.4rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+  opacity: 0;
+  animation: ratingRowPopIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+.poster-dock-status-btn {
+  background: none;
+  border: none;
+  color: var(--cream);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  text-align: left;
+  padding: 0.45rem 0.7rem;
+  border-radius: 8px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.poster-dock-status-btn--active { background: var(--mustard); color: var(--ink); font-weight: 600; }
 
 /* ---------- MODAL ---------- */
 .modal-overlay {

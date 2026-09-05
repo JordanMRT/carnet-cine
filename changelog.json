@@ -1,8 +1,8 @@
 {
-  "version": "2026-09-04",
+  "version": "2026-09-05",
   "highlights": [
-    "What's new (v 2.6) ? 🍿",
-    "Lance-toi dans un rewatch et ta progression te suit en même temps pour toujours reprendre où tu en es.",
+    "What's new (v 2.6.1) ? 🍿",
+    "Appuie longtemps sur une affiche dans la bilbiothèe pour rapidement marquer comme vu, noter et changer le statut.",
     "Swipe à droite sur un épisode sur une fiche série pour noter un revisionnage, à gauche pour retirer le dernier visionnage.",
     "Correction de bug et logiques mineurs."
   ]

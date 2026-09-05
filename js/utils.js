@@ -796,6 +796,111 @@ function markSwipeHintSeen(direction) {
   }
 }
 
+// ---- DOCK CONTEXTUEL POSTER BIBLIOTHEQUE (LONG PRESS) ----
+
+const LONG_PRESS_DURATION = 500;      // ms avant déclenchement du dock contextuel
+const LONG_PRESS_MOVE_TOLERANCE = 10; // px de tolérance avant d'annuler (scroll en cours)
+
+// Étape 1 du dock contextuel (bibliothèque) : détecte le long press sur un
+// .poster-card, soulève la carte ciblée et assombrit le fond derrière elle.
+// N'affiche encore aucun dock ni action — onOpen/onClose ne servent qu'à
+// brancher la suite (étape 2) sans toucher à cette fonction. Mobile / tactile
+// uniquement : sur desktop, le survol suffit à distinguer l'intention, donc
+// pas de long press à détecter.
+function bindPosterLongPress(containerEl, { onOpen, onClose, onPressStart } = {}) {
+  if (!containerEl || !isTouchDevice()) return;
+  if (containerEl.dataset.longPressBound) return;
+  containerEl.dataset.longPressBound = "1";
+
+  let timer = null;
+  let startX = 0;
+  let startY = 0;
+  let activeCard = null;
+  let backdrop = null;
+  let scrollHandler = null;
+
+  const cancelTimer = () => {
+    clearTimeout(timer);
+    timer = null;
+  };
+
+  const closeDock = () => {
+    if (!activeCard) return;
+    const card = activeCard;
+    activeCard = null;
+    card.classList.remove("poster-card--lifted");
+    if (backdrop) {
+      const toRemove = backdrop;
+      backdrop = null;
+      toRemove.classList.remove("poster-card-backdrop--visible");
+      setTimeout(() => toRemove.remove(), 250);
+    }
+    if (scrollHandler) {
+      window.removeEventListener("scroll", scrollHandler);
+      scrollHandler = null;
+    }
+    containerEl.dataset.suppressNextClick = "";
+    if (onClose) onClose(card);
+  };
+
+  containerEl.addEventListener("pointerdown", (e) => {
+    // Un bouton (retirer, etc.) gère déjà son propre clic — le long press
+    // ne doit pas se déclencher par-dessus.
+    if (e.target.closest("button")) return;
+    const card = e.target.closest(".poster-card");
+    if (!card) return;
+
+    // Le dock est déjà ouvert sur CETTE carte : on ignore ce nouveau press
+    // plutôt que d'en relancer un second par-dessus (ça empilait deux docks
+    // et deux backdrops, obligeant à recharger la page pour s'en sortir).
+    if (activeCard === card) return;
+
+    // Un dock déjà ouvert sur une autre carte : on le referme d'abord,
+    // plutôt que d'empiler deux états actifs.
+    if (activeCard && activeCard !== card) closeDock();
+
+    startX = e.clientX;
+    startY = e.clientY;
+    cancelTimer();
+
+    if (onPressStart) onPressStart(card);
+
+    timer = setTimeout(() => {
+      timer = null;
+      activeCard = card;
+      hapticTrigger(card);
+      card.classList.add("poster-card--lifted");
+
+      backdrop = document.createElement("div");
+      backdrop.className = "poster-card-backdrop";
+      backdrop.addEventListener("click", closeDock);
+      document.body.appendChild(backdrop);
+      requestAnimationFrame(() => backdrop.classList.add("poster-card-backdrop--visible"));
+
+      // .poster-dock est positionné en fixed à des coordonnées calculées une
+      // fois à l'ouverture — sans ça, un scroll pendant que le dock est
+      // ouvert le laisse "flotter" à sa position d'origine pendant que la
+      // carte, elle, défile avec la page. Plus simple et plus sûr de
+      // refermer au premier scroll que de repositionner en continu.
+      scrollHandler = () => closeDock();
+      window.addEventListener("scroll", scrollHandler, { passive: true });
+
+      containerEl.dataset.suppressNextClick = "1";
+      if (onOpen) onOpen(card, closeDock);
+    }, LONG_PRESS_DURATION);
+  });
+
+  containerEl.addEventListener("pointermove", (e) => {
+    if (!timer) return;
+    const dx = Math.abs(e.clientX - startX);
+    const dy = Math.abs(e.clientY - startY);
+    if (dx > LONG_PRESS_MOVE_TOLERANCE || dy > LONG_PRESS_MOVE_TOLERANCE) cancelTimer();
+  });
+
+  containerEl.addEventListener("pointerup", cancelTimer);
+  containerEl.addEventListener("pointercancel", cancelTimer);
+}
+
 // --- MAILTO
 function buildContactMailto() {
   const subject = encodeURIComponent("Time To Binge - Question / Suggestion");

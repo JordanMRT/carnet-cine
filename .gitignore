@@ -4,5 +4,3 @@ supabase/.temp/
 node_modules/
 
 # Dev config files (not needed in repo for solo dev)
-CLAUDE.md
-.claude
