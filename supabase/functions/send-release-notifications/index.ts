@@ -68,6 +68,14 @@ async function getPublicReleaseDate(movieId: string | number) {
       const publicRelease = country.release_dates.find((rd: any) => rd.type === 3 || rd.type === 4);
       if (publicRelease) return publicRelease.release_date.slice(0, 10);
     }
+    // Aucun pays prioritaire n'a de sortie salle/digital renseignée : on élargit
+    // à tous les pays plutôt que d'abandonner, toujours filtré type 3/4 (jamais
+    // l'avant-première, type 1) — cas des films Netflix mondiaux sans découpage
+    // pays par pays dans les pays prioritaires.
+    for (const country of releases.results) {
+      const publicRelease = country.release_dates.find((rd: any) => rd.type === 3 || rd.type === 4);
+      if (publicRelease) return publicRelease.release_date.slice(0, 10);
+    }
   } catch (e) {
     console.error(`TMDB release_dates film ${movieId}`, e);
   }
@@ -173,9 +181,14 @@ serve(async (req) => {
 
     for (const movie of watchlistMovies || []) {
       try {
-        const data = await tmdb(`/movie/${movie.tmdb_id}`);
-        const publicReleaseDate = (await getPublicReleaseDate(movie.tmdb_id)) || data.release_date;
-        if (publicReleaseDate === today) {
+        const publicReleaseDate = await getPublicReleaseDate(movie.tmdb_id);
+        // Pas de fallback sur data.release_date (TMDB) : ce champ générique peut
+        // correspondre à une avant-première et bloquerait silencieusement toute
+        // notif future une fois figé sur une date passée. On préfère ne pas
+        // notifier plutôt que notifier sur la mauvaise date.
+        if (!publicReleaseDate) {
+          console.error(`Aucune date de sortie publique fiable trouvée pour le film ${movie.tmdb_id}`);
+        } else if (publicReleaseDate === today) {
           candidates.push({
             title: `${movie.title} est sorti aujourd'hui 🎬`,
             body: "C'est dans ta watchlist ! Direction la fiche ?",

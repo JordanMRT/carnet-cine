@@ -1317,6 +1317,18 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 }
 .poster-dock-status-btn--active { background: var(--mustard); color: var(--ink); font-weight: 600; }
 
+@media (prefers-reduced-motion: reduce) {
+  .poster-dock-btn {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--dock-x)), calc(-50% + var(--dock-y))) scale(1);
+  }
+  .poster-dock-rating-row,
+  .poster-dock-status-row {
+    opacity: 1;
+    transform: translate(-50%, -100%) scale(1);
+  }
+}
+
 /* ---------- MODAL ---------- */
 .modal-overlay {
   position: fixed; inset: 0;
