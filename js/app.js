@@ -1922,7 +1922,7 @@ if (typeof lucide !== "undefined") lucide.createIcons();
             poster_path: data.poster_path,
             season: type === "tv" ? null : null, // Pour les films, saison/episode sont toujours null
             episode: type === "tv" ? null : null,
-            watched_date: new Date().toISOString().slice(0, 10),
+            watched_date: todayLocal(),
             rating: null,
             rewatch,
             note: null,
@@ -2493,7 +2493,7 @@ async function toggleWorkWatched({ tmdbId, type, title, posterPath, genreIds, ai
           poster_path: posterPath || null,
           season: null,
           episode: null,
-          watched_date: new Date().toISOString().slice(0, 10),
+          watched_date: todayLocal(),
           rating: null,
           rewatch: false,
           note: null,
@@ -2924,7 +2924,7 @@ async function markAllEpisodesWatched(tvId, numberOfSeasons, title, posterPath, 
       .filter((e) => String(e.tmdb_id) === String(tvId) && e.media_type === "tv")
       .map((e) => `${e.season}x${e.episode}`)
   );
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const toInsert = [];
 
   for (let s = 1; s <= numberOfSeasons; s++) {
@@ -3195,7 +3195,7 @@ async function toggleEpisodeWatched(ctx, btnEl, onDone) {
         );
       }
 
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayLocal();
 
       // Mise à jour optimiste : la coche apparaît tout de suite, avant
       // même que la requête Supabase ne parte.
@@ -3408,7 +3408,7 @@ async function addEpisodeRewatch(ctx, onDone) {
       poster_path: ctx.poster_path,
       season: ctx.season,
       episode: ctx.episode,
-      watched_date: new Date().toISOString().slice(0, 10),
+      watched_date: todayLocal(),
       rating: null,
       rewatch: true,
       note: null,
@@ -3420,7 +3420,6 @@ async function addEpisodeRewatch(ctx, onDone) {
     App.diary.push(entry);
     toast("Revisionnage ajouté 🎟️", "ticket");
     onDone ? onDone() : App.refreshSilently();
-    if (onDone) App.refreshSilently();
   } catch (err) {
     toast(err.message, "error");
   }
@@ -3849,7 +3848,7 @@ function renderPosterDock(card, closeDock) {
             poster_path: item?.poster_path || null,
             season: null,
             episode: null,
-            watched_date: new Date().toISOString().slice(0, 10),
+            watched_date: todayLocal(),
             rating: null,
             rewatch: false,
             note: null,
@@ -3956,7 +3955,7 @@ async function renderUpcoming(gen) {
   view.innerHTML = `${libraryNavBar("upcoming")}${skeletonGridHTML(8)}`;
 
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocal();
     const watchlistMovies = App.library.filter((l) => l.media_type === "movie" && l.status === "watchlist");
     const watchingShows = App.library.filter((l) => l.media_type === "tv" && l.status === "watching");
 

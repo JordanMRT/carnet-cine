@@ -29,6 +29,20 @@ function formatDateShort(dateStr) {
   return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
+// Date du jour au format YYYY-MM-DD en heure LOCALE (pas UTC). À utiliser
+// partout où on compare/date "aujourd'hui" — new Date().toISOString()
+// renvoie la date UTC, ce qui fait basculer sur la veille entre minuit et
+// 1h-2h du matin en France (UTC+1/+2), avec un impact direct sur le
+// journal (mauvaise date de visionnage) et le calendrier "À venir"
+// (élément du jour classé comme pas encore sorti).
+function todayLocal() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function formatMinutes(mins) {
   if (!mins) return "0 min";
   const h = Math.floor(mins / 60);
