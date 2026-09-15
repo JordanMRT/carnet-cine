@@ -402,15 +402,17 @@ async clearLibrary(userId) {
 },
 
 async upsertLibraryItems(items) {
-  if (!items.length) return;
+  if (!items.length) return [];
 
-  const { error } = await supabaseClient
+  const { data, error } = await supabaseClient
     .from("library")
     .upsert(items, {
       onConflict: "user_id,tmdb_id,media_type",
-    });
+    })
+    .select("id, tmdb_id, media_type");
 
   if (error) throw error;
+  return data || [];
 },
 
   async upsertLibraryItem(item) {

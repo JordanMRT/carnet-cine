@@ -1750,7 +1750,7 @@ async function renderShowDetail(param, gen) {
             <div id="show-progress-wrap">${progressBlockMarkup(inLibrary)}</div>
             <div class="show-detail-actions">
               <select id="status-select">
-                <option value="">+ Ajouter à ma bibliothèque</option>
+                <option value="">${inLibrary ? "− Retirer de ma bibliothèque" : "+ Ajouter à ma bibliothèque"}</option>
                 <option value="watchlist" ${inLibrary?.status === "watchlist" ? "selected" : ""}>À voir</option>
                 <option value="watching" ${inLibrary?.status === "watching" ? "selected" : ""}>En cours</option>
                 <option value="completed" ${inLibrary?.status === "completed" ? "selected" : ""}>Terminé</option>
@@ -1813,7 +1813,18 @@ if (typeof lucide !== "undefined") lucide.createIcons();
       // même quand App.library vient d'être recalculé (ex: après une
       // annulation qui ramène le film à "watchlist").
       const statusSelect = qs("#status-select");
-      if (statusSelect) statusSelect.value = inLibNow?.status || "";
+      if (statusSelect) {
+        statusSelect.value = inLibNow?.status || "";
+        // L'option vide est peinte une seule fois au rendu initial : sans ça
+        // elle reste sur "+ Ajouter" après un ajout, ou sur "− Retirer" après
+        // un retrait.
+        const placeholder = statusSelect.querySelector('option[value=""]');
+        if (placeholder) {
+          placeholder.textContent = inLibNow
+            ? "− Retirer de ma bibliothèque"
+            : "+ Ajouter à ma bibliothèque";
+        }
+      }
 
       const watchInfoWrap = qs("#movie-watch-info-wrap");
       if (watchInfoWrap) watchInfoWrap.innerHTML = watchInfoMarkup(watchCountNow);
@@ -1844,8 +1855,34 @@ if (typeof lucide !== "undefined") lucide.createIcons();
     qs("#status-select").addEventListener("change", async (e) => {
       const status = e.target.value;
       const select = e.target;
-      const previousStatus = inLibrary?.status || "";
-      if (!status) return;
+      // Lu depuis App.library et non depuis `inLibrary` : ce dernier est un
+      // const capturé au rendu de la fiche, donc périmé dès le premier
+      // changement de statut (ou après un retrait).
+      const previousStatus =
+        App.library.find((l) => String(l.tmdb_id) === String(id) && l.media_type === type)?.status || "";
+      // Option vide : simple placeholder tant que l'œuvre n'est pas en
+      // bibliothèque, vrai retrait sinon. Avant, le `return` sec ne
+      // persistait rien et le statut réapparaissait au rechargement.
+      if (!status) {
+        if (!previousStatus) return;
+        select.disabled = true;
+        try {
+          const removed = await removeWorkFromLibrary(id, type, { title });
+          if (!removed) {
+            select.value = previousStatus;
+            return;
+          }
+          toast("Retiré de ta bibliothèque.", "success");
+          refreshShowDetailUI();
+          App.refreshSilently();
+        } catch (err) {
+          select.value = previousStatus;
+          toast(err.message, "error");
+        } finally {
+          select.disabled = false;
+        }
+        return;
+      }
 
       // Rewatch intégral : on pose un NOUVEAU point de départ uniquement si
       // on passe "En cours" depuis "Terminé" et qu'aucun rewatch n'est déjà
@@ -3897,6 +3934,41 @@ function closePosterDock() {
   setTimeout(() => dock.remove(), 150);
 }
 
+// Retrait d'une œuvre de la bibliothèque — chemin unique partagé par le ✕ des
+// cartes et l'option de retrait du select de la fiche détail.
+// Supprimer la seule ligne `library` ne suffit pas dès qu'il existe des
+// entrées de journal : LibraryBuilder.rebuild() reconstruit `works` à partir
+// du journal SEUL, sans vérifier la présence en bibliothèque — l'œuvre
+// réapparaîtrait donc en "En cours" au rechargement suivant. D'où la
+// suppression conjointe du journal quand un historique existe, et la modale
+// de confirmation qui va avec.
+// Retourne false si l'utilisateur a annulé (l'appelant garde alors son DOM
+// intact), true si le retrait a eu lieu.
+async function removeWorkFromLibrary(tmdbId, mediaType, { libId = null, title = "" } = {}) {
+  const userId = App.session.user.id;
+  const matches = (l) => String(l.tmdb_id) === String(tmdbId) && l.media_type === mediaType;
+  const resolvedId = libId && libId !== "undefined" ? libId : App.library.find(matches)?.id;
+  const hasHistory = App.diary.some(matches);
+
+  if (hasHistory) {
+    const confirmed = await showConfirm(
+      `Retirer ${title || "cette œuvre"} de ta bibliothèque ?`,
+      {
+        confirmLabel: "Retirer et effacer",
+        cancelLabel: "Annuler",
+        hint: "Les visionnages associés (épisodes compris) seront aussi effacés du journal.",
+      }
+    );
+    if (!confirmed) return false;
+    await DB.deleteAllEntriesForWork(userId, Number(tmdbId), mediaType);
+    App.diary = App.diary.filter((e) => !matches(e));
+  }
+
+  if (resolvedId) await DB.removeLibraryItem(resolvedId);
+  App.library = App.library.filter((l) => !matches(l));
+  return true;
+}
+
 function bindLibraryEvents() {
   const view_el = qs("#view");
   if (view_el.dataset.libraryEventsBound) return;
@@ -3932,11 +4004,17 @@ function bindLibraryEvents() {
     if (e.target.classList.contains("remove-btn")) {
       e.stopPropagation();
       const card = e.target.closest(".poster-card");
-      const libId = e.target.dataset.libId;
-      card?.remove(); // retrait immédiat de la carte, avant même la requête
+      if (!card) return;
+      // Plus de retrait optimiste de la carte : avec un historique, une
+      // modale s'intercale et l'utilisateur peut annuler — la carte doit
+      // rester en place dans ce cas.
       try {
-        await DB.removeLibraryItem(libId);
-        App.library = App.library.filter((l) => String(l.id) !== String(libId));
+        const removed = await removeWorkFromLibrary(card.dataset.id, card.dataset.type, {
+          libId: e.target.dataset.libId,
+          title: qs(".poster-card-title", card)?.textContent || "",
+        });
+        if (!removed) return;
+        card.remove();
         App.refreshSilently();
       } catch (err) {
         toast(err.message, "error");
@@ -4076,7 +4154,7 @@ async function renderUpcoming(gen) {
           <h2>Épisodes à voir</h2>
           ${
             showsToWatch.length
-              ? `<div class="upcoming-list upcoming-list--episodes">${showsToWatch.map((item) => upcomingEpisodeCard(item, { showCheckbox: true, showDate: false })).join("")}</div>`
+              ? `<div class="upcoming-list--episode-rows">${showsToWatch.map((item) => upcomingEpisodeHeroCard(item, { showCheckbox: true, showDate: false, emphasize: false })).join("")}</div>`
               : emptyState("Tu es à jour sur toutes tes séries en cours.")
           }
         </section>
@@ -4160,6 +4238,31 @@ function upcomingEpisodeCard({ show, episode, genres = [] }, { showCheckbox = fa
           ${checkboxHTML}
         </div>
       </div>
+    </div>`;
+}
+
+function upcomingEpisodeHeroCard({ show, episode, genres = [] }, { showCheckbox = false, showDate = true, emphasize = true } = {}) {
+  const seasonNum = episode.season_number;
+  const epNum = episode.episode_number;
+  const checkboxHTML = showCheckbox
+    ? `<button class="upcoming-check-toggle" title="Marquer comme vu"
+        data-tmdb-id="${show.tmdb_id}" data-title="${escapeHtml(show.title)}" data-poster="${show.poster_path || ""}"
+        data-season="${seasonNum}" data-episode="${epNum}" data-runtime="${episode.runtime || ""}"
+        data-air-date="${episode.air_date || ""}" data-genres="${genres.join(",")}">
+        <i data-lucide="circle-check-big"></i>
+      </button>`
+    : "";
+  return `
+    <div class="upcoming-card upcoming-card--episode upcoming-card--hero${emphasize ? "" : " upcoming-card--hero-plain"}" data-href="#/episode/${show.tmdb_id}-${seasonNum}-${epNum}">
+      <div class="upcoming-card-media">
+        <img src="${TMDB.posterUrl(episode.still_path || show.poster_path, "w500")}" alt="" loading="lazy" />
+      </div>
+      <div class="upcoming-card-info">
+        ${showDate && episode.air_date ? `<span class="upcoming-date">${formatDate(episode.air_date)}</span>` : ""}
+        <span class="upcoming-card-title">${escapeHtml(show.title)}</span>
+        <span class="upcoming-card-sub">S${seasonNum}E${epNum}${episode.name ? ` · ${escapeHtml(episode.name)}` : ""}</span>
+      </div>
+      ${checkboxHTML}
     </div>`;
 }
 

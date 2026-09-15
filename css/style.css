@@ -468,6 +468,68 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 }
 .upcoming-check-toggle:hover { border-color: var(--sage); color: var(--sage); }
 .upcoming-check-toggle svg { width: .9rem; height: .9rem; }
+
+.upcoming-episode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.9rem;
+  margin-top: 0.9rem;
+}
+
+.upcoming-card--hero {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.7rem;
+  border: 1px solid var(--mustard);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  box-shadow: 0 0 0 1px var(--mustard);
+}
+.upcoming-card--hero .upcoming-card-media {
+  flex: 0 0 92px;
+  width: 92px;
+  border: none;
+  background: none;
+}
+.upcoming-card--hero .upcoming-card-media img {
+    aspect-ratio: 16 / 10;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+}
+.upcoming-card--hero .upcoming-card-info {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+.upcoming-card--hero .upcoming-date {
+  padding: 0.2em 0.6em;
+  border-radius: 999px;
+  background: var(--mustard);
+  color: var(--ink);
+}
+.upcoming-card--hero .upcoming-check-toggle {
+  width: 40px;
+  height: 40px;
+}
+.upcoming-card--hero .upcoming-check-toggle svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+.upcoming-card--hero-plain {
+  border-color: var(--border);
+  box-shadow: none;
+}
+
+.upcoming-list--episode-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
 /* ---------- SHOW DETAIL ---------- */
 .show-detail-overlay {
   position: relative;
@@ -2264,7 +2326,7 @@ code {
   }
 
   .ticket-perforation{
-    display:none;
+    display:contents;
   }
 
   .ticket-row{

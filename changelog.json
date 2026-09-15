@@ -1,7 +1,9 @@
 {
-  "version": "2026-09-13",
+  "version": "2026-09-15",
   "highlights": [
-    "What's new (v 2.6.2) ? 🍿",
-    "Correction de bug et logiques mineurs."
+    "What's new (v 2.6.3) ? 🍿",
+    "Correction de la surppression des cartes dans la bibliothèque.",
+    "Amélioration de la vue des épisodes 'À voir' pour ne pas surcharger.",
+    "Nettoyage des rangées et dépoussiérage de l'écran."
   ]
 }

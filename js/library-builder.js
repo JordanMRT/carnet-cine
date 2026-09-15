@@ -363,7 +363,20 @@ const LibraryBuilder = {
       });
     }
 
-    await DB.upsertLibraryItems(library);
+    // L'upsert renvoie désormais les lignes persistées : on réinjecte leur
+    // `id` dans les objets reconstruits ici. Sans ça, rebuild() renvoie des
+    // items fabriqués de zéro, donc sans id — et comme app.js fait
+    // `this.library = [...rebuilt, ...untouched]`, tout ce qui cible une
+    // ligne par son id (✕ des cartes, ✕ des tickets du journal) part avec
+    // data-lib-id="undefined" et casse côté Postgres.
+    const persisted = await DB.upsertLibraryItems(library);
+    const idByKey = new Map(
+      persisted.map((row) => [`${row.media_type}_${row.tmdb_id}`, row.id])
+    );
+    for (const item of library) {
+      const id = idByKey.get(`${item.media_type}_${item.tmdb_id}`);
+      if (id) item.id = id;
+    }
 
     // Séries qui viennent de passer en "Terminé" lors de CE rebuild (pas
     // déjà "completed" avant) : c'est à l'appelant de décider s'il s'agit
