@@ -4046,6 +4046,69 @@ function bindLibraryEvents() {
 }
 
 // ---------- À VENIR (calendrier) ----------
+// Calcule, pour UNE série donnée, le prochain épisode réellement sorti à
+// voir ainsi que le suivant pas encore sorti. Factorisé hors de
+// renderUpcoming() pour être réutilisable après une coche dans la section
+// "Épisodes à voir" (cf. advanceUpcomingHeroCard), sans avoir à tout
+// recalculer/re-render.
+async function computeShowUpcomingEpisode(show) {
+  try {
+    const today = todayLocal();
+    const data = await TMDB.getTv(show.tmdb_id);
+    const showEntries = App.diary.filter(
+      (e) => String(e.tmdb_id) === String(show.tmdb_id) && e.media_type === "tv"
+    );
+    const watchedKeys = new Set(showEntries.map((e) => `${e.season}x${e.episode}`));
+    const watchedSeasons = showEntries.map((e) => e.season || 1);
+    const startSeason = watchedSeasons.length ? Math.max(...watchedSeasons) : 1;
+
+    let nextEpisode = null;
+    let upcomingEpisode = null;
+    let tvdbAirsTime; // résolu au besoin, une seule fois par série (undefined = pas encore vérifié)
+    const lastSeasonToCheck = Math.min(startSeason + 1, data.number_of_seasons || startSeason);
+    for (let s = startSeason; s <= lastSeasonToCheck; s++) {
+      const season = await TMDB.getSeason(show.tmdb_id, s);
+      const episodes = season.episodes || [];
+
+      if (!nextEpisode) {
+        const found = episodes.find(
+          (ep) => !watchedKeys.has(`${s}x${ep.episode_number}`) && ep.air_date && ep.air_date <= today
+        );
+        if (found) {
+          // TMDB ne donne qu'une date : si l'épisode sort précisément
+          // aujourd'hui, on affine avec le créneau habituel (TheTVDB)
+          // avant de le compter comme réellement sorti.
+          let actuallyAired = true;
+          if (found.air_date === today) {
+            if (tvdbAirsTime === undefined) tvdbAirsTime = await resolveAirsTime(show.tmdb_id, data.original_name || data.name);
+            if (tvdbAirsTime) {
+              const now = new Date();
+              actuallyAired =
+                now.getHours() > tvdbAirsTime.hour ||
+                (now.getHours() === tvdbAirsTime.hour && now.getMinutes() >= tvdbAirsTime.minute);
+            }
+          }
+          if (actuallyAired) nextEpisode = { ...found, season_number: s };
+          else upcomingEpisode = { ...found, season_number: s }; // pas encore sorti dans les faits
+        }
+      }
+
+      if (!upcomingEpisode) {
+        const found = episodes.find(
+          (ep) => !watchedKeys.has(`${s}x${ep.episode_number}`) && ep.air_date && ep.air_date > today
+        );
+        if (found) upcomingEpisode = { ...found, season_number: s };
+      }
+
+      if (nextEpisode && upcomingEpisode) break;
+    }
+
+    return { toWatch: nextEpisode, upcoming: upcomingEpisode };
+  } catch {
+    return { toWatch: null, upcoming: null };
+  }
+}
+
 async function renderUpcoming(gen) {
   const view = qs("#view");
   view.innerHTML = `${libraryNavBar("upcoming")}${skeletonGridHTML(8)}`;
@@ -4076,60 +4139,8 @@ async function renderUpcoming(gen) {
     // ---- Séries ----
     const showResults = await Promise.all(
       watchingShows.map(async (show) => {
-        try {
-          const data = await TMDB.getTv(show.tmdb_id);
-          const showEntries = App.diary.filter(
-            (e) => String(e.tmdb_id) === String(show.tmdb_id) && e.media_type === "tv"
-          );
-          const watchedKeys = new Set(showEntries.map((e) => `${e.season}x${e.episode}`));
-          const watchedSeasons = showEntries.map((e) => e.season || 1);
-          const startSeason = watchedSeasons.length ? Math.max(...watchedSeasons) : 1;
-
-          let nextEpisode = null;
-          let upcomingEpisode = null;
-          let tvdbAirsTime; // résolu au besoin, une seule fois par série (undefined = pas encore vérifié)
-          const lastSeasonToCheck = Math.min(startSeason + 1, data.number_of_seasons || startSeason);
-          for (let s = startSeason; s <= lastSeasonToCheck; s++) {
-            const season = await TMDB.getSeason(show.tmdb_id, s);
-            const episodes = season.episodes || [];
-
-            if (!nextEpisode) {
-              const found = episodes.find(
-                (ep) => !watchedKeys.has(`${s}x${ep.episode_number}`) && ep.air_date && ep.air_date <= today
-              );
-              if (found) {
-                // TMDB ne donne qu'une date : si l'épisode sort précisément
-                // aujourd'hui, on affine avec le créneau habituel (TheTVDB)
-                // avant de le compter comme réellement sorti.
-                let actuallyAired = true;
-                if (found.air_date === today) {
-                  if (tvdbAirsTime === undefined) tvdbAirsTime = await resolveAirsTime(show.tmdb_id, data.original_name || data.name);
-                  if (tvdbAirsTime) {
-                    const now = new Date();
-                    actuallyAired =
-                      now.getHours() > tvdbAirsTime.hour ||
-                      (now.getHours() === tvdbAirsTime.hour && now.getMinutes() >= tvdbAirsTime.minute);
-                  }
-                }
-                if (actuallyAired) nextEpisode = { ...found, season_number: s };
-                else upcomingEpisode = { ...found, season_number: s }; // pas encore sorti dans les faits
-              }
-            }
-
-            if (!upcomingEpisode) {
-              const found = episodes.find(
-                (ep) => !watchedKeys.has(`${s}x${ep.episode_number}`) && ep.air_date && ep.air_date > today
-              );
-              if (found) upcomingEpisode = { ...found, season_number: s };
-            }
-
-            if (nextEpisode && upcomingEpisode) break;
-          }
-
-          return { show, toWatch: nextEpisode, upcoming: upcomingEpisode };
-        } catch {
-          return { show, toWatch: null, upcoming: null };
-        }
+        const { toWatch, upcoming } = await computeShowUpcomingEpisode(show);
+        return { show, toWatch, upcoming };
       })
     );
 
@@ -4141,6 +4152,11 @@ async function renderUpcoming(gen) {
       .filter((r) => r.upcoming)
       .map((r) => ({ show: r.show, episode: r.upcoming, genres: r.genres }))
       .sort((a, b) => (a.episode.air_date || "").localeCompare(b.episode.air_date || ""));
+
+    // Pour retrouver l'objet "show" complet (titre, poster...) au moment
+    // de recalculer l'épisode suivant après une coche, sans repasser par
+    // tout showResults.
+    const showsToWatchByTmdbId = new Map(showsToWatch.map((item) => [item.show.tmdb_id, item.show]));
 
     // Une navigation ou un rafraîchissement plus récent a eu lieu pendant
     // ces appels TMDB (ex: double appel à route() au chargement) : on
@@ -4188,28 +4204,117 @@ async function renderUpcoming(gen) {
       </div>
     `;
 
-    qsa(".upcoming-card", view).forEach((card) =>
+    // Cartes "hero" (Épisodes à voir) : navigation + coche, avec un
+    // binding dédié car la carte peut être remplacée en place (par la
+    // suivante de la même série) sans repasser par un rendu complet.
+    function bindUpcomingHeroCard(card) {
+      card.addEventListener("click", () => {
+        location.hash = card.dataset.href;
+      });
+
+      const btn = qs(".upcoming-check-toggle", card);
+      if (!btn) return;
+      hapticTrigger(btn);
+
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        // Anti double-tap pendant que la carte est déjà en train de sortir.
+        if (card.classList.contains("upcoming-card--leaving")) return;
+
+        const show = showsToWatchByTmdbId.get(Number(btn.dataset.tmdbId));
+        const genres = (btn.dataset.genres || "").split(",").filter(Boolean);
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        // Glissement optimiste immédiat, avant même que la requête ne parte.
+        // Sert aussi à chronométrer la transition CSS (0.26s, cf. style.css)
+        // pour ne combler que le temps restant au swap plutôt qu'un délai
+        // fixe arbitraire.
+        const leaveStartedAt = performance.now();
+        card.classList.add("upcoming-card--leaving");
+
+        // toggleEpisodeWatched avale ses erreurs en interne (toast + pas
+        // d'appel à onDone) : on s'en sert pour détecter l'échec et
+        // annuler le glissement, plutôt que de compter sur un catch ici.
+        let succeeded = false;
+
+        await toggleEpisodeWatched(
+          {
+            tmdb_id: Number(btn.dataset.tmdbId),
+            title: btn.dataset.title,
+            poster_path: btn.dataset.poster || null,
+            genres,
+            season: Number(btn.dataset.season),
+            episode: Number(btn.dataset.episode),
+            runtime_minutes: Number(btn.dataset.runtime) || null,
+            air_date: btn.dataset.airDate || null,
+          },
+          null,
+          async () => {
+            succeeded = true;
+
+            // Ne recalcule QUE cette série, pas tout renderUpcoming : c'est
+            // ce qui évite d'attendre un rechargement complet de la page.
+            const next = show ? await computeShowUpcomingEpisode(show) : { toWatch: null };
+
+            if (reduceMotion) {
+              advanceUpcomingHeroCard(card, show, next.toWatch, genres);
+              return;
+            }
+
+            // L'aller-retour réseau (écriture + refresh) dépasse quasi
+            // toujours les 260ms de transition CSS : on ne comble que le
+            // temps restant, jamais un délai fixe qui s'ajouterait par-dessus.
+            const elapsed = performance.now() - leaveStartedAt;
+            const remaining = Math.max(0, 260 - elapsed);
+            setTimeout(() => advanceUpcomingHeroCard(card, show, next.toWatch, genres), remaining);
+          }
+        );
+
+        // Échec (toast déjà affiché par toggleEpisodeWatched) : la carte
+        // revient à sa place, même transition qu'à la sortie.
+        if (!succeeded) card.classList.remove("upcoming-card--leaving");
+      });
+    }
+
+    // Remplace la carte par la suivante de la même série (si prête à voir),
+    // ou la retire simplement si la série est à jour.
+    function advanceUpcomingHeroCard(card, show, nextEpisode, genres) {
+      const list = card.parentElement;
+
+      if (!nextEpisode || !show) {
+        card.remove();
+        if (list && !list.children.length) {
+          list.outerHTML = emptyState("Tu es à jour sur toutes tes séries en cours.");
+        }
+        return;
+      }
+
+      const temp = document.createElement("div");
+      temp.innerHTML = upcomingEpisodeHeroCard(
+        { show, episode: nextEpisode, genres },
+        { showCheckbox: true, showDate: false, emphasize: false }
+      ).trim();
+      const newCard = temp.firstElementChild;
+
+      newCard.classList.add("upcoming-card--entering");
+      card.replaceWith(newCard);
+      bindUpcomingHeroCard(newCard);
+      if (typeof lucide !== "undefined") lucide.createIcons();
+
+      // Force le style "entering" à être peint avant de le retirer, sinon
+      // le navigateur fusionne les deux états et saute l'animation d'entrée.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => newCard.classList.remove("upcoming-card--entering"));
+      });
+    }
+
+    qsa(".upcoming-card--hero", view).forEach(bindUpcomingHeroCard);
+
+    qsa(".upcoming-card:not(.upcoming-card--hero)", view).forEach((card) =>
       card.addEventListener("click", () => {
         location.hash = card.dataset.href;
       })
     );
-
-    qsa(".upcoming-check-toggle", view).forEach((btn) => {
-      hapticTrigger(btn);
-      btn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        await toggleEpisodeWatched({
-          tmdb_id: Number(btn.dataset.tmdbId),
-          title: btn.dataset.title,
-          poster_path: btn.dataset.poster || null,
-          genres: (btn.dataset.genres || "").split(",").filter(Boolean),
-          season: Number(btn.dataset.season),
-          episode: Number(btn.dataset.episode),
-          runtime_minutes: Number(btn.dataset.runtime) || null,
-          air_date: btn.dataset.airDate || null,
-        });
-      });
-    });
 
     if (typeof lucide !== "undefined") lucide.createIcons();
   } catch (err) {

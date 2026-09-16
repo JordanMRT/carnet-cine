@@ -529,6 +529,25 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
+  overflow: hidden;
+}
+
+/* Coche d'un épisode dans "Épisodes à voir" : la carte glisse hors champ
+   à gauche, puis la suivante (même série, si prête) glisse depuis la
+   droite pour prendre sa place — sans attendre de rechargement de page.
+   `transition` posée sur la carte de base, pas sur les variantes .leaving/
+   .entering, pour qu'ajouter OU retirer la classe déclenche l'animation
+   dans les deux sens (sortie ET entrée). */
+.upcoming-card--hero {
+  transition: transform 0.26s ease, opacity 0.22s ease;
+}
+.upcoming-card--hero.upcoming-card--leaving {
+  transform: translateX(-115%);
+  opacity: 0;
+}
+.upcoming-card--hero.upcoming-card--entering {
+  transform: translateX(115%);
+  opacity: 0;
 }
 /* ---------- SHOW DETAIL ---------- */
 .show-detail-overlay {
