@@ -1898,6 +1898,7 @@ if (typeof lucide !== "undefined") lucide.createIcons();
         !inLibrary?.rewatch_started_at;
 
       select.disabled = true;
+      let savedRow = null;
       try {
         if (status === "completed" && type === "tv") {
           const markAll = await showConfirm(
@@ -1908,7 +1909,7 @@ if (typeof lucide !== "undefined") lucide.createIcons();
             toast("Marquage de tous les épisodes en cours…");
             await markAllEpisodesWatched(id, data.number_of_seasons, title, data.poster_path, genreIds);
           } else {
-            await DB.upsertLibraryItem({
+            savedRow = await DB.upsertLibraryItem({
               user_id: App.session.user.id,
               tmdb_id: Number(id),
               media_type: type,
@@ -1919,7 +1920,7 @@ if (typeof lucide !== "undefined") lucide.createIcons();
             });
           }
         } else {
-          await DB.upsertLibraryItem({
+          savedRow = await DB.upsertLibraryItem({
             user_id: App.session.user.id,
             tmdb_id: Number(id),
             media_type: type,
@@ -1931,7 +1932,10 @@ if (typeof lucide !== "undefined") lucide.createIcons();
           });
         }
         const idx = App.library.findIndex((l) => String(l.tmdb_id) === String(id) && l.media_type === type);
-        const entry = { user_id: App.session.user.id, tmdb_id: Number(id), media_type: type, title, poster_path: data.poster_path, status };
+        // `savedRow` porte l'id renvoyé par Supabase — indispensable pour un
+        // tout premier ajout (idx < 0) : sans lui, l'item entre en mémoire
+        // sans id et devient impossible à retirer plus tard (cf. bug ✕/select).
+        const entry = savedRow || { user_id: App.session.user.id, tmdb_id: Number(id), media_type: type, title, poster_path: data.poster_path, status };
         if (idx >= 0) App.library[idx] = { ...App.library[idx], ...entry };
         else App.library.push(entry);
 
@@ -2129,7 +2133,11 @@ if (typeof lucide !== "undefined") lucide.createIcons();
       });
 
       qs("#note-delete-btn", widget)?.addEventListener("click", async () => {
-        if (!confirm("Supprimer ce commentaire ?")) return;
+        const confirmed = await showConfirm("Supprimer ce commentaire ?", {
+          confirmLabel: "Supprimer",
+          cancelLabel: "Annuler",
+        });
+        if (!confirmed) return;
         try {
           await DB.setWorkNote(App.session.user.id, Number(id), type, null);
           const idx = App.library.findIndex((l) => String(l.tmdb_id) === String(id) && l.media_type === type);
@@ -2927,7 +2935,11 @@ async function renderEpisodeDetail(param, gen) {
       });
 
       qs("#note-delete-btn", widget)?.addEventListener("click", async () => {
-        if (!confirm("Supprimer ce commentaire ?")) return;
+        const confirmed = await showConfirm("Supprimer ce commentaire ?", {
+          confirmLabel: "Supprimer",
+          cancelLabel: "Annuler",
+        });
+        if (!confirmed) return;
         try {
           await DB.setEpisodeNote(App.session.user.id, Number(tvId), Number(seasonNumber), Number(episodeNumber), null);
           const entry = App.diary.find(
@@ -3944,7 +3956,11 @@ function closePosterDock() {
 // de confirmation qui va avec.
 // Retourne false si l'utilisateur a annulé (l'appelant garde alors son DOM
 // intact), true si le retrait a eu lieu.
-async function removeWorkFromLibrary(tmdbId, mediaType, { libId = null, title = "" } = {}) {
+async function removeWorkFromLibrary(
+  tmdbId,
+  mediaType,
+  { libId = null, title = "", confirmMessage = null, confirmHint = null } = {}
+) {
   const userId = App.session.user.id;
   const matches = (l) => String(l.tmdb_id) === String(tmdbId) && l.media_type === mediaType;
   const resolvedId = libId && libId !== "undefined" ? libId : App.library.find(matches)?.id;
@@ -3952,11 +3968,13 @@ async function removeWorkFromLibrary(tmdbId, mediaType, { libId = null, title = 
 
   if (hasHistory) {
     const confirmed = await showConfirm(
-      `Retirer ${title || "cette œuvre"} de ta bibliothèque ?`,
+      confirmMessage || `Retirer ${title || "cette œuvre"} de ta bibliothèque ?`,
       {
         confirmLabel: "Retirer et effacer",
         cancelLabel: "Annuler",
-        hint: "Les visionnages associés (épisodes compris) seront aussi effacés du journal.",
+        hint:
+          confirmHint ??
+          "Les visionnages associés (épisodes compris) seront aussi effacés du journal.",
       }
     );
     if (!confirmed) return false;
@@ -4370,19 +4388,27 @@ function bindDiaryEvents() {
     const deleteBtn = e.target.closest(".ticket-delete");
     if (deleteBtn) {
       e.stopPropagation();
-      const confirmed = await showConfirm(
-        "Supprimer ce ticket ? Tous les visionnages associés (épisodes compris) seront effacés du journal.",
-        { confirmLabel: "Supprimer", cancelLabel: "Annuler" }
-      );
-      if (!confirmed) return;
-      const ticketEl = deleteBtn.closest(".ticket-card"); // adapte si ta classe diffère
+      // .ticket-card ne correspondait à aucune classe réelle du markup (le
+      // wrapper est .ticket, voir la template plus haut) : ticketEl valait
+      // donc toujours null, et le ticket ne disparaissait jamais de l'écran
+      // même en cas de succès puisque App.refreshSilently() ne redessine pas
+      // la vue courante.
+      const ticketEl = deleteBtn.closest(".ticket");
       try {
-        const tmdbId = Number(deleteBtn.dataset.tmdbId);
-        const mediaType = deleteBtn.dataset.type;
-        await DB.deleteAllEntriesForWork(App.session.user.id, tmdbId, mediaType);
-        await DB.removeLibraryItem(deleteBtn.dataset.libId);
-        App.diary = App.diary.filter((e) => !(String(e.tmdb_id) === String(tmdbId) && e.media_type === mediaType));
-        App.library = App.library.filter((l) => !(String(l.tmdb_id) === String(tmdbId) && l.media_type === mediaType));
+        // Passe par le même chemin que le ✕ des cartes bibliothèque et le
+        // select de la fiche détail : un ticket a toujours un historique
+        // (c'est un visionnage), donc removeWorkFromLibrary prend
+        // systématiquement la branche modale + purge journal, mais avec un
+        // id résolu depuis App.library en filet de sécurité plutôt que le
+        // seul data-lib-id du bouton (fragile si l'item avait été poussé
+        // localement sans id).
+        const removed = await removeWorkFromLibrary(deleteBtn.dataset.tmdbId, deleteBtn.dataset.type, {
+          libId: deleteBtn.dataset.libId,
+          title: ticketEl?.dataset.title || deleteBtn.dataset.title,
+          confirmMessage: "Supprimer ce ticket ? Tous les visionnages associés (épisodes compris) seront effacés du journal.",
+          confirmHint: "",
+        });
+        if (!removed) return;
         ticketEl?.remove();
         toast("Ticket supprimé.", "success");
         App.refreshSilently();
