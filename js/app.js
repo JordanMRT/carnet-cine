@@ -1685,13 +1685,41 @@ async function renderShowDetail(param, gen) {
       </div>`;
     }
 
-    function progressBlockMarkup(inLib) {
-      return type === "tv" && inLib && inLib.total_episodes > 0
-        ? `<div class="show-progress">
-             <div class="progress-bar"><div class="progress-bar-fill" style="width:${inLib.progress}%"></div></div>
-             <span class="progress-label">${Math.min(inLib.watched_episodes, inLib.total_episodes)}/${inLib.total_episodes} épisodes vus — ${inLib.progress}%</span>
-           </div>`
-        : "";
+    function progressBlockMarkup(inLib, seasonInfo) {
+      if (type !== "tv" || !inLib || !seasonInfo || !seasonInfo.total) return "";
+      const { season, watched, total } = seasonInfo;
+      const pct = Math.round((Math.min(watched, total) / total) * 100);
+      const statusLabel =
+        inLib.status === "completed" ? "Terminée" : inLib.status === "dropped" ? "Abandonnée" : `En cours • Saison ${season}`;
+      return `<div class="show-progress">
+             <div class="progress-header">
+               <span class="progress-status">${statusLabel}</span>
+               <span class="progress-count">${Math.min(watched, total)}/${total} épisodes</span>
+             </div>
+             <div class="progress-bar"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
+           </div>`;
+    }
+
+    function statusControlMarkup(inLib) {
+      if (!inLib) {
+        return `<button type="button" id="status-add-btn" class="btn btn--accent">+ Ajouter à ma bibliothèque</button>`;
+      }
+      const options = [
+        ["watchlist", "À voir"],
+        ["watching", "En cours"],
+        ["completed", "Terminé"],
+        ["dropped", "Abandonné"],
+      ];
+      return `
+        <div class="status-group" id="status-group">
+          ${options
+            .map(
+              ([value, label]) =>
+                `<button type="button" class="status-pill ${inLib.status === value ? "status-pill--active" : ""}" data-status="${value}">${label}</button>`
+            )
+            .join("")}
+        </div>
+        <button type="button" id="status-remove-btn" class="status-remove-btn" title="Retirer de ma bibliothèque"><i data-lucide="trash-2"></i></button>`;
     }
 
     const movieWatchCount = type === "movie" ? App.diary.filter((e) => String(e.tmdb_id) === String(id) && e.media_type === "movie").length : 0;
@@ -1709,9 +1737,67 @@ async function renderShowDetail(param, gen) {
       }
     }
 
+    // Saison "courante" : la plus avancée où l'utilisateur a déjà vu des
+    // épisodes. Calculée ici (avant le rendu) et réutilisée plus bas pour
+    // ouvrir le même onglet dans la liste d'épisodes — une seule source de
+    // vérité pour les deux, là où il y avait deux calculs identiques.
+    let initialSeason = 1;
+    let seasonProgress = null;
+    if (type === "tv") {
+      const watchedSeasons = App.diary
+        .filter((e) => String(e.tmdb_id) === String(id) && e.media_type === "tv")
+        .map((e) => e.season || 1);
+      const progressSeason = watchedSeasons.length
+        ? Math.min(Math.max(...watchedSeasons), data.number_of_seasons || 1)
+        : 1;
+      initialSeason = lastViewedSeason[id] || progressSeason;
+      try {
+        const seasonData = await TMDB.getSeason(id, initialSeason);
+        const watchedInSeason = new Set(
+          App.diary
+            .filter((e) => String(e.tmdb_id) === String(id) && e.media_type === "tv" && e.season === initialSeason)
+            .map((e) => e.episode)
+        ).size;
+        seasonProgress = { season: initialSeason, watched: watchedInSeason, total: (seasonData.episodes || []).length };
+      } catch (seasonErr) {
+        console.warn("Erreur lors du calcul de la progression de saison (non bloquante):", seasonErr);
+      }
+    }
+
     // Une navigation plus récente a eu lieu pendant ces appels TMDB : on
     // n'écrase pas un rendu plus à jour avec ce résultat devenu obsolète.
     if (gen !== App._renderGen) return;
+
+    // Ligne meta condensée : note · année · genres · durée (film) ou nb de
+    // saisons (série). Le détail (date complète, statut TV, prochain
+    // épisode) n'est pas perdu : il redescend dans sublineParts, en
+    // second plan sous la ligne principale.
+    const metaBits = [];
+    if (data.vote_average > 0) metaBits.push(`<span class="show-detail-rating"><i data-lucide="star"></i>${data.vote_average.toFixed(1)}</span>`);
+    const metaYear = ((type === "movie" ? data.release_date : data.first_air_date) || "").slice(0, 4);
+    if (metaYear) metaBits.push(metaYear);
+    if (genreNames.length) metaBits.push(genreNames.slice(0, 2).join(", "));
+    if (type === "movie" && formatRuntime(data.runtime)) metaBits.push(formatRuntime(data.runtime));
+    if (type === "tv" && data.number_of_seasons) metaBits.push(`${data.number_of_seasons} saison${data.number_of_seasons > 1 ? "s" : ""}`);
+    const metaLine = metaBits.join(" · ");
+
+    const sublineParts = [];
+    if (type === "movie" && data.release_date) sublineParts.push(`Sorti le ${formatDate(data.release_date)}`);
+    if (type === "tv") {
+      sublineParts.push(`<span class="status-badge">${TV_STATUS_LABELS[data.status] || data.status}</span>`);
+      const hasUpcomingLogged =
+        data.next_episode_to_air &&
+        App.diary.some(
+          (e) =>
+            String(e.tmdb_id) === String(id) &&
+            e.media_type === "tv" &&
+            e.season === data.next_episode_to_air.season_number &&
+            e.episode === data.next_episode_to_air.episode_number
+        );
+      if (data.next_episode_to_air && !hasUpcomingLogged) {
+        sublineParts.push(`Prochain épisode le ${formatDate(data.next_episode_to_air.air_date)}`);
+      }
+    }
 
     view.innerHTML = `
       <div class="show-detail" style="--backdrop:url('${TMDB.backdropUrl(data.backdrop_path)}')">
@@ -1724,40 +1810,20 @@ async function renderShowDetail(param, gen) {
             <h1>${escapeHtml(title)}</h1>
             ${originalTitle && originalTitle !== title ? `<p class="show-detail-original-title">${escapeHtml(originalTitle)}</p>` : ""}
             ${type === "movie" && data.tagline ? `<p class="show-detail-tagline">${escapeHtml(data.tagline)}</p>` : ""}
-            <p class="show-detail-meta">${genreNames.join(" · ")}${type === "movie" && formatRuntime(data.runtime) ? ` · ${formatRuntime(data.runtime)}` : ""}</p>
-            ${type === "movie" && data.release_date ? `<p class="show-detail-release">Sorti le ${formatDate(data.release_date)}</p>` : ""}
-            ${data.vote_average > 0 ? `<p class="tmdb-rating"><i data-lucide="star"></i> ${data.vote_average.toFixed(1)}/10 sur TMDB · ${data.vote_count.toLocaleString("fr-FR")} votes</p>` : ""}
-            ${
-              type === "tv"
-                ? `<p class="show-detail-status"><span class="status-badge">${TV_STATUS_LABELS[data.status] || data.status}</span><br>${
-                    data.next_episode_to_air &&
-                    !App.diary.some(
-                      (e) =>
-                        String(e.tmdb_id) === String(id) &&
-                        e.media_type === "tv" &&
-                        e.season === data.next_episode_to_air.season_number &&
-                        e.episode === data.next_episode_to_air.episode_number
-                    )
-                      ? `Prochain épisode le ${formatDate(data.next_episode_to_air.air_date)}`
-                      : ""
-                  }</p>`
-                : ""
-            }
+            <p class="show-detail-meta">${metaLine}</p>
+            ${sublineParts.length ? `<p class="show-detail-subline">${sublineParts.join("<br>")}</p>` : ""}
             <div class="overview-wrapper">
              <p class="show-detail-overview">${escapeHtml(data.overview || "Pas de synopsis disponible.")}</p>
               <button class="overview-toggle" hidden>Afficher plus</button>
              </div>
-            <div id="show-progress-wrap">${progressBlockMarkup(inLibrary)}</div>
+            <div id="show-progress-wrap">${progressBlockMarkup(inLibrary, seasonProgress)}</div>
             <div class="show-detail-actions">
-              <select id="status-select">
-                <option value="">${inLibrary ? "− Retirer de ma bibliothèque" : "+ Ajouter à ma bibliothèque"}</option>
-                <option value="watchlist" ${inLibrary?.status === "watchlist" ? "selected" : ""}>À voir</option>
-                <option value="watching" ${inLibrary?.status === "watching" ? "selected" : ""}>En cours</option>
-                <option value="completed" ${inLibrary?.status === "completed" ? "selected" : ""}>Terminé</option>
-                <option value="dropped" ${inLibrary?.status === "dropped" ? "selected" : ""}>Abandonné</option>
-              </select>
-              <span id="movie-watch-info-wrap">${watchInfoMarkup(movieWatchCount)}</span>
-              <span id="movie-actions">${mediaActionsMarkup(movieWatchCount)}</span>
+              <div id="status-control-wrap">${statusControlMarkup(inLibrary)}</div>
+              ${
+                type === "movie"
+                  ? `<span id="movie-watch-info-wrap">${watchInfoMarkup(movieWatchCount)}</span><span id="movie-actions">${mediaActionsMarkup(movieWatchCount)}</span>`
+                  : ""
+              }
             </div>
           </div>
         </div>
@@ -1806,24 +1872,26 @@ if (typeof lucide !== "undefined") lucide.createIcons();
       // clic sur le bouton maintient déjà la classe à jour en temps réel).
 
       const progressWrap = qs("#show-progress-wrap");
-      if (progressWrap) progressWrap.innerHTML = progressBlockMarkup(inLibNow);
-
-      // Le select est peint une seule fois au chargement initial — sans
-      // cette ligne, il reste bloqué sur l'ancien statut (ex: "Terminé")
-      // même quand App.library vient d'être recalculé (ex: après une
-      // annulation qui ramène le film à "watchlist").
-      const statusSelect = qs("#status-select");
-      if (statusSelect) {
-        statusSelect.value = inLibNow?.status || "";
-        // L'option vide est peinte une seule fois au rendu initial : sans ça
-        // elle reste sur "+ Ajouter" après un ajout, ou sur "− Retirer" après
-        // un retrait.
-        const placeholder = statusSelect.querySelector('option[value=""]');
-        if (placeholder) {
-          placeholder.textContent = inLibNow
-            ? "− Retirer de ma bibliothèque"
-            : "+ Ajouter à ma bibliothèque";
+      if (progressWrap) {
+        // Le total d'épisodes de la saison ne change pas d'un refresh à
+        // l'autre (déjà résolu au chargement) — seul le nombre vus bouge.
+        if (seasonProgress) {
+          seasonProgress.watched = new Set(
+            App.diary
+              .filter((e) => String(e.tmdb_id) === String(id) && e.media_type === "tv" && e.season === seasonProgress.season)
+              .map((e) => e.episode)
+          ).size;
         }
+        progressWrap.innerHTML = progressBlockMarkup(inLibNow, seasonProgress);
+      }
+
+      // Le statut change de forme selon qu'on est en bibliothèque ou non
+      // (pilules vs bouton "+ Ajouter") — on repeint tout le bloc plutôt
+      // que de patcher une valeur, comme le faisait l'ancien <select>.
+      const statusWrap = qs("#status-control-wrap");
+      if (statusWrap) {
+        statusWrap.innerHTML = statusControlMarkup(inLibNow);
+        bindStatusControl();
       }
 
       const watchInfoWrap = qs("#movie-watch-info-wrap");
@@ -1852,37 +1920,14 @@ if (typeof lucide !== "undefined") lucide.createIcons();
       if (typeof lucide !== "undefined") lucide.createIcons();
     }
 
-    qs("#status-select").addEventListener("change", async (e) => {
-      const status = e.target.value;
-      const select = e.target;
+    async function setStatus(status) {
+      const group = qs("#status-group");
       // Lu depuis App.library et non depuis `inLibrary` : ce dernier est un
       // const capturé au rendu de la fiche, donc périmé dès le premier
       // changement de statut (ou après un retrait).
       const previousStatus =
         App.library.find((l) => String(l.tmdb_id) === String(id) && l.media_type === type)?.status || "";
-      // Option vide : simple placeholder tant que l'œuvre n'est pas en
-      // bibliothèque, vrai retrait sinon. Avant, le `return` sec ne
-      // persistait rien et le statut réapparaissait au rechargement.
-      if (!status) {
-        if (!previousStatus) return;
-        select.disabled = true;
-        try {
-          const removed = await removeWorkFromLibrary(id, type, { title });
-          if (!removed) {
-            select.value = previousStatus;
-            return;
-          }
-          toast("Retiré de ta bibliothèque.", "success");
-          refreshShowDetailUI();
-          App.refreshSilently();
-        } catch (err) {
-          select.value = previousStatus;
-          toast(err.message, "error");
-        } finally {
-          select.disabled = false;
-        }
-        return;
-      }
+      if (status === previousStatus) return;
 
       // Rewatch intégral : on pose un NOUVEAU point de départ uniquement si
       // on passe "En cours" depuis "Terminé" et qu'aucun rewatch n'est déjà
@@ -1897,7 +1942,7 @@ if (typeof lucide !== "undefined") lucide.createIcons();
         previousStatus === "completed" &&
         !inLibrary?.rewatch_started_at;
 
-      select.disabled = true;
+      if (group) group.classList.add("is-busy");
       let savedRow = null;
       try {
         if (status === "completed" && type === "tv") {
@@ -1943,15 +1988,39 @@ if (typeof lucide !== "undefined") lucide.createIcons();
         refreshShowDetailUI();
         App.refreshSilently();
       } catch (err) {
-        select.value = previousStatus;
         toast(err.message, "error");
       } finally {
-        select.disabled = false;
+        if (group) group.classList.remove("is-busy");
       }
-    });
+    }
+
+    async function removeFromLibraryAction() {
+      const removeBtn = qs("#status-remove-btn");
+      if (removeBtn) removeBtn.disabled = true;
+      try {
+        const removed = await removeWorkFromLibrary(id, type, { title });
+        if (!removed) return;
+        toast("Retiré de ta bibliothèque.", "success");
+        refreshShowDetailUI();
+        App.refreshSilently();
+      } catch (err) {
+        toast(err.message, "error");
+      } finally {
+        if (removeBtn) removeBtn.disabled = false;
+      }
+    }
+
+    function bindStatusControl() {
+      qsa("#status-group .status-pill").forEach((pill) => {
+        pill.addEventListener("click", () => setStatus(pill.dataset.status));
+      });
+      qs("#status-remove-btn")?.addEventListener("click", removeFromLibraryAction);
+      qs("#status-add-btn")?.addEventListener("click", () => setStatus("watchlist"));
+    }
+    bindStatusControl();
 
     function bindMediaActionButtons() {
-      if (type !== "movie" && type !== "tv") return;
+      if (type !== "movie") return;
 
       const logMediaEntry = async (rewatch) => {
         try {
@@ -2156,13 +2225,8 @@ if (typeof lucide !== "undefined") lucide.createIcons();
     bindNoteWidget();
 
     if (type === "tv") {
-      const watchedSeasons = App.diary
-        .filter((e) => String(e.tmdb_id) === String(id) && e.media_type === "tv")
-        .map((e) => e.season || 1);
-      const progressSeason = watchedSeasons.length
-        ? Math.min(Math.max(...watchedSeasons), data.number_of_seasons || 1)
-        : 1;
-      const initialSeason = lastViewedSeason[id] || progressSeason;
+      // `initialSeason` est déjà calculé plus haut, avant le rendu du bloc
+      // progression — on le réutilise ici pour ouvrir le même onglet.
       await renderSeasonsInto(qs("#seasons-container"), id, data.number_of_seasons, title, data.poster_path, genreIds, initialSeason);
     }
   } catch (err) {
@@ -3811,8 +3875,8 @@ function renderPosterDock(card, closeDock) {
   }
 
   // Étape 5 : remplace le contenu du dock par un mini-picker des 4 statuts.
-  // Même logique de rewatch que le menu déroulant de la fiche détail
-  // (voir status-select) — un nouveau rewatch ne démarre que depuis
+  // Même logique de rewatch que les pilules de statut de la fiche détail
+  // (voir setStatus) — un nouveau rewatch ne démarre que depuis
   // "Terminé" et seulement si aucun rewatch n'est déjà en pause, jamais
   // effacé manuellement. Pas de confirmation "tout marquer" ici (hors
   // scope d'un changement de statut rapide depuis la grille) : équivalent
@@ -4046,69 +4110,6 @@ function bindLibraryEvents() {
 }
 
 // ---------- À VENIR (calendrier) ----------
-// Calcule, pour UNE série donnée, le prochain épisode réellement sorti à
-// voir ainsi que le suivant pas encore sorti. Factorisé hors de
-// renderUpcoming() pour être réutilisable après une coche dans la section
-// "Épisodes à voir" (cf. advanceUpcomingHeroCard), sans avoir à tout
-// recalculer/re-render.
-async function computeShowUpcomingEpisode(show) {
-  try {
-    const today = todayLocal();
-    const data = await TMDB.getTv(show.tmdb_id);
-    const showEntries = App.diary.filter(
-      (e) => String(e.tmdb_id) === String(show.tmdb_id) && e.media_type === "tv"
-    );
-    const watchedKeys = new Set(showEntries.map((e) => `${e.season}x${e.episode}`));
-    const watchedSeasons = showEntries.map((e) => e.season || 1);
-    const startSeason = watchedSeasons.length ? Math.max(...watchedSeasons) : 1;
-
-    let nextEpisode = null;
-    let upcomingEpisode = null;
-    let tvdbAirsTime; // résolu au besoin, une seule fois par série (undefined = pas encore vérifié)
-    const lastSeasonToCheck = Math.min(startSeason + 1, data.number_of_seasons || startSeason);
-    for (let s = startSeason; s <= lastSeasonToCheck; s++) {
-      const season = await TMDB.getSeason(show.tmdb_id, s);
-      const episodes = season.episodes || [];
-
-      if (!nextEpisode) {
-        const found = episodes.find(
-          (ep) => !watchedKeys.has(`${s}x${ep.episode_number}`) && ep.air_date && ep.air_date <= today
-        );
-        if (found) {
-          // TMDB ne donne qu'une date : si l'épisode sort précisément
-          // aujourd'hui, on affine avec le créneau habituel (TheTVDB)
-          // avant de le compter comme réellement sorti.
-          let actuallyAired = true;
-          if (found.air_date === today) {
-            if (tvdbAirsTime === undefined) tvdbAirsTime = await resolveAirsTime(show.tmdb_id, data.original_name || data.name);
-            if (tvdbAirsTime) {
-              const now = new Date();
-              actuallyAired =
-                now.getHours() > tvdbAirsTime.hour ||
-                (now.getHours() === tvdbAirsTime.hour && now.getMinutes() >= tvdbAirsTime.minute);
-            }
-          }
-          if (actuallyAired) nextEpisode = { ...found, season_number: s };
-          else upcomingEpisode = { ...found, season_number: s }; // pas encore sorti dans les faits
-        }
-      }
-
-      if (!upcomingEpisode) {
-        const found = episodes.find(
-          (ep) => !watchedKeys.has(`${s}x${ep.episode_number}`) && ep.air_date && ep.air_date > today
-        );
-        if (found) upcomingEpisode = { ...found, season_number: s };
-      }
-
-      if (nextEpisode && upcomingEpisode) break;
-    }
-
-    return { toWatch: nextEpisode, upcoming: upcomingEpisode };
-  } catch {
-    return { toWatch: null, upcoming: null };
-  }
-}
-
 async function renderUpcoming(gen) {
   const view = qs("#view");
   view.innerHTML = `${libraryNavBar("upcoming")}${skeletonGridHTML(8)}`;
@@ -4139,8 +4140,60 @@ async function renderUpcoming(gen) {
     // ---- Séries ----
     const showResults = await Promise.all(
       watchingShows.map(async (show) => {
-        const { toWatch, upcoming } = await computeShowUpcomingEpisode(show);
-        return { show, toWatch, upcoming };
+        try {
+          const data = await TMDB.getTv(show.tmdb_id);
+          const showEntries = App.diary.filter(
+            (e) => String(e.tmdb_id) === String(show.tmdb_id) && e.media_type === "tv"
+          );
+          const watchedKeys = new Set(showEntries.map((e) => `${e.season}x${e.episode}`));
+          const watchedSeasons = showEntries.map((e) => e.season || 1);
+          const startSeason = watchedSeasons.length ? Math.max(...watchedSeasons) : 1;
+
+          let nextEpisode = null;
+          let upcomingEpisode = null;
+          let tvdbAirsTime; // résolu au besoin, une seule fois par série (undefined = pas encore vérifié)
+          const lastSeasonToCheck = Math.min(startSeason + 1, data.number_of_seasons || startSeason);
+          for (let s = startSeason; s <= lastSeasonToCheck; s++) {
+            const season = await TMDB.getSeason(show.tmdb_id, s);
+            const episodes = season.episodes || [];
+
+            if (!nextEpisode) {
+              const found = episodes.find(
+                (ep) => !watchedKeys.has(`${s}x${ep.episode_number}`) && ep.air_date && ep.air_date <= today
+              );
+              if (found) {
+                // TMDB ne donne qu'une date : si l'épisode sort précisément
+                // aujourd'hui, on affine avec le créneau habituel (TheTVDB)
+                // avant de le compter comme réellement sorti.
+                let actuallyAired = true;
+                if (found.air_date === today) {
+                  if (tvdbAirsTime === undefined) tvdbAirsTime = await resolveAirsTime(show.tmdb_id, data.original_name || data.name);
+                  if (tvdbAirsTime) {
+                    const now = new Date();
+                    actuallyAired =
+                      now.getHours() > tvdbAirsTime.hour ||
+                      (now.getHours() === tvdbAirsTime.hour && now.getMinutes() >= tvdbAirsTime.minute);
+                  }
+                }
+                if (actuallyAired) nextEpisode = { ...found, season_number: s };
+                else upcomingEpisode = { ...found, season_number: s }; // pas encore sorti dans les faits
+              }
+            }
+
+            if (!upcomingEpisode) {
+              const found = episodes.find(
+                (ep) => !watchedKeys.has(`${s}x${ep.episode_number}`) && ep.air_date && ep.air_date > today
+              );
+              if (found) upcomingEpisode = { ...found, season_number: s };
+            }
+
+            if (nextEpisode && upcomingEpisode) break;
+          }
+
+          return { show, toWatch: nextEpisode, upcoming: upcomingEpisode };
+        } catch {
+          return { show, toWatch: null, upcoming: null };
+        }
       })
     );
 
@@ -4152,11 +4205,6 @@ async function renderUpcoming(gen) {
       .filter((r) => r.upcoming)
       .map((r) => ({ show: r.show, episode: r.upcoming, genres: r.genres }))
       .sort((a, b) => (a.episode.air_date || "").localeCompare(b.episode.air_date || ""));
-
-    // Pour retrouver l'objet "show" complet (titre, poster...) au moment
-    // de recalculer l'épisode suivant après une coche, sans repasser par
-    // tout showResults.
-    const showsToWatchByTmdbId = new Map(showsToWatch.map((item) => [item.show.tmdb_id, item.show]));
 
     // Une navigation ou un rafraîchissement plus récent a eu lieu pendant
     // ces appels TMDB (ex: double appel à route() au chargement) : on
@@ -4204,117 +4252,28 @@ async function renderUpcoming(gen) {
       </div>
     `;
 
-    // Cartes "hero" (Épisodes à voir) : navigation + coche, avec un
-    // binding dédié car la carte peut être remplacée en place (par la
-    // suivante de la même série) sans repasser par un rendu complet.
-    function bindUpcomingHeroCard(card) {
-      card.addEventListener("click", () => {
-        location.hash = card.dataset.href;
-      });
-
-      const btn = qs(".upcoming-check-toggle", card);
-      if (!btn) return;
-      hapticTrigger(btn);
-
-      btn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        // Anti double-tap pendant que la carte est déjà en train de sortir.
-        if (card.classList.contains("upcoming-card--leaving")) return;
-
-        const show = showsToWatchByTmdbId.get(Number(btn.dataset.tmdbId));
-        const genres = (btn.dataset.genres || "").split(",").filter(Boolean);
-        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-        // Glissement optimiste immédiat, avant même que la requête ne parte.
-        // Sert aussi à chronométrer la transition CSS (0.26s, cf. style.css)
-        // pour ne combler que le temps restant au swap plutôt qu'un délai
-        // fixe arbitraire.
-        const leaveStartedAt = performance.now();
-        card.classList.add("upcoming-card--leaving");
-
-        // toggleEpisodeWatched avale ses erreurs en interne (toast + pas
-        // d'appel à onDone) : on s'en sert pour détecter l'échec et
-        // annuler le glissement, plutôt que de compter sur un catch ici.
-        let succeeded = false;
-
-        await toggleEpisodeWatched(
-          {
-            tmdb_id: Number(btn.dataset.tmdbId),
-            title: btn.dataset.title,
-            poster_path: btn.dataset.poster || null,
-            genres,
-            season: Number(btn.dataset.season),
-            episode: Number(btn.dataset.episode),
-            runtime_minutes: Number(btn.dataset.runtime) || null,
-            air_date: btn.dataset.airDate || null,
-          },
-          null,
-          async () => {
-            succeeded = true;
-
-            // Ne recalcule QUE cette série, pas tout renderUpcoming : c'est
-            // ce qui évite d'attendre un rechargement complet de la page.
-            const next = show ? await computeShowUpcomingEpisode(show) : { toWatch: null };
-
-            if (reduceMotion) {
-              advanceUpcomingHeroCard(card, show, next.toWatch, genres);
-              return;
-            }
-
-            // L'aller-retour réseau (écriture + refresh) dépasse quasi
-            // toujours les 260ms de transition CSS : on ne comble que le
-            // temps restant, jamais un délai fixe qui s'ajouterait par-dessus.
-            const elapsed = performance.now() - leaveStartedAt;
-            const remaining = Math.max(0, 260 - elapsed);
-            setTimeout(() => advanceUpcomingHeroCard(card, show, next.toWatch, genres), remaining);
-          }
-        );
-
-        // Échec (toast déjà affiché par toggleEpisodeWatched) : la carte
-        // revient à sa place, même transition qu'à la sortie.
-        if (!succeeded) card.classList.remove("upcoming-card--leaving");
-      });
-    }
-
-    // Remplace la carte par la suivante de la même série (si prête à voir),
-    // ou la retire simplement si la série est à jour.
-    function advanceUpcomingHeroCard(card, show, nextEpisode, genres) {
-      const list = card.parentElement;
-
-      if (!nextEpisode || !show) {
-        card.remove();
-        if (list && !list.children.length) {
-          list.outerHTML = emptyState("Tu es à jour sur toutes tes séries en cours.");
-        }
-        return;
-      }
-
-      const temp = document.createElement("div");
-      temp.innerHTML = upcomingEpisodeHeroCard(
-        { show, episode: nextEpisode, genres },
-        { showCheckbox: true, showDate: false, emphasize: false }
-      ).trim();
-      const newCard = temp.firstElementChild;
-
-      newCard.classList.add("upcoming-card--entering");
-      card.replaceWith(newCard);
-      bindUpcomingHeroCard(newCard);
-      if (typeof lucide !== "undefined") lucide.createIcons();
-
-      // Force le style "entering" à être peint avant de le retirer, sinon
-      // le navigateur fusionne les deux états et saute l'animation d'entrée.
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => newCard.classList.remove("upcoming-card--entering"));
-      });
-    }
-
-    qsa(".upcoming-card--hero", view).forEach(bindUpcomingHeroCard);
-
-    qsa(".upcoming-card:not(.upcoming-card--hero)", view).forEach((card) =>
+    qsa(".upcoming-card", view).forEach((card) =>
       card.addEventListener("click", () => {
         location.hash = card.dataset.href;
       })
     );
+
+    qsa(".upcoming-check-toggle", view).forEach((btn) => {
+      hapticTrigger(btn);
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await toggleEpisodeWatched({
+          tmdb_id: Number(btn.dataset.tmdbId),
+          title: btn.dataset.title,
+          poster_path: btn.dataset.poster || null,
+          genres: (btn.dataset.genres || "").split(",").filter(Boolean),
+          season: Number(btn.dataset.season),
+          episode: Number(btn.dataset.episode),
+          runtime_minutes: Number(btn.dataset.runtime) || null,
+          air_date: btn.dataset.airDate || null,
+        });
+      });
+    });
 
     if (typeof lucide !== "undefined") lucide.createIcons();
   } catch (err) {

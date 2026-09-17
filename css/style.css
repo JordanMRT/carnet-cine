@@ -529,25 +529,6 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
-  overflow: hidden;
-}
-
-/* Coche d'un épisode dans "Épisodes à voir" : la carte glisse hors champ
-   à gauche, puis la suivante (même série, si prête) glisse depuis la
-   droite pour prendre sa place — sans attendre de rechargement de page.
-   `transition` posée sur la carte de base, pas sur les variantes .leaving/
-   .entering, pour qu'ajouter OU retirer la classe déclenche l'animation
-   dans les deux sens (sortie ET entrée). */
-.upcoming-card--hero {
-  transition: transform 0.26s ease, opacity 0.22s ease;
-}
-.upcoming-card--hero.upcoming-card--leaving {
-  transform: translateX(-115%);
-  opacity: 0;
-}
-.upcoming-card--hero.upcoming-card--entering {
-  transform: translateX(115%);
-  opacity: 0;
 }
 /* ---------- SHOW DETAIL ---------- */
 .show-detail-overlay {
@@ -592,8 +573,11 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 }
 .show-detail-poster { width: 180px; border-radius: 10px; box-shadow: var(--shadow); }
 .show-detail-info { flex: 1; min-width: 240px; }
-.show-detail-meta { color: var(--mustard); font-family: var(--font-mono); font-size: 0.85rem; }
+.show-detail-meta { color: var(--muted); font-family: var(--font-mono); font-size: 0.85rem; display: flex;}
 .show-detail-release { color: var(--muted); font-size: 0.9rem; margin: 0.2rem 0; }
+.show-detail-rating { display: inline-flex; align-items: center; gap: 0.25rem; font-variant-numeric: tabular-nums; margin-right: 0.2rem;}
+.show-detail-rating svg { color: var(--mustard); width: 0.85rem; height: 0.85rem; position: relative; top: -1px; }
+.show-detail-subline { color: var(--muted); font-size: 0.82rem; margin: 0.3rem 0 0; line-height: 1.6; }
 
 .overview-wrapper {
     position: relative;
@@ -751,6 +735,52 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
     min-width: 140px;
 }
 
+#status-control-wrap { display: flex; align-items: center; gap: 0.5rem; flex: 1 1 auto; min-width: 0; justify-content: center; }
+.status-group {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.status-group.is-busy { opacity: 0.6; pointer-events: none; }
+.status-pill {
+  flex: 1 1 0;
+  min-width: 0;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.45rem 0.4rem;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+.status-pill--active { background: var(--mustard); color: var(--ink); }
+.status-remove-btn {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--ink) 65%, transparent);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.status-remove-btn:hover { border-color: var(--coral); color: var(--coral); }
+.status-remove-btn svg { width: 15px; height: 15px; }
+
 /* MOVIE/SHOW/EPISODES PAGE ENRICHMENTS */
 
 .tmdb-rating { display: flex; align-items: center; gap: 0.4rem; color: var(--muted); font-size: 0.9rem; margin: 0.3rem 0; }
@@ -804,6 +834,8 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
   color: var(--sage);
   font-size: 0.8rem;
   font-weight: 600;
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  backdrop-filter: blur(2px);
 }
 
 .similar-strip { margin-top: 1.4rem; }
@@ -917,11 +949,12 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 }
 
 .episode-show-link {
-  color: inherit;
+  color: var(--mustard);
   text-decoration: none;
   border-bottom: 1px dashed var(--mustard);
+  margin-right: 0.2rem;
 }
-.episode-show-link:hover { color: var(--mustard); }
+.episode-show-link:hover { color: var(--coral); }
 
 .episode-thumb {
   width: 100px;
@@ -1246,6 +1279,10 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 }
 .progress-bar-fill { height: 100%; background: var(--sage); border-radius: 999px; transition: width 0.3s ease; }
 .progress-label { font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); }
+
+.progress-header { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; margin-bottom: 0.35rem; }
+.progress-status { font-weight: 600; font-size: 0.85rem; }
+.progress-count { font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
 
 .poster-card { position: relative; }
 .poster-card-progress {
@@ -2287,7 +2324,7 @@ code {
     justify-content:center;
     margin-top: .9rem;
   }
-
+.show-detail-meta {justify-content: center;}
 .tmdb-rating {
   justify-content: center;
 }
