@@ -2030,10 +2030,15 @@ if (typeof lucide !== "undefined") lucide.createIcons();
 
     function bindStatusControl() {
       qsa("#status-group .status-pill").forEach((pill) => {
+        hapticTrigger(pill);
         pill.addEventListener("click", () => setStatus(pill.dataset.status));
       });
-      qs("#status-remove-btn")?.addEventListener("click", removeFromLibraryAction);
-      qs("#status-add-btn")?.addEventListener("click", () => setStatus("watchlist"));
+      const removeBtn = qs("#status-remove-btn");
+      hapticTrigger(removeBtn);
+      removeBtn?.addEventListener("click", removeFromLibraryAction);
+      const addBtn = qs("#status-add-btn");
+      hapticTrigger(addBtn);
+      addBtn?.addEventListener("click", () => setStatus("watchlist"));
     }
     bindStatusControl();
 

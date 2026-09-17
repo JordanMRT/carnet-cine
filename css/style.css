@@ -718,7 +718,7 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
     text-decoration: underline;
 }
 
-.show-detail-actions { display: flex; flex-direction: column; gap: 0.7rem; margin-top: 1.2rem; }
+.show-detail-actions { display: flex; flex-direction: column; gap: 0.7rem; margin-top: 1.2rem; align-items: flex-start; }
 .show-detail-actions-row { display: flex; align-items: center; justify-content: center; gap: 0.8rem; flex-wrap: wrap; }
 .show-detail-actions select {
   border-radius: 999px;
@@ -749,7 +749,7 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 }
 .status-group.is-busy { opacity: 0.6; pointer-events: none; }
 .status-pill {
-  flex: 1 1 0;
+  /*flex: 1 1 0;*/
   min-width: 0;
   background: none;
   border: none;
@@ -2324,6 +2324,7 @@ code {
   .show-detail-actions{
     justify-content:center;
     margin-top: .9rem;
+    align-items: center;
   }
 .show-detail-meta {justify-content: center;}
 .tmdb-rating {
