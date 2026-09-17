@@ -718,7 +718,8 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
     text-decoration: underline;
 }
 
-.show-detail-actions { display: flex; align-items: center; gap: 0.8rem; margin-top: 1.2rem; flex-wrap: wrap; }
+.show-detail-actions { display: flex; flex-direction: column; gap: 0.7rem; margin-top: 1.2rem; }
+.show-detail-actions-row { display: flex; align-items: center; justify-content: center; gap: 0.8rem; flex-wrap: wrap; }
 .show-detail-actions select {
   border-radius: 999px;
     border: 1px solid var(--border);
@@ -735,7 +736,7 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
     min-width: 140px;
 }
 
-#status-control-wrap { display: flex; align-items: center; gap: 0.5rem; flex: 1 1 auto; min-width: 0; justify-content: center; }
+#status-control-wrap { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
 .status-group {
   display: flex;
   gap: 0.25rem;

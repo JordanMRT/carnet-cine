@@ -1704,12 +1704,23 @@ async function renderShowDetail(param, gen) {
       if (!inLib) {
         return `<button type="button" id="status-add-btn" class="btn btn--accent">+ Ajouter à ma bibliothèque</button>`;
       }
-      const options = [
-        ["watchlist", "À voir"],
-        ["watching", "En cours"],
-        ["completed", "Terminé"],
-        ["dropped", "Abandonné"],
-      ];
+      // Film déjà vu : le statut "Terminé" est déjà visible via le badge
+      // Vu/Rewatch (mediaActionsMarkup) — pas de pilule à répéter, juste
+      // la possibilité de retirer le film de la bibliothèque.
+      if (type === "movie" && inLib.status === "completed") {
+        return `<button type="button" id="status-remove-btn" class="status-remove-btn" title="Retirer de ma bibliothèque"><i data-lucide="trash-2"></i></button>`;
+      }
+      // Film pas encore vu : seul "À voir" a un sens comme choix manuel —
+      // pas d'équivalent "En cours"/"Abandonné" pour un visionnage en une fois.
+      const options =
+        type === "movie"
+          ? [["watchlist", "À voir"]]
+          : [
+              ["watchlist", "À voir"],
+              ["watching", "En cours"],
+              ["completed", "Terminé"],
+              ["dropped", "Abandonné"],
+            ];
       return `
         <div class="status-group" id="status-group">
           ${options
@@ -1720,6 +1731,27 @@ async function renderShowDetail(param, gen) {
             .join("")}
         </div>
         <button type="button" id="status-remove-btn" class="status-remove-btn" title="Retirer de ma bibliothèque"><i data-lucide="trash-2"></i></button>`;
+    }
+
+    // Construit toute la zone d'actions (statut + info/actions film) en un
+    // seul bloc plutôt que 3 zones patchées indépendamment : la structure
+    // elle-même change selon l'état (film pas vu : pilule+retirer sur une
+    // ligne, bouton en dessous ; film vu : badge+retirer+rewatch sur une
+    // seule ligne centrée ; série : juste les pilules), donc un patch séparé
+    // par zone ne suffit pas à reconstruire la bonne disposition.
+    function actionsRowMarkup(inLib, watchCount) {
+      const statusHTML = `<div id="status-control-wrap">${statusControlMarkup(inLib)}</div>`;
+      if (type !== "movie") {
+        return `<div class="show-detail-actions-row">${statusHTML}</div>`;
+      }
+      const watchInfoHTML = `<span id="movie-watch-info-wrap">${watchInfoMarkup(watchCount)}</span>`;
+      const actionsHTML = `<span id="movie-actions">${mediaActionsMarkup(watchCount)}</span>`;
+      if (watchCount > 0) {
+        // Vu : badge, bouton retirer, rewatch/annuler — une seule ligne centrée.
+        return `<div class="show-detail-actions-row show-detail-actions-row--center">${watchInfoHTML}${statusHTML}${actionsHTML}</div>`;
+      }
+      // Pas encore vu : pilule + retirer sur une ligne, "Marquer comme vu" en dessous.
+      return `<div class="show-detail-actions-row">${statusHTML}</div><div class="show-detail-actions-row">${watchInfoHTML}${actionsHTML}</div>`;
     }
 
     const movieWatchCount = type === "movie" ? App.diary.filter((e) => String(e.tmdb_id) === String(id) && e.media_type === "movie").length : 0;
@@ -1817,14 +1849,7 @@ async function renderShowDetail(param, gen) {
               <button class="overview-toggle" hidden>Afficher plus</button>
              </div>
             <div id="show-progress-wrap">${progressBlockMarkup(inLibrary, seasonProgress)}</div>
-            <div class="show-detail-actions">
-              <div id="status-control-wrap">${statusControlMarkup(inLibrary)}</div>
-              ${
-                type === "movie"
-                  ? `<span id="movie-watch-info-wrap">${watchInfoMarkup(movieWatchCount)}</span><span id="movie-actions">${mediaActionsMarkup(movieWatchCount)}</span>`
-                  : ""
-              }
-            </div>
+            <div class="show-detail-actions" id="show-detail-actions">${actionsRowMarkup(inLibrary, movieWatchCount)}</div>
           </div>
         </div>
        ${type === "tv" ? `<div id="seasons-container"></div>` : ""}${ratingBlockMarkup(userRating, canRate)}${noteBlockMarkup(inLibrary, canRate)}${type === "tv" ? seriesNotesHTML(id) : ""}${friendsActivityHTML(friendsActivity)}${watchProvidersHTML(watchProviders)}${castHTML}${similarStripHTML(recommendations, type)}
@@ -1885,22 +1910,15 @@ if (typeof lucide !== "undefined") lucide.createIcons();
         progressWrap.innerHTML = progressBlockMarkup(inLibNow, seasonProgress);
       }
 
-      // Le statut change de forme selon qu'on est en bibliothèque ou non
-      // (pilules vs bouton "+ Ajouter") — on repeint tout le bloc plutôt
-      // que de patcher une valeur, comme le faisait l'ancien <select>.
-      const statusWrap = qs("#status-control-wrap");
-      if (statusWrap) {
-        statusWrap.innerHTML = statusControlMarkup(inLibNow);
+      // La structure elle-même change selon l'état (pas seulement le
+      // contenu des pilules/badge) : film pas vu = 2 lignes, film vu =
+      // 1 ligne centrée, série = pilules seules. On repeint tout le bloc
+      // d'un coup via actionsRowMarkup plutôt que 3 zones indépendantes.
+      const actionsRowWrap = qs("#show-detail-actions");
+      if (actionsRowWrap) {
+        actionsRowWrap.innerHTML = actionsRowMarkup(inLibNow, watchCountNow);
         bindStatusControl();
-      }
-
-      const watchInfoWrap = qs("#movie-watch-info-wrap");
-      if (watchInfoWrap) watchInfoWrap.innerHTML = watchInfoMarkup(watchCountNow);
-
-      const actionsWrap = qs("#movie-actions");
-      if (actionsWrap) {
-        actionsWrap.innerHTML = mediaActionsMarkup(watchCountNow);
-        bindMediaActionButtons();
+        if (type === "movie") bindMediaActionButtons();
       }
 
       const ratingWrap = qs("#rating-widget-block");
