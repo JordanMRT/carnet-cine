@@ -1776,9 +1776,18 @@ async function renderShowDetail(param, gen) {
     let initialSeason = 1;
     let seasonProgress = null;
     if (type === "tv") {
-      const watchedSeasons = App.diary
-        .filter((e) => String(e.tmdb_id) === String(id) && e.media_type === "tv")
-        .map((e) => e.season || 1);
+      // Rewatch intégral en cours : on veut reprendre là où en est CE
+      // rewatch, pas la saison finale atteinte lors du tout premier
+      // visionnage — donc on ne regarde que les épisodes revus depuis le
+      // lancement du rewatch (rewatch_started_at).
+      const rewatchStartedAt = inLibrary?.rewatch_started_at || null;
+      const seasonsSource = App.diary.filter(
+        (e) => String(e.tmdb_id) === String(id) && e.media_type === "tv"
+      );
+      const relevantEntries = rewatchStartedAt
+        ? seasonsSource.filter((e) => e.created_at && e.created_at >= rewatchStartedAt)
+        : seasonsSource;
+      const watchedSeasons = relevantEntries.map((e) => e.season || 1);
       const progressSeason = watchedSeasons.length
         ? Math.min(Math.max(...watchedSeasons), data.number_of_seasons || 1)
         : 1;
