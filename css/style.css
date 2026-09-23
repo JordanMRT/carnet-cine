@@ -30,6 +30,7 @@ html, body {
   color: var(--cream);
   font-family: var(--font-body);
   min-height: 100vh;
+  touch-action: pan-x pan-y;
 }
 
 h1, h2, h3 { font-family: var(--font-display); margin: 0 0 0.4em; letter-spacing: -0.01em; }
@@ -573,7 +574,7 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
 }
 .show-detail-poster { width: 180px; border-radius: 10px; box-shadow: var(--shadow); }
 .show-detail-info { flex: 1; min-width: 240px; }
-.show-detail-meta { color: var(--muted); font-family: var(--font-mono); font-size: 0.85rem; display: flex;}
+.show-detail-meta { color: var(--muted); font-family: var(--font-mono); font-size: 0.85rem; display: flex; flex-wrap: wrap;}
 .show-detail-release { color: var(--muted); font-size: 0.9rem; margin: 0.2rem 0; }
 .show-detail-rating { display: inline-flex; align-items: center; gap: 0.25rem; font-variant-numeric: tabular-nums; margin-right: 0.2rem;}
 .show-detail-rating svg { color: var(--mustard); width: 0.85rem; height: 0.85rem; position: relative; top: -1px; }
@@ -2267,6 +2268,11 @@ code {
 
   body{
     padding-bottom:90px;
+  }
+
+  /* ponytail: pas de barre de nav sur connexion/onboarding, donc pas de réserve de 90px (sinon la page scrolle) */
+  body:has(.auth-screen){
+    padding-bottom:0;
   }
 
   .ticket-list { display: flex; flex-direction: column; gap: 1.2rem; }
