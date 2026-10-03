@@ -136,15 +136,19 @@
     background: #2b1233;
     --splash-dot-color: #7ed957;
   }
-  #splash-screen.splash--halloween .splash__logo {
-    filter: hue-rotate(80deg) saturate(2.3) brightness(1.02);
+  /* Le reflet (shine) est masqué par la silhouette du logo : on lui donne
+     celle du logo saisonnier pour qu'il épouse la bonne forme. */
+  #splash-screen.splash--halloween .splash__logo-shine {
+    -webkit-mask-image: url("ttb-logo-ticketcorn-halloween.png");
+    mask-image: url("ttb-logo-ticketcorn-halloween.png");
   }
   #splash-screen.splash--christmas {
     background: #0f2418;
     --splash-dot-color: #e0637a;
   }
-  #splash-screen.splash--christmas .splash__logo {
-    filter: sepia(1) saturate(4) hue-rotate(-48deg) brightness(0.85);
+  #splash-screen.splash--christmas .splash__logo-shine {
+    -webkit-mask-image: url("ttb-logo-ticketcorn-noel.png");
+    mask-image: url("ttb-logo-ticketcorn-noel.png");
   }
   .splash__dots span:nth-child(2) { animation-delay: 0.15s; }
   .splash__dots span:nth-child(3) { animation-delay: 0.3s; }
@@ -213,16 +217,18 @@
   // inclus pour Noël (toute la période fêtive). Fond, teinte du logo et
   // couleur des points de chargement changent ensemble.
   var today = new Date();
-  var isHalloween = today.getMonth() === 9 && today.getDate() === 31;
+  var isHalloween = today.getMonth() === 9 && today.getDate() >= 1 && today.getDate() <= 31;
   var isChristmas = today.getMonth() === 11 && today.getDate() >= 1 && today.getDate() <= 25;
 
   var SPLASH_MESSAGES = ["Préparation de la salle", "Distribution de popcorn", "Bonne séance"];
   if (isHalloween) {
     SPLASH_MESSAGES = ["Distribution de bonbons 🎃", "Une séance qui fait frissonner", "Bonne séance, si tu l'oses"];
     document.getElementById("splash-screen").classList.add("splash--halloween");
+    document.querySelector(".splash__logo").src = "ttb-logo-ticketcorn-halloween.png";
   } else if (isChristmas) {
     SPLASH_MESSAGES = ["Distribution de chocolats chauds 🎄", "Préparation du sapin", "Joyeuses fêtes, bonne séance"];
     document.getElementById("splash-screen").classList.add("splash--christmas");
+    document.querySelector(".splash__logo").src = "ttb-logo-ticketcorn-noel.png";
   }
 
   // Un message tiré au hasard à chaque ouverture, pas un défilement des trois.

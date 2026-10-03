@@ -1,4 +1,4 @@
-const SW_VERSION = "2026-09-28-1"; // ⚠️ change cette valeur à chaque déploiement
+const SW_VERSION = "2026-10-03-1"; // ⚠️ change cette valeur à chaque déploiement
 const CACHE_NAME = `timetobinge-${SW_VERSION}`;
 
 // App shell : fichiers statiques du projet, mis en cache dès l'installation
@@ -13,6 +13,8 @@ const APP_SHELL = [
   "./brand-top.png",
   "./ttb-logo-ticketcorn-flat.png",
   "./ttb-logo-ticketcorn-shadow.png",
+  "./ttb-logo-ticketcorn-halloween.png",
+  "./ttb-logo-ticketcorn-noel.png",
   "./favico.ico",
   "./assets/poster-placeholder.svg",
   "./js/config.js",
