@@ -416,7 +416,7 @@ async function exportDiaryAsZip(diary, onProgress) {
   zip.file("ttb-films.csv", buildMoviesCsv(diary));
 
   const blob = await zip.generateAsync({ type: "blob" });
-  const date = new Date().toISOString().slice(0, 10);
+  const date = todayLocal();
   const filename = `ttb-export-${date}.zip`;
 
   const url = URL.createObjectURL(blob);

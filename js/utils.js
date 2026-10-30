@@ -24,11 +24,6 @@ function formatDate(dateStr) {
   return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function formatDateShort(dateStr) {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" });
-}
-
 // Date du jour au format YYYY-MM-DD en heure LOCALE (pas UTC). À utiliser
 // partout où on compare/date "aujourd'hui" — new Date().toISOString()
 // renvoie la date UTC, ce qui fait basculer sur la veille entre minuit et

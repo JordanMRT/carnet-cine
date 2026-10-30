@@ -1047,129 +1047,6 @@ function bindOnboardingEvents() {
   }
 }
 
-// ---------- AUTH ----------
-let pendingEmail = "";
-let authStep = "email"; // "email" | "code"
-
-function authTemplate() {
-  return `
-    <div class="auth-screen">
-      <div class="auth-card">
-        <div class="auth-ticket"><img src="ttb-logo-ticketcorn-shadow.png"></div>
-        <h1>Time To Binge</h1>
-        <p class="auth-sub">Ton journal de séries et de films, un ticket à la fois.</p>
-
-        <form id="auth-form" class="auth-form">
-
-          <div id="step-email">
-            <input type="email" id="auth-email" placeholder="Email" required />
-            <input type="text" id="auth-username" placeholder="Pseudo (création)" />
-            <button type="submit" class="btn btn--primary-log">
-              Recevoir le code
-            </button>
-          </div>
-
-          <div id="step-code" style="display:none;">
-            <div id="auth-otp" class="otp-input"></div>
-            <button type="submit" class="btn btn--primary-log">
-              Valider le code
-            </button>
-          </div>
-
-        </form>
-
-        <p id="auth-error" class="auth-error"></p>
-        <p id="auth-success" class="auth-success"></p>
-      </div>
-    </div>
-  `;
-}
-
-function bindAuthEvents() {
-  const form = qs("#auth-form");
-  const errorEl = qs("#auth-error");
-  const successEl = qs("#auth-success");
-  let otpControl = null;
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-
-    errorEl.textContent = "";
-    successEl.textContent = "";
-
-    const btn = qs(authStep === "email" ? "#step-email button" : "#step-code button", form);
-    if (btn.disabled) return; // évite un double envoi (ex: auto-validation + clic manuel)
-    btn.disabled = true;
-
-    try {
-      // ---------------- STEP EMAIL ----------------
-      if (authStep === "email") {
-        const email = qs("#auth-email").value.trim();
-        const username = qs("#auth-username").value.trim();
-
-        pendingEmail = email;
-
-        btn.textContent = "Envoi…";
-
-        await DB.sendOtp(email, username || undefined);
-
-        // switch UI
-        authStep = "code";
-        qs("#step-email").style.display = "none";
-        qs("#step-code").style.display = "block";
-
-        // Cases du code : la saisie ET le collage du code reçu par email
-        // fonctionnent, avec validation automatique dès les 8 chiffres.
-        otpControl = createOtpInput(qs("#auth-otp"), {
-          length: 8,
-          mode: "numeric",
-          onComplete: () => form.requestSubmit(),
-        });
-        otpControl.focus();
-
-        btn.disabled = false;
-        btn.textContent = "Valider le code";
-
-        successEl.textContent = "Code envoyé ! Vérifie tes mails.";
-
-        return;
-      }
-
-      // ---------------- STEP CODE ----------------
-     if (authStep === "code") {
-  const code = otpControl.value.trim();
-
-  btn.textContent = "Vérification…";
-
-  await DB.verifyOtp(pendingEmail, code);
-
-  successEl.textContent = "Connexion réussie !";
-
-  pendingEmail = "";
-  authStep = "email";
-
-  return;
-}
-
-    } catch (err) {
-      errorEl.textContent = err.message;
-
-      btn.disabled = false;
-      btn.textContent =
-        authStep === "email"
-          ? "Recevoir le code"
-          : "Valider le code";
-
-      if (authStep === "code" && otpControl) {
-        const wrap = qs("#auth-otp");
-        wrap.classList.add("otp-input--shake");
-        setTimeout(() => wrap.classList.remove("otp-input--shake"), 350);
-        otpControl.clear();
-      }
-    }
-  });
-}
-
 // ---------- SEARCH ----------
 // Conserve la dernière recherche "Films & séries" en mémoire, pour éviter
 // de tout réafficher à vide (et de refaire l'appel TMDB) quand on revient
@@ -1226,7 +1103,7 @@ function bindSearchEvents() {
       const items = await TMDB.searchMulti(q);
       results.innerHTML = items.map(posterCard).join("") || emptyState("Aucun résultat.");
       if (typeof lucide !== "undefined") lucide.createIcons();
-    } catch (err) {
+    } catch {
       results.innerHTML = emptyState("Erreur TMDB — vérifie ta clé API dans js/config.js.");
     }
     SearchState.query = q;
@@ -1261,7 +1138,7 @@ function bindSearchEvents() {
         results.innerHTML =
           users.map((u) => userResultCard(u, myFollowing[u.id])).join("") ||
           emptyState("Aucun utilisateur trouvé.");
-      } catch (err) {
+      } catch {
         results.innerHTML = emptyState("Erreur lors de la recherche.");
       }
     }, 400)
@@ -1359,7 +1236,7 @@ function bindSocialEvents() {
         );
       }
       if (typeof lucide !== "undefined") lucide.createIcons();
-    } catch (err) {
+    } catch {
       list.innerHTML = emptyState("Erreur lors du chargement.");
     }
   }
@@ -1622,14 +1499,6 @@ async function renderShowDetail(param, gen) {
       : "";
 
 
-    const progressHTML =
-      type === "tv" && inLibrary && inLibrary.total_episodes > 0
-        ? `<div class="show-progress">
-             <div class="progress-bar"><div class="progress-bar-fill" style="width:${inLibrary.progress}%"></div></div>
-             <span class="progress-label">${Math.min(inLibrary.watched_episodes, inLibrary.total_episodes)}/${inLibrary.total_episodes} épisodes vus — ${inLibrary.progress}%</span>
-           </div>`
-        : "";
-
     // Films : bouton de log qui devient "revoir" une fois déjà vu, + badge ×N
     // Ces trois fonctions génèrent le HTML à partir de l'état courant : elles
     // sont réutilisées au premier rendu ET pour patcher localement l'affichage
@@ -1758,16 +1627,8 @@ async function renderShowDetail(param, gen) {
     const workRatingRaw = type === "tv" ? inLibrary?.series_rating : inLibrary?.avg_rating;
     const userRating = workRatingRaw != null ? Math.round(workRatingRaw / 2) : 0;
     const canRate = type === "movie" ? movieWatchCount > 0 : (inLibrary?.watched_episodes || 0) > 0;
-    // Vérifier si l'élément est en favori (gérer les erreurs séparément pour ne pas bloquer l'affichage)
-    let isFavorite = false;
-    if (inLibrary) {
-      try {
-        isFavorite = await DB.isFavorite(App.session.user.id, Number(inLibrary.tmdb_id), inLibrary.media_type);
-      } catch (favErr) {
-        console.warn("Erreur lors de la vérification du statut favori (non bloquante):", favErr);
-        // On garde isFavorite = false par défaut
-      }
-    }
+    // Favori : lu en mémoire (App.favorites, chargé par loadData et synchronisé au clic)
+    const isFavorite = inLibrary ? isFavoriteItem(inLibrary.tmdb_id, inLibrary.media_type) : false;
 
     // Saison "courante" : la plus avancée où l'utilisateur a déjà vu des
     // épisodes. Calculée ici (avant le rendu) et réutilisée plus bas pour
@@ -2062,15 +1923,15 @@ if (typeof lucide !== "undefined") lucide.createIcons();
             media_type: type,
             title,
             poster_path: data.poster_path,
-            season: type === "tv" ? null : null, // Pour les films, saison/episode sont toujours null
-            episode: type === "tv" ? null : null,
+            season: null, // film : saison/épisode toujours null
+            episode: null,
             watched_date: todayLocal(),
             rating: null,
             rewatch,
             note: null,
             genres: genreIds,
-            runtime_minutes: type === "movie" ? (data.runtime || null) : null,
-            air_date: type === "movie" ? (data.release_date || null) : null,
+            runtime_minutes: data.runtime || null,
+            air_date: data.release_date || null,
           });
           toast(rewatch ? "Nouveau visionnage ajouté 🎟️" : "Marqué comme vu 🎟️", "ticket");
           // Attendu (et non fire-and-forget) : App.diary doit être à jour
@@ -2100,28 +1961,23 @@ if (typeof lucide !== "undefined") lucide.createIcons();
       const mediaUndoBtn = qs("#media-undo-btn");
       hapticTrigger(mediaUndoBtn);
       mediaUndoBtn?.addEventListener("click", () =>
-        type === "movie"
-          ? undoLastMovieWatch({ tmdb_id: Number(id) }, async () => {
-              // Même bug que logMovieEntry/toggleEpisodeWatched : App.library
-              // doit être reconstruit (recalcul du statut) avant
-              // refreshShowDetailUI(), sinon il lit encore l'ancien statut
-              // sticky "completed" et le select reste bloqué dessus.
-              await App.refreshSilently();
-              refreshShowDetailUI();
-            })
-          : undoLastEpisodeWatch({
-              tmdb_id: Number(id),
-              title,
-              poster_path: data.poster_path,
-              genres: genreIds,
-              season: 1, // Pour les séries, on aurait besoin de la saison actuelle
-              episode: 1, // et de l'épisode actuel - mais cette fonction n'est pas utilisée pour les séries dans l'UI actuelle
-              runtime_minutes: null,
-              air_date: null,
-            }, refreshShowDetailUI)
+        undoLastMovieWatch({ tmdb_id: Number(id) }, async () => {
+          // Même bug que logMovieEntry/toggleEpisodeWatched : App.library
+          // doit être reconstruit (recalcul du statut) avant
+          // refreshShowDetailUI(), sinon il lit encore l'ancien statut
+          // sticky "completed" et le select reste bloqué dessus.
+          await App.refreshSilently();
+          refreshShowDetailUI();
+        })
       );
 
-      // Gestion du bouton favori
+    }
+
+    // Bouton favori : films ET séries, branché une seule fois à l'ouverture de
+    // la fiche. Le cœur n'est jamais repeint par refreshShowDetailUI ; le lier
+    // depuis bindMediaActionButtons (rappelée à chaque repeinture de la ligne
+    // d'actions) empilait un handler et un switch haptique de plus à chaque fois.
+    function bindFavoriteButton() {
       const favoriteBtn = qs("#favorite-btn");
       if (favoriteBtn) {
         hapticTrigger(favoriteBtn);
@@ -2253,6 +2109,7 @@ if (typeof lucide !== "undefined") lucide.createIcons();
     }
 
     bindMediaActionButtons();
+    bindFavoriteButton();
     bindRatingWidget();
     bindNoteWidget();
 
@@ -2261,7 +2118,7 @@ if (typeof lucide !== "undefined") lucide.createIcons();
       // progression — on le réutilise ici pour ouvrir le même onglet.
       await renderSeasonsInto(qs("#seasons-container"), id, data.number_of_seasons, title, data.poster_path, genreIds, initialSeason);
     }
-  } catch (err) {
+  } catch {
     if (gen !== App._renderGen) return;
     view.innerHTML = emptyState("Erreur de chargement — vérifie ta clé TMDB.");
   }
@@ -2295,7 +2152,7 @@ async function renderUserProfile(userId, gen) {
     view.innerHTML = otherUserProfileTemplate(profile, library, diary, followStatus, canViewContent);
     bindOtherUserProfileEvents(userId);
     if (typeof lucide !== "undefined") lucide.createIcons();
-  } catch (err) {
+  } catch {
     if (gen !== App._renderGen) return;
     view.innerHTML = emptyState("Erreur lors du chargement du profil.");
   }
@@ -3295,6 +3152,30 @@ if (typeof lucide !== "undefined") lucide.createIcons();
   }
 }
 
+// Construit une entrée de journal "épisode" à partir d'un ctx de série.
+//   watchedDate : passée par l'appelant (un lot d'entrées partage la même date)
+//   rewatch     : true pour un revisionnage
+//   ep          : épisode TMDB à logger à la place de celui du ctx (rattrapage
+//                 des épisodes précédents) ; ses runtime/air_date sont utilisés
+function buildEpisodeEntry(ctx, watchedDate, { rewatch = false, ep = null } = {}) {
+  return {
+    user_id: App.session.user.id,
+    tmdb_id: ctx.tmdb_id,
+    media_type: "tv",
+    title: ctx.title,
+    poster_path: ctx.poster_path,
+    season: ctx.season,
+    episode: ep ? ep.episode_number : ctx.episode,
+    watched_date: watchedDate,
+    rating: null,
+    rewatch,
+    note: null,
+    genres: ctx.genres || [],
+    runtime_minutes: ep ? ep.runtime || null : ctx.runtime_minutes,
+    air_date: (ep ? ep.air_date : ctx.air_date) || null,
+  };
+}
+
 // Coche rapide : ajoute une entrée si l'épisode n'est pas vu, ou retire
 // TOUTES les entrées (y compris les revisionnages) si on décoche.
 async function toggleEpisodeWatched(ctx, btnEl, onDone) {
@@ -3361,58 +3242,13 @@ async function toggleEpisodeWatched(ctx, btnEl, onDone) {
         });
 
         await DB.bulkInsertDiary([
-          ...missingEpisodes.map((ep) => ({
-            user_id: App.session.user.id,
-            tmdb_id: ctx.tmdb_id,
-            media_type: "tv",
-            title: ctx.title,
-            poster_path: ctx.poster_path,
-            season: ctx.season,
-            episode: ep.episode_number,
-            watched_date: today,
-            rating: null,
-            rewatch: false,
-            note: null,
-            genres: ctx.genres || [],
-            runtime_minutes: ep.runtime || null,
-            air_date: ep.air_date || null,
-          })),
-          {
-            user_id: App.session.user.id,
-            tmdb_id: ctx.tmdb_id,
-            media_type: "tv",
-            title: ctx.title,
-            poster_path: ctx.poster_path,
-            season: ctx.season,
-            episode: ctx.episode,
-            watched_date: today,
-            rating: null,
-            rewatch: false,
-            note: null,
-            genres: ctx.genres || [],
-            runtime_minutes: ctx.runtime_minutes,
-            air_date: ctx.air_date || null,
-          },
+          ...missingEpisodes.map((ep) => buildEpisodeEntry(ctx, today, { ep })),
+          buildEpisodeEntry(ctx, today),
         ]);
 
         toast(`${missingEpisodes.length + 1} épisodes marqués comme vus 🎟️`, "ticket");
       } else {
-        await DB.addDiaryEntry({
-          user_id: App.session.user.id,
-          tmdb_id: ctx.tmdb_id,
-          media_type: "tv",
-          title: ctx.title,
-          poster_path: ctx.poster_path,
-          season: ctx.season,
-          episode: ctx.episode,
-          watched_date: today,
-          rating: null,
-          rewatch: false,
-          note: null,
-          genres: ctx.genres || [],
-          runtime_minutes: ctx.runtime_minutes,
-          air_date: ctx.air_date || null,
-        });
+        await DB.addDiaryEntry(buildEpisodeEntry(ctx, today));
 
         // Pas d'"Annuler" ici : décocher reproduit exactement la même
         // action (deleteDiaryEntries), donc le geste existe déjà à portée
@@ -3545,22 +3381,7 @@ async function undoLastEpisodeWatch(ctx, onDone) {
 // Ajoute un revisionnage (rewatch) pour un épisode déjà vu.
 async function addEpisodeRewatch(ctx, onDone) {
   try {
-    const entry = {
-      user_id: App.session.user.id,
-      tmdb_id: ctx.tmdb_id,
-      media_type: "tv",
-      title: ctx.title,
-      poster_path: ctx.poster_path,
-      season: ctx.season,
-      episode: ctx.episode,
-      watched_date: todayLocal(),
-      rating: null,
-      rewatch: true,
-      note: null,
-      genres: ctx.genres || [],
-      runtime_minutes: ctx.runtime_minutes,
-      air_date: ctx.air_date || null,
-    };
+    const entry = buildEpisodeEntry(ctx, todayLocal(), { rewatch: true });
     await DB.addDiaryEntry(entry);
     App.diary.push(entry);
     toast("Revisionnage ajouté 🎟️", "ticket");
@@ -4976,15 +4797,16 @@ function openAvatarPicker(onDone) {
         const type = showItem.dataset.type;
         const title = showItem.dataset.title;
         let rawCast;
+        let originalTitleForCast;
         if (type === "movie") {
           const data = await TMDB.getMovie(showItem.dataset.id);
           rawCast = data.credits?.cast || [];
+          originalTitleForCast = data.original_title;
         } else {
           const data = await TMDB.getAggregateCredits(showItem.dataset.id);
           rawCast = data.cast || [];
+          originalTitleForCast = data.original_name;
         }
-
-        const originalTitleForCast = type === "movie" ? data.original_title : data.original_name;
         const cast = (
           await getCastForDisplay(type === "movie" ? "movie" : "series", showItem.dataset.id, originalTitleForCast || title, rawCast)
         ).slice(0, 20);

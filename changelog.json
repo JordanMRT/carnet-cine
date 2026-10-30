@@ -1,8 +1,8 @@
 {
-  "version": "2026-10-03",
+  "version": "2026-10-15",
   "highlights": [
-    "What's new (v 2.6.7) ? 🍿",
-    "Correction et améliorations mineures.",
+    "What's new (v 2.6.9) ? 🍿",
+    "Correction d'un bug qui empêchait le changement d'avatar.",
     "Changement du décor de l'entrée."
   ]
 }

@@ -562,22 +562,6 @@ async upsertLibraryItems(items) {
     if (error) throw error;
   },
 
-  // Vérifier si un élément est en favori
-  async isFavorite(userId, tmdbId, mediaType) {
-    const { data, error } = await supabaseClient
-      .from("favorites")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("tmdb_id", tmdbId)
-      .eq("media_type", mediaType)
-      .single();
-
-    if (error && error.code !== "PGRST116") { // PGRST116 = no rows returned
-      throw error;
-    }
-    return !!data;
-  },
-
   // Récupérer tous les favoris d'un utilisateur
   async getFavorites(userId) {
     const { data, error } = await supabaseClient

@@ -24,7 +24,7 @@ const WrappedUI = {
       const canvases = await Wrapped.generateCanvases(stats, profile);
       loading.remove();
       this._renderOverlay(canvases, stats);
-    } catch (err) {
+    } catch {
       loading.remove();
       toast("Impossible de générer ton Wrapped pour l'instant.", "error");
     }
