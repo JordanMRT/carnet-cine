@@ -4840,7 +4840,7 @@ function openAvatarPicker(onDone) {
         toast("Avatar mis à jour 🎟️", "success");
         closeModalOverlay(overlay);
         App.session = await DB.getSession();
-        if (onDone) {
+        if (typeof onDone === "function") {
           onDone();
         } else {
           App.route();
