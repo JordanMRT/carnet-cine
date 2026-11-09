@@ -15,9 +15,9 @@ webpush.setVapidDetails(
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-async function tmdb(path: string) {
+async function tmdb(path: string, language = "fr-FR") {
   const sep = path.includes("?") ? "&" : "?";
-  const res = await fetch(`https://api.themoviedb.org/3${path}${sep}api_key=${TMDB_API_KEY}&language=fr-FR`);
+  const res = await fetch(`https://api.themoviedb.org/3${path}${sep}api_key=${TMDB_API_KEY}&language=${language}`);
   if (!res.ok) throw new Error(`TMDB ${res.status}`);
   return res.json();
 }
@@ -220,7 +220,8 @@ serve(async (req) => {
         let nextEp: any = null;
         let nextEpSeason = startSeason;
         for (let s = startSeason; s <= lastSeasonToCheck; s++) {
-          const season = await tmdb(`/tv/${show.tmdb_id}/season/${s}`);
+          // Même règle que resolveDisplayTitle() côté client : original anglais → noms d'épisodes en anglais
+          const season = await tmdb(`/tv/${show.tmdb_id}/season/${s}`, showData.original_language === "en" ? "en-US" : "fr-FR");
           const found = (season.episodes || []).find(
             (ep: any) => !watchedKeys.has(`${s}x${ep.episode_number}`) && ep.air_date === today
           );

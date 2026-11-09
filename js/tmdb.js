@@ -267,7 +267,12 @@ const TMDB = {
       return this._seasonCache.get(key);
     }
 
-    const promise = tmdbFetch(`/tv/${tvId}/season/${seasonNumber}`);
+    // Même règle que resolveDisplayTitle() : série d'origine anglaise →
+    // titres d'épisodes en anglais, sinon français (fr-FR par défaut).
+    const promise = this.getTv(tvId)
+      .then(tv => tv?.original_language === "en" ? { language: "en-US" } : {})
+      .catch(() => ({}))
+      .then(params => tmdbFetch(`/tv/${tvId}/season/${seasonNumber}`, params));
 
     this._seasonCache.set(key, promise);
     promise.catch(() => this._seasonCache.delete(key));
