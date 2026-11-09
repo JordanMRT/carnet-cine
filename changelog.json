@@ -1,8 +1,8 @@
 {
-  "version": "2026-10-30",
+  "version": "2026-11-09",
   "highlights": [
-    "What's new (v 2.6.9) ? 🍿",
-    "Correction d'un bug qui empêchait le changement d'avatar.",
-    "Changement du décor de l'entrée."
+    "What's new (v 2.7) ? 🍿",
+    "Le titre des épisodes respecte la langue d'origine du film/de la série.",
+    "Nettoyage des écrans et de la salle."
   ]
 }
