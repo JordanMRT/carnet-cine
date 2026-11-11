@@ -51,20 +51,27 @@ const TicketShare = {
     const ctx = canvas.getContext("2d");
     ctx.scale(scale, scale);
 
-    const bg = "#1b1d2a";
-    const elevated = "#23263a";
     const ink = "#0e0f14";
     const cream = "#f2efe9";
     const border = "#34374d";
     const muted = "#8a8ea3";
-    // Seul l'accent change avec le thème actif ; le canvas ne peut pas lire
-    // var(--mustard) directement, donc on résout la valeur au moment du
-    // dessin plutôt qu'à l'écriture du fichier.
+    // Comme ticket-story.js : le canvas ne peut pas lire les CSS vars
+    // directement, on résout au moment du dessin pour hériter du thème actif.
     const rootStyles = getComputedStyle(document.documentElement);
+    const bg = rootStyles.getPropertyValue("--bg").trim() || "#1b1d2a";
     const mustard = rootStyles.getPropertyValue("--mustard").trim() || "#e8a33d";
     const coral = rootStyles.getPropertyValue("--coral").trim() || "#e8636b";
 
-    ctx.fillStyle = elevated;
+    await Promise.all([
+      document.fonts.load('700 26px "Unbounded"').catch(() => {}),
+      document.fonts.load('700 14px "Unbounded"').catch(() => {}),
+      document.fonts.load('800 13px "Nunito Sans"').catch(() => {}),
+      document.fonts.load('600 11px "Nunito Sans"').catch(() => {}),
+      document.fonts.load('400 14px "Nunito Sans"').catch(() => {}),
+    ]);
+
+    // Fond : même halo que la story (ponytail : on réutilise son helper)
+    ctx.fillStyle = TicketStory._radialHalo(ctx, W, H, 0.6, 0.1, "#2c2a3a", bg, 0.7);
     roundRectPath(ctx, 0, 0, W, H, 18);
     ctx.fill();
 
@@ -99,56 +106,113 @@ const TicketShare = {
     ctx.arc(posterW + 14, H, 10, 0, Math.PI * 2);
     ctx.fill();
 
-    // Texte
+    // Rangée de points haut/bas (même langage visuel que la story / Wrapped)
     const textX = posterW + 34;
-    const maxTextWidth = W - textX - 24;
-    let y = 56;
+    const rightPad = 24;
+    const rightX = W - rightPad;
+    ctx.fillStyle = "rgba(10,10,16,0.55)";
+    const dotsGap = (rightX - (textX + 12)) / 7;
+    [10, H - 10].forEach((dy) => {
+      for (let i = 0; i < 8; i++) {
+        ctx.beginPath();
+        ctx.arc(textX + 12 + dotsGap * i, dy, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
 
-    await Promise.all([
-      document.fonts.load('700 26px "Unbounded"').catch(() => {}),
-      document.fonts.load('600 15px "Nunito Sans"').catch(() => {}),
-      document.fonts.load('400 14px "Nunito Sans"').catch(() => {}),
-    ]);
+    // Tampon rewatch (repris de la story : disque plein, sur l'affiche)
+    if (item.media_type === "movie" && item.watch_count > 1) {
+      ctx.save();
+      ctx.translate(posterW - 42, 44);
+      ctx.rotate((-11 * Math.PI) / 180);
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = coral;
+      ctx.beginPath();
+      ctx.arc(0, 0, 32, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = cream;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, 32, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = cream;
+      ctx.textAlign = "center";
+      ctx.font = '700 9px "Nunito Sans", sans-serif';
+      ctx.fillText("VISIONNÉ", 0, -3);
+      ctx.font = '700 15px "Unbounded", sans-serif';
+      ctx.fillText(`${item.watch_count} x`, 0, 14);
+      ctx.textAlign = "left";
+      ctx.restore();
+    }
 
-    ctx.fillStyle = cream;
-    ctx.font = '700 26px "Unbounded", sans-serif';
-    y = wrapText(ctx, item.title || "", textX, y, maxTextWidth, 30, 2);
-    y += 18;
+    // Code-barres vertical (colonne de droite)
+    const bcThickness = 22;
+    const bcLength = 150;
+    const bcX = rightX - bcThickness;
+    const bcY = 34 + (228 - bcLength) / 2;
+    ctx.save();
+    ctx.translate(bcX + bcThickness, bcY);
+    ctx.rotate(Math.PI / 2);
+    drawBarcode(ctx, `${item.tmdb_id}${item.last_watched_date}`, 0, 0, bcLength, bcThickness, muted);
+    ctx.restore();
 
+    // Texte
+    const maxTextWidth = bcX - 24 - textX;
+    let y = 54;
+
+    // Sur-titre
     const sub =
       item.media_type === "tv"
         ? `SÉRIE · ${item.total_episodes || item.watched_episodes} ÉPISODES`
         : "FILM";
     ctx.fillStyle = mustard;
-    ctx.font = '600 14px "Nunito Sans", monospace';
+    ctx.font = '800 13px "Nunito Sans", sans-serif';
     ctx.fillText(sub, textX, y);
-    y += 28;
+    y += 44;
 
-    ctx.fillStyle = muted;
-    ctx.font = '400 14px "Nunito Sans", monospace';
-    ctx.fillText(formatDate(item.last_watched_date), textX, y);
+    // Titre
+    ctx.fillStyle = cream;
+    ctx.font = '700 26px "Unbounded", sans-serif';
+    y = wrapText(ctx, item.title || "", textX, y, maxTextWidth, 30, 2);
+    y += 20;
 
-    if (item.media_type === "movie" && item.watch_count > 1) {
-      ctx.save();
-      ctx.translate(W - 62, H - 56);
-      ctx.rotate((-11 * Math.PI) / 180);
-      ctx.globalAlpha = 0.85;
-      ctx.strokeStyle = coral;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(0, 0, 30, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.fillStyle = coral;
-      ctx.textAlign = "center";
-      ctx.font = '700 9px "Nunito Sans", monospace';
-      ctx.fillText("VISIONNÉ", 0, -4);
-      ctx.font = '700 16px "Unbounded", sans-serif';
-      ctx.fillText(`${item.watch_count} x`, 0, 14);
-      ctx.textAlign = "left";
-      ctx.restore();
+    // Pastilles de genres (celles qui ne tiennent pas dans la largeur sont ignorées)
+    const genreNames = (item.genres || [])
+      .map((id) => (App.genreMaps[item.media_type] || {})[id])
+      .filter(Boolean)
+      .slice(0, 3);
+    const pillH = 24;
+    const pillGap = 8;
+    const pills = [];
+    let rowW = 0;
+    ctx.font = '600 11px "Nunito Sans", sans-serif';
+    for (const g of genreNames) {
+      const label = g.toUpperCase();
+      const w = ctx.measureText(label).width + 20;
+      const next = rowW + (pills.length ? pillGap : 0) + w;
+      if (next > maxTextWidth) break;
+      pills.push({ label, w });
+      rowW = next;
     }
-    y += 32;
+    if (pills.length) {
+      let px = textX;
+      ctx.lineWidth = 1.2;
+      pills.forEach(({ label, w }) => {
+        ctx.strokeStyle = border;
+        roundRectPath(ctx, px, y, w, pillH, pillH / 2);
+        ctx.stroke();
+        ctx.fillStyle = muted;
+        ctx.textAlign = "center";
+        ctx.fillText(label, px + w / 2, y + 16);
+        ctx.textAlign = "left";
+        px += w + pillGap;
+      });
+      y += pillH + 32;
+    } else {
+      y += 20;
+    }
 
+    // Étoiles
     if (item.avg_rating != null) {
       const filled = Math.round((item.avg_rating / 10) * 5);
       ctx.font = "18px sans-serif";
@@ -156,14 +220,34 @@ const TicketShare = {
         ctx.fillStyle = i < filled ? mustard : border;
         ctx.fillText("★", textX + i * 22, y);
       }
-      y += 28;
+      y += 34;
     }
 
-    drawBarcode(ctx, `${item.tmdb_id}${item.last_watched_date}`, textX, y, 130, 22, muted);
+    // Date
+    ctx.fillStyle = muted;
+    ctx.font = '400 14px "Nunito Sans", sans-serif';
+    ctx.fillText(`Vu le ${formatDate(item.last_watched_date)}`, textX, y);
+
+    // Pied de page (même structure que la story)
+    const footerY = H - 46;
+    ctx.strokeStyle = border;
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.moveTo(textX, footerY);
+    ctx.lineTo(rightX, footerY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = cream;
+    ctx.font = '700 14px "Unbounded", sans-serif';
+    ctx.fillText("Time To Binge", textX, H - 22);
 
     ctx.fillStyle = muted;
-    ctx.font = '600 11px "Nunito Sans", monospace';
-    ctx.fillText("TIME TO BINGE 🎟️", textX, H - 20);
+    ctx.font = '600 11px "Nunito Sans", sans-serif';
+    ctx.textAlign = "right";
+    ctx.fillText("#TimeToBinge", rightX, H - 23);
+    ctx.textAlign = "left";
 
     return canvas;
   },
