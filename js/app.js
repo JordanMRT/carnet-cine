@@ -2934,7 +2934,8 @@ async function markAllEpisodesWatched(tvId, numberOfSeasons, title, posterPath, 
       const season = await TMDB.getSeason(tvId, s);
       (season.episodes || []).forEach((ep) => {
         const key = `${s}x${ep.episode_number}`;
-        if (!watchedKeys.has(key)) {
+        // Pas les épisodes annoncés pour plus tard (date de sortie future) : ils restent "à venir".
+        if (!watchedKeys.has(key) && !(ep.air_date && ep.air_date > today)) {
           toInsert.push({
             user_id: App.session.user.id,
             tmdb_id: Number(tvId),
@@ -3983,13 +3984,23 @@ async function computeShowUpcomingEpisode(show) {
     let upcomingEpisode = null;
     let tvdbAirsTime; // résolu au besoin, une seule fois par série (undefined = pas encore vérifié)
     const lastSeasonToCheck = Math.min(startSeason + 1, data.number_of_seasons || startSeason);
+    // Série "Terminé" à la main : seuls comptent les épisodes sortis APRÈS
+    // le dernier visionnage (nouvelle saison). Sans ça, un "Terminé" posé
+    // avec "Non, juste le statut" ferait remonter tout l'ancien non-vu.
+    // ponytail: pas de dernier visionnage connu → aucun "à voir" (les épisodes
+    // "à venir", datés dans le futur, restent affichés).
+    const completedAfterDate = show.status === "completed" ? show.last_watched_date || "9999-12-31" : null;
     for (let s = startSeason; s <= lastSeasonToCheck; s++) {
       const season = await TMDB.getSeason(show.tmdb_id, s);
       const episodes = season.episodes || [];
 
       if (!nextEpisode) {
         const found = episodes.find(
-          (ep) => !watchedKeys.has(`${s}x${ep.episode_number}`) && ep.air_date && ep.air_date <= today
+          (ep) =>
+            !watchedKeys.has(`${s}x${ep.episode_number}`) &&
+            ep.air_date &&
+            ep.air_date <= today &&
+            (!completedAfterDate || ep.air_date > completedAfterDate)
         );
         if (found) {
           // TMDB ne donne qu'une date : si l'épisode sort précisément
@@ -4033,7 +4044,27 @@ async function renderUpcoming(gen) {
   try {
     const today = todayLocal();
     const watchlistMovies = App.library.filter((l) => l.media_type === "movie" && l.status === "watchlist");
-    const watchingShows = App.library.filter((l) => l.media_type === "tv" && l.status === "watching");
+    // Séries "En cours" + séries marquées "Terminé" à la main dont TMDB ne
+    // dit pas qu'elles sont finies (ni "Ended" ni "Canceled") : une nouvelle
+    // saison peut arriver. Le statut TMDB vient du cache déjà rempli au
+    // chargement de l'app (pas d'appel réseau en plus en temps normal).
+    const completedShows = App.library.filter((l) => l.media_type === "tv" && l.status === "completed");
+    const stillAiringCompleted = (
+      await Promise.all(
+        completedShows.map(async (l) => {
+          try {
+            const meta = await LibraryBuilder._getShowMeta(l.tmdb_id, 0);
+            return LibraryBuilder._ENDED_TMDB_STATUSES.has(meta.status) ? null : l;
+          } catch {
+            return null;
+          }
+        })
+      )
+    ).filter(Boolean);
+    const watchingShows = [
+      ...App.library.filter((l) => l.media_type === "tv" && l.status === "watching"),
+      ...stillAiringCompleted,
+    ];
 
     // ---- Films ----
     const movieDetails = await Promise.all(

@@ -202,19 +202,25 @@ serve(async (req) => {
     }
 
     // ---- Prochain épisode des séries en cours ----
+    // + séries marquées "Terminé" à la main dont TMDB ne dit pas qu'elles
+    // sont finies (ni "Ended" ni "Canceled") : une nouvelle saison peut
+    // encore arriver, on ne veut pas la rater.
     const { data: watchingShows } = await supabase
-      .from("library").select("tmdb_id, title")
-      .eq("user_id", userId).eq("media_type", "tv").eq("status", "watching");
+      .from("library").select("tmdb_id, title, status")
+      .eq("user_id", userId).eq("media_type", "tv").in("status", ["watching", "completed"]);
 
-    for (const show of watchingShows || []) {
+    const checkShow = async (show: any): Promise<(typeof candidates)[number] | null> => {
       try {
+        const showData = await tmdb(`/tv/${show.tmdb_id}`);
+        // Série "Terminé" ET vraiment finie côté TMDB : rien à surveiller.
+        if (show.status === "completed" && ["Ended", "Canceled"].includes(showData.status)) return null;
+
         const { data: entries } = await supabase
           .from("diary_entries").select("season, episode")
           .eq("user_id", userId).eq("media_type", "tv").eq("tmdb_id", show.tmdb_id);
         const watchedKeys = new Set((entries || []).map((e) => `${e.season}x${e.episode}`));
         const startSeason = entries?.length ? Math.max(...entries.map((e) => e.season || 1)) : 1;
 
-        const showData = await tmdb(`/tv/${show.tmdb_id}`);
         const lastSeasonToCheck = Math.min(startSeason + 1, showData.number_of_seasons || startSeason);
 
         let nextEp: any = null;
@@ -227,25 +233,35 @@ serve(async (req) => {
           );
           if (found) { nextEp = found; nextEpSeason = s; break; }
         }
-        if (!nextEp) continue;
+        if (!nextEp) return null;
 
         // Créneau connu : on attend qu'il soit passé. Créneau inconnu :
         // on garde l'ancien comportement (dès que la date correspond).
         const airsTime = await getAirsTime(show.tmdb_id);
         if (airsTime) {
           const notYetAired = nowHour < airsTime.hour || (nowHour === airsTime.hour && nowMinute < airsTime.minute);
-          if (notYetAired) continue;
+          if (notYetAired) return null;
         }
 
-        candidates.push({
+        return {
           title: `${show.title}: l'épisode ${nextEp.episode_number} est sorti 📺`,
           body: `Saison ${nextEpSeason}${nextEp.name ? " · " + nextEp.name : ""}`,
           url: `#/episode/${show.tmdb_id}-${nextEpSeason}-${nextEp.episode_number}`,
           mediaType: "tv", tmdbId: String(show.tmdb_id), season: nextEpSeason, episode: nextEp.episode_number,
-        });
+        };
       } catch (e) {
         console.error(`TMDB série ${show.tmdb_id}`, e);
+        return null;
       }
+    };
+
+    // Par groupes de 10 séries en parallèle (au lieu d'une par une) : les
+    // séries "Terminé" à re-vérifier ajoutent des appels TMDB, et la
+    // fonction a une durée maximale. Promise.all garde l'ordre des séries.
+    const showsToCheck = watchingShows || [];
+    for (let i = 0; i < showsToCheck.length; i += 10) {
+      const results = await Promise.all(showsToCheck.slice(i, i + 10).map(checkShow));
+      for (const c of results) if (c) candidates.push(c);
     }
 
     if (!candidates.length) continue;
