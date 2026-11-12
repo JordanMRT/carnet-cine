@@ -2013,84 +2013,93 @@ code {
   gap: 1rem;
 }
 .badge-card {
+  --c: var(--accent);
+  --ny: 136px; /* hauteur de la zone vignette = position de la perforation */
+  position: relative;
+  width: 100%;
+  max-width: 200px;
+  margin: 0 auto;
   background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1rem 0.4rem;
-    text-align: center;
-    opacity: 0.4;
-    filter: grayscale(1);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  text-align: center;
+  /* encoches latérales de part et d'autre de la perforation */
+  -webkit-mask:
+    radial-gradient(circle 9px at 0 var(--ny), #0000 97%, #000) left / 51% 100% no-repeat,
+    radial-gradient(circle 9px at 100% var(--ny), #0000 97%, #000) right / 51% 100% no-repeat;
+  mask:
+    radial-gradient(circle 9px at 0 var(--ny), #0000 97%, #000) left / 51% 100% no-repeat,
+    radial-gradient(circle 9px at 100% var(--ny), #0000 97%, #000) right / 51% 100% no-repeat;
 }
-.badge-card--earned { opacity: 1; filter: none; border-color: var(--mustard); }
-.badge-icon { display: block; font-size: 2rem; margin-bottom: 0.4rem; }
-.badge-name { display: block; font-family: var(--font-display); font-weight: 600; margin-bottom: 0.3rem; }
-.badge-desc { font-size: 0.78rem; color: var(--muted); }
-.badge-ring-wrap { position: relative; width: 56px; height: 56px; margin: 0 auto 0.4rem; }
-.badge-ring { position: absolute; top: 0; left: 0; }
-.badge-ring-bg { stroke: var(--border); }
-.badge-ring-fill { stroke: var(--mustard); stroke-linecap: round; transition: stroke-dashoffset 0.4s ease; }
-.badge-icon--ring {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  font-size: 1.4rem; margin: 0;
+.badge-card:not(.badge-card--earned) { --c: var(--muted); }
+.badge-card--earned { border-style: solid; border-color: var(--c); }
+
+.badge-top {
+  height: var(--ny);
+  padding-top: 18px;
+  border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
+  background: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--c) 24%, transparent), transparent 75%);
 }
-.badge-card--tiered .badge-icon:not(.badge-icon--ring) { display: none; }
-.badge-tier-label { font-family: var(--font-mono); font-size: 0.75rem; color: var(--sage); font-weight: 600; }
-.badge-card--tiered:not(.badge-card--earned) .badge-tier-label { color: var(--muted); }
-.badge-progress-counter {
+.badge-vig {
+  width: 104px;
+  height: 104px;
+  margin: 0 auto;
+  border-radius: 20px;
+  overflow: hidden;
+  background: var(--cream);
+  box-shadow: 0 0 0 3px var(--c), 0 6px 14px rgba(0, 0, 0, 0.4);
+}
+/* Recadre le disque central du PNG (r ≈ 27 % de la largeur) */
+.badge-vig-img {
   display: block;
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  color: var(--muted);
-  margin-bottom: 0.3rem;
+  width: 194px;
+  height: 194px;
+  max-width: none;
+  margin: -45px;
+  clip-path: circle(26.9%);
 }
-.badge-icon-img {
-  display: block;
-  width: 110px;
-  height: 110px;
-  margin: 0 auto 0.4rem;
-  object-fit: contain;
-      filter: drop-shadow(0px 0px 5px var(--ink));
-}
-.badge-icon-img.badge-icon--ring {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 44px;
-  height: 44px;
-  margin: 0;
+.badge-vig-emoji { display: flex; align-items: center; justify-content: center; height: 100%; font-size: 3rem; }
+.badge-card:not(.badge-card--earned) .badge-vig {
+  opacity: 0.35;
+  filter: grayscale(1);
+  box-shadow: 0 0 0 3px var(--border);
 }
 
-.badge-coin-wrap {
-  position: relative;
-  width: 110px;
-  margin: 0 auto 0.4rem;
-  padding-top: 20px; /* réserve la place pour les étoiles qui débordent en haut */
-}
-.badge-coin-wrap .badge-icon-img {
-  width: 110px;
-  height: 110px;
-  margin: 0;
-}
-.badge-star-arc {
+.badge-perf {
   position: absolute;
-  top: 0;
-  left: 50%;
-  width: 0;
-  height: 0;
+  left: 16px;
+  right: 16px;
+  top: var(--ny);
+  border-top: 2px dashed var(--border);
 }
-.badge-star-slot {
-  position: absolute;
-  left: 0;
-  top: 0;
-  transform: translate(calc(-50% + var(--sx)), var(--sy)) rotate(var(--srot));
+.badge-stub { padding: 14px 10px 16px; }
+.badge-eyebrow {
+  display: block;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c);
 }
-.badge-star {
-  width: 16px;
-  height: 16px;
-  fill: var(--star-color);
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+.badge-punches { display: flex; justify-content: center; gap: 9px; margin: 10px 0 2px; }
+.badge-hole { width: 13px; height: 13px; border-radius: 50%; border: 2px dashed var(--border); }
+.badge-hole--punched {
+  border: 2px solid var(--c);
+  background: var(--ink);
+  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.8);
 }
+.badge-name {
+  display: block;
+  margin: 6px 0 4px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  color: var(--cream);
+}
+.badge-progress-counter { display: block; font-family: var(--font-mono); font-weight: 600; font-size: 0.72rem; color: var(--muted); }
+.badge-desc { display: block; margin-top: 6px; font-size: 0.74rem; line-height: 1.4; color: var(--muted); }
 
 
 /* ---------- TOAST ---------- */

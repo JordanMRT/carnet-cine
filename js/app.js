@@ -5041,111 +5041,52 @@ function settingsTemplate() {
 }
 
 // ---------- BADGES ----------
-function progressRingSVG(fraction, size = 56, strokeWidth = 4) {
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference * (1 - Math.min(Math.max(fraction, 0), 1));
-  return `
-    <svg class="badge-ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-      <circle class="badge-ring-bg" cx="${size / 2}" cy="${size / 2}" r="${radius}" stroke-width="${strokeWidth}" fill="none" />
-      <circle class="badge-ring-fill" cx="${size / 2}" cy="${size / 2}" r="${radius}" stroke-width="${strokeWidth}" fill="none"
-        stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"
-        transform="rotate(-90 ${size / 2} ${size / 2})" />
-    </svg>`;
-}
-
-function badgeIconHTML(badge, extraClass = "") {
+// Billet de cinéma : vignette (illustration) / perforation / souche (niveau,
+// poinçons, nom). La couleur d'accent vient de badge.accentColor (variable de
+// thème), moutarde par défaut.
+// ponytail: l'illustration est le disque central du PNG existant, recadré en
+// CSS (.badge-vig-img) — aucun nouvel asset à produire.
+function badgeIconHTML(badge) {
   if (badge.iconImage) {
-    return `<img class="badge-icon-img ${extraClass}" src="${badge.iconImage}" alt="${badge.name}" loading="lazy">`;
+    return `<img class="badge-vig-img" src="${badge.iconImage}" alt="${badge.name}" loading="lazy">`;
   }
-  return `<span class="badge-icon ${extraClass}">${badge.icon}</span>`;
-}
-
-// Décalages (x, y en px depuis le centre, rotation en deg) pour faire suivre
-// aux étoiles la courbure du badge, du niveau 1 (1 étoile) au niveau 4 (4 étoiles).
-const STAR_ARC_OFFSETS = {
-  1: [{ x: 0, y: 0, r: 0 }],
-  2: [
-    { x: -12, y: 3, r: -12 },
-    { x: 12, y: 3, r: 12 },
-  ],
-  3: [
-    { x: -22, y: 8, r: -20 },
-    { x: 0, y: 0, r: 0 },
-    { x: 22, y: 8, r: 20 },
-  ],
-  4: [
-    { x: -32, y: 14, r: -28 },
-    { x: -11, y: 2, r: -10 },
-    { x: 11, y: 2, r: 10 },
-    { x: 32, y: 14, r: 28 },
-  ],
-};
-
-function starSVG(color) {
-  return `<svg class="badge-star" viewBox="0 0 24 24" style="--star-color:${color}">
-    <path d="M12 1.5l2.9 6.6 7.1.7-5.4 4.8 1.6 7-6.2-3.7-6.2 3.7 1.6-7-5.4-4.8 7.1-.7z" />
-  </svg>`;
-}
-
-function starArcHTML(tier, accentColor) {
-  const offsets = STAR_ARC_OFFSETS[tier];
-  if (!offsets) return "";
-  const color = accentColor || "var(--mustard)";
-  return `
-    <div class="badge-star-arc">
-      ${offsets
-        .map(
-          (o) => `
-        <span class="badge-star-slot" style="--sx:${o.x}px; --sy:${o.y}px; --srot:${o.r}deg;">
-          ${starSVG(color)}
-        </span>`
-        )
-        .join("")}
-    </div>`;
+  return `<span class="badge-vig-emoji">${badge.icon}</span>`;
 }
 
 function badgeCardHTML(badge, info) {
-  if (!badge.tiers) {
-    const earned = (info?.tier || 0) > 0;
-    return `
-      <div class="badge-card ${earned ? "badge-card--earned" : ""}">
-        ${badgeIconHTML(badge)}
-        <span class="badge-name">${badge.name}</span>
-        <span class="badge-desc">${badge.description}</span>
-      </div>`;
+  const tier = info?.tier || 0;
+  const earned = tier > 0;
+  const accent = badge.accentColor || "var(--mustard)";
+  let eyebrow = earned ? "Obtenu" : "Pas encore débloqué";
+  let punchesHTML = "";
+  let counterHTML = "";
+
+  if (badge.tiers) {
+    const maxTier = badge.tiers.length;
+    const value = info?.value || 0;
+    const nextThreshold = tier < maxTier ? badge.tiers[tier] : null;
+    const unit = badge.unit === "percent" ? "%" : "";
+    const format = badge.formatValue || ((v) => `${v}${unit}`);
+    const counterText = nextThreshold != null ? `${format(value)}/${format(nextThreshold)}` : format(value);
+    eyebrow = earned ? `Niveau ${tier}/${maxTier}${tier >= maxTier ? " · max" : ""}` : eyebrow;
+    punchesHTML = `<div class="badge-punches">${Array.from(
+      { length: maxTier },
+      (_, i) => `<span class="badge-hole ${i < tier ? "badge-hole--punched" : ""}"></span>`
+    ).join("")}</div>`;
+    counterHTML = `<span class="badge-progress-counter">${counterText}</span>`;
   }
 
-  const tier = info?.tier || 0;
-  const value = info?.value || 0;
-  const maxTier = badge.tiers.length;
-  const earned = tier > 0;
-  const nextThreshold = tier < maxTier ? badge.tiers[tier] : null;
-  const prevThreshold = tier > 0 ? badge.tiers[tier - 1] : 0;
-  const fraction = tier >= maxTier ? 1 : (value - prevThreshold) / (nextThreshold - prevThreshold);
-  const unit = badge.unit === "percent" ? "%" : "";
-  const format = badge.formatValue || ((v) => `${v}${unit}`);
-  const counterText = nextThreshold != null ? `${format(value)}/${format(nextThreshold)}` : format(value);
-
-  const visualHTML = badge.iconImage
-    ? `
-      <div class="badge-coin-wrap">
-        ${badgeIconHTML(badge)}
-        ${starArcHTML(tier, badge.accentColor)}
-      </div>`
-    : `
-      <div class="badge-ring-wrap">
-        ${progressRingSVG(fraction)}
-        ${badgeIconHTML(badge, "badge-icon--ring")}
-      </div>`;
-
   return `
-    <div class="badge-card badge-card--tiered ${earned ? "badge-card--earned" : ""}">
-      ${visualHTML}
-      <span class="badge-progress-counter">${counterText}</span>
-      <span class="badge-name">${badge.name}</span>
-      <span class="badge-tier-label">${earned ? `Niveau ${tier}/${maxTier}` : "Pas encore débloqué"}</span><br>
-      <span class="badge-desc">${badge.description}</span>
+    <div class="badge-card ${earned ? "badge-card--earned" : ""}" style="--accent:${accent}">
+      <div class="badge-top"><div class="badge-vig">${badgeIconHTML(badge)}</div></div>
+      <div class="badge-perf"></div>
+      <div class="badge-stub">
+        <span class="badge-eyebrow">${eyebrow}</span>
+        ${punchesHTML}
+        <span class="badge-name">${badge.name}</span>
+        ${counterHTML}
+        <span class="badge-desc">${badge.description}</span>
+      </div>
     </div>`;
 }
 
