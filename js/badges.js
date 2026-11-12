@@ -16,6 +16,16 @@ function daysBetween(a, b) {
   return Math.round((new Date(a) - new Date(b)) / 86400000);
 }
 
+// Notes "d'œuvre" pour les badges de notation : films (note du journal)
+// + note globale des séries (library.series_rating). Les notes d'épisodes
+// isolés ne comptent volontairement pas.
+function workRatings(entries, library) {
+  return [
+    ...entries.filter((e) => e.media_type === "movie" && e.rating != null).map((e) => e.rating),
+    ...library.filter((l) => l.media_type === "tv" && l.series_rating != null).map((l) => l.series_rating),
+  ];
+}
+
 function longestStreak(entries) {
   const days = [...new Set(entries.map((e) => e.watched_date))].sort();
   let longest = 0,
@@ -169,9 +179,9 @@ const BADGES = [
     icon: "⭐",
     iconImage: "assets/badges/critic.png",
     accentColor: "var(--mustard)",
-    description: "Attribue une note à des entrées du journal.",
+    description: "Attribue une note à des films ou des séries.",
     tiers: [50, 150, 300, 600],
-    getValue: (entries) => entries.filter((e) => e.rating != null).length,
+    getValue: (entries, library) => workRatings(entries, library).length,
   },
   {
     key: "weekend_binger",
@@ -209,9 +219,9 @@ const BADGES = [
     icon: "🥶",
     iconImage: "assets/badges/harsh_critic.png",
     accentColor: "var(--muted)",
-    description: "Attribue une note de 3/10 ou moins.",
+    description: "Attribue une note de 2 étoiles ou moins.",
     tiers: [5, 25, 75, 150],
-    getValue: (entries) => entries.filter((e) => e.rating != null && e.rating <= 3).length,
+    getValue: (entries, library) => workRatings(entries, library).filter((r) => r <= 4).length,
   },
   {
     key: "soft_heart",
@@ -219,9 +229,9 @@ const BADGES = [
     icon: "🥰",
     iconImage: "assets/badges/soft_heart.png",
     accentColor: "var(--muted)",
-    description: "Attribue une note de 9/10 ou plus.",
+    description: "Attribue une note de 4 étoiles ou plus.",
     tiers: [5, 25, 75, 150],
-    getValue: (entries) => entries.filter((e) => e.rating != null && e.rating >= 9).length,
+    getValue: (entries, library) => workRatings(entries, library).filter((r) => r >= 8).length,
   },
   {
     key: "aficionado",

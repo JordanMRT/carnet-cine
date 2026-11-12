@@ -13,9 +13,13 @@ const Stats = {
     const totalMovieMinutes = movies.reduce((sum, e) => sum + (e.runtime_minutes || 0), 0);
     const totalTvMinutes = episodes.reduce((sum, e) => sum + (e.runtime_minutes || 0), 0);
 
-    const ratedEntries = entries.filter((e) => e.rating != null);
-    const avgRating = ratedEntries.length
-      ? ratedEntries.reduce((s, e) => s + e.rating, 0) / ratedEntries.length
+    // Note moyenne : une note par œuvre. Série = sa note globale
+    // (series_rating) sinon la moyenne de ses épisodes ; film = sa note.
+    const workRatings = library
+      .map((l) => (l.media_type === "tv" ? l.series_rating ?? l.avg_rating : l.avg_rating))
+      .filter((r) => r != null);
+    const avgRating = workRatings.length
+      ? workRatings.reduce((s, r) => s + r, 0) / workRatings.length
       : 0;
 
     const showsCompleted = library.filter(
