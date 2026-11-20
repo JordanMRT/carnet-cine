@@ -13,7 +13,7 @@
   --coral: #e8636b;
   --sage: #7c9885;
   --muted: #8a8ea3;
-  --border: #34374d;
+  --border: color-mix(in srgb, var(--bg-elevated) 88%, var(--cream));
   --radius: 14px;
   --shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
   --font-display: "Unbounded", sans-serif;
