@@ -7,253 +7,35 @@
 
 # Time To Binge 🎟️
 
-Journal de séries et de films façon TV Time — recherche TMDB, bibliothèque,
-journal de visionnage en tickets de cinéma, statistiques et badges.
-100% vanilla JS, pas de build, déployable gratuitement sur GitHub Pages.
+**Time To Binge** est une application web (installable comme une app sur ton téléphone) pour suivre ce que tu regardes : séries, films, épisodes vus, notes, statistiques… et revivre tes visionnages sous forme de tickets de cinéma.
 
-## Arborescence
+Créée et développée en solo, en français, avec beaucoup de popcorn 🍿
 
-```
-tvtime-clone/
-├── index.html
-├── schema.sql              # à exécuter dans Supabase
-├── css/
-│   └── style.css
-├── js/
-│   ├── config.js           # ⚠️ clés API à renseigner
-│   ├── utils.js
-│   ├── tmdb.js
-│   ├── supabase-client.js
-│   ├── badges.js
-│   ├── stats.js
-│   ├── import.js           # ⚠️ mapping à adapter à ton export TV Time
-│   └── app.js
-└── assets/
-    └── poster-placeholder.svg
-```
+## Ce que tu peux faire
 
-## Configuration initiale
+- 🔍 **Rechercher** n'importe quel film ou série et l'ajouter à ta bibliothèque
+- 📚 **Suivre ta progression** saison par saison, épisode par épisode, avec une coche rapide et une barre de progression
+- 🎟️ **Tenir ton journal en tickets de cinéma** : un ticket par film vu et par série terminée, avec ta note et ton commentaire
+- 📤 **Partager tes tickets** en image, au format feed ou story
+- 🔁 **Compter tes revisionnages** (×2, ×3…) et les inclure dans tes statistiques
+- 📊 **Consulter tes stats** : temps passé devant les séries et les films, note moyenne, genres favoris, activité des 12 derniers mois
+- 🏅 **Débloquer des badges** en forme de billets, avec des paliers à poinçonner
+- 🎨 **Changer d'ambiance** grâce à une quinzaine de thèmes, dont certains se débloquent avec les badges
+- 🎁 **Retrouver ton année en revue** avec le Wrapped
+- 📅 **Anticiper les sorties** avec le calendrier des films et épisodes à venir
+- 👤 **Personnaliser ton profil** : avatar, bannière, pseudo et visibilité (public, abonnés ou privé)
+- 🎃 **Profiter d'un écran de démarrage saisonnier**, qui change à Halloween et à Noël
 
-1. Copie le modèle de configuration :
-   ```bash
-   cp js/config.example.js js/config.js
-   ```
+## Installer l'application
 
-2. Ouvre `js/config.js` et remplace les valeurs `*_PLACEHOLDER` par tes propres clés :
-   - **TMDB_API_KEY** → ta clé API TMDB (v3 auth)  
-   - **SUPABASE_URL** → l’URL de ton projet Supabase (ex. `https://xxxx.supabase.co`)  
-   - **SUPABASE_ANON_KEY** → la clé *anon* publique de Supabase  
-   - **VAPID_PUBLIC_KEY** → la clé publique VAPID générée via le panel Supabase → *Settings → Push* (ou via le service worker si tu l’utilises)  
-   - **CONTACT_EMAIL** → libre à toi de le garder ou de le changer  
+Time To Binge s'utilise directement depuis le navigateur. Ouvre le lien ci-dessus, connecte-toi par lien magique (pas de mot de passe), ou ajoute-la à l'écran d'accueil de ton téléphone pour la retrouver comme une vraie app.
 
-3. Enregistre le fichier.  
-   Tu peux maintenant lancer l’application (Live Server, double‑clic sur `index.html`, etc.) et elle utilisera tes clés.
+## Crédits
 
-> **⚠️ Ne jamais commiter `js/config.js`** : il est listé dans `.gitignore`. Si tu as besoin de partager ton modèle, utilise `js/config.example.js`.
+Les données et visuels des films et séries (affiches, synopsis, casting…) proviennent de [TMDB](https://www.themoviedb.org). *This product uses the TMDB API but is not endorsed or certified by TMDB.*
 
-## 1. Configurer TMDB
+## Licence
 
-1. Crée un compte gratuit sur https://www.themoviedb.org
-2. Settings → API → demande une clé "Developer" (gratuit, instantané)
-3. Colle ta clé dans `js/config.js` → `TMDB_API_KEY`
+© 2026 Jordan MRT. **Tous droits réservés.**
 
-## 2. Configurer Supabase
-
-1. Crée un projet gratuit sur https://supabase.com
-2. Dans **SQL Editor**, colle et exécute le contenu de `schema.sql`
-   (si tu avais déjà une table `library` d'une version précédente, le
-   fichier contient aussi les `alter table` nécessaires pour ajouter les
-   colonnes de progression sans rien casser).
-3. Dans **Settings → API**, récupère :
-   - **Project URL** → `js/config.js` → `SUPABASE_URL`
-   - **anon public key** → `js/config.js` → `SUPABASE_ANON_KEY`
-   (⚠️ jamais la clé `service_role`, elle ne doit jamais être exposée côté client)
-4. Dans **Authentication → URL Configuration**, ajoute dans **Redirect URLs**
-   l'adresse que ton navigateur affichera pendant les tests (ex :
-   `http://127.0.0.1:5500` ou `http://localhost:5500` pour Live Server —
-   regarde l'URL exacte dans la barre d'adresse) et plus tard l'URL de ton
-   site GitHub Pages (`https://TON_PSEUDO.github.io/carnet-cine/`). Sans
-   ça, Supabase refusera de rediriger après le clic sur le lien magique.
-   Renseigne aussi la même adresse en **Site URL**.
-
-La connexion se fait par **lien magique** (pas de mot de passe) : tu
-entres ton email, tu reçois un lien, tu cliques dessus et tu es connecté.
-Le champ "Pseudo" n'est utile qu'à la toute première connexion (il est
-ignoré ensuite) ; tu peux le changer à tout moment en cliquant sur ton
-pseudo en haut de l'appli.
-
-## 3. Tester en local
-
-Comme le site charge des fichiers JS séparément, ouvrir `index.html`
-directement dans le navigateur (`file://`) posera des soucis de CORS.
-Lance un petit serveur local, par exemple :
-
-```bash
-cd tvtime-clone
-python3 -m http.server 8000
-```
-
-Puis ouvre `http://localhost:8000`.
-
-## 4. Déployer sur GitHub Pages (gratuit)
-
-```bash
-cd tvtime-clone
-git init
-git add .
-git commit -m "Carnet Ciné"
-git branch -M main
-git remote add origin https://github.com/TON_PSEUDO/carnet-cine.git
-git push -u origin main
-```
-
-Puis sur GitHub : **Settings → Pages → Source : branch `main`, dossier `/`**.
-Ton site sera en ligne sur `https://TON_PSEUDO.github.io/carnet-cine/`.
-
-⚠️ Tes clés `TMDB_API_KEY` et `SUPABASE_ANON_KEY` seront visibles dans le
-code source côté client — c'est normal et attendu pour ce type de clés
-publiques (elles sont conçues pour ça), à condition d'avoir bien activé
-le Row Level Security on Supabase (déjà fait dans `schema.sql`). Ne mets
-en revanche **jamais** une clé `service_role` dans un repo public.
-
-## 5. Importer ton export TV Time
-
-Deux boutons en haut à droite une fois connecté : **Importer séries** et
-**Importer films**. Ils correspondent aux deux structures réelles de ton
-export TV Time :
-
-- **Séries** : fichier avec un tableau d'objets `{ uuid, id: { tvdb, imdb },
-  seasons: [...] }`. Le nom de la série n'étant pas présent dans cette
-  structure, l'appli interroge automatiquement TMDB (`/find`) pour
-  convertir chaque id TheTVDB en fiche TMDB (titre, poster, genres).
-- **Films** : fichier avec un tableau d'objets `{ id: { tvdb, imdb },
-  title, watched_at, rating, ... }`. Même principe, mais via l'id IMDb.
-
-Seuls les épisodes/films avec `"is_watched": true` sont importés. La
-résolution TMDB se fait avec une petite pause entre chaque appel, donc un
-import de plusieurs centaines de séries peut prendre 1 à 2 minutes — les
-messages en bas de l'écran te tiennent au courant de la progression.
-
-**Titres non reconnus** : si TMDB n'a pas d'équivalent pour un id TheTVDB
-ou IMDb (série trop obscure, id `-1`, mauvais matching…), l'entrée est
-quand même importée mais avec un titre générique et sans affiche. La
-liste des titres non reconnus s'affiche dans la console du navigateur
-(clic droit → Inspecter → Console) juste après l'import, pour que tu
-puisses vérifier ou corriger à la manuel dans Supabase si besoin.
-
----
-
-## Nouveautés de cette version
-
-**Journal allégé — 1 ticket par visionnage complet** — le Journal
-n'affiche plus un ticket par épisode, mais un seul ticket par film vu
-et par série **entièrement terminée** (tous les épisodes vus). Un show
-en cours n'apparaît pas encore dans le Journal — il y arrive dès que
-son dernier épisode est coché. Techniquement, la vue s'appuie
-maintenant sur la bibliothèque (une ligne par film/série) plutôt que
-sur le journal détaillé (une ligne par épisode), ce qui règle le
-ralentissement que tu avais avec un gros historique importé. Les notes
-affichées sur le ticket sont la note moyenne et le dernier commentaire
-laissé sur ce film/série ; un rewatch de film affiche un badge "×N".
-Cliquer sur un ticket ouvre sa fiche détaillée. Le supprimer efface
-aussi tous les visionnages associés (demande confirmation avant).
-
-**Partage en image** — chaque ticket a un bouton discret "Partager" qui
-génère une image PNG du ticket (affiche, titre, date, note, code-barres
-décoratif) et propose le partage natif du téléphone (réseaux sociaux,
-messages…) si disponible, ou un téléchargement direct sinon.
-
-**Photo de profil et réglages de compte** — tu peux maintenant
-modifier ton avatar, ta bannière, ton pseudo et ajuster tes paramètres
-de confidentialité (visibilité du profil : public, abonnés uniquement,
-privé) directement depuis l’application.
-
-**Coche rapide** — chaque épisode a maintenant un rond à droite : un
-clic le marque vu (ou non vu) instantanément, sans ouvrir de modale, et
-met à jour la bibliothèque/progress bar dans la foulée. Cliquer sur le
-reste de la ligne ouvre toujours la modale détaillée (note, date
-précise). Décocher un épisode supprime toutes ses entrées, y compris
-d'éventuels revisionnages.
-
-**Revisionnages (rewatch)** — un bouton ↻ apparaît une fois l'épisode
-vu : chaque clic ajoute un nouveau visionnage, affiché en badge "×2",
-"×3"… Même logique pour les films sur leur fiche (bouton qui devient
-"Revoir" une fois vu une première fois). Les temps de visionnage dans
-les stats comptent bien chaque revisionnage (donc un épisode vu 3 fois
-compte 3 fois sa durée).
-
-**Genres favoris en %** — la page stats affiche désormais le
-pourcentage de chaque genre plutôt qu'un chiffre brut, et résout les
-noms de genre correctement (avant, les entrées importées affichaient
-parfois un id numérique à la place du nom).
-
-**Fiches détails enrichies** — ajout du casting, de vignettes par
-épisode, et conservation des titres originaux (non traduits) sur les
-fiches film/série.
-
-**Calendrier "à venir"** — un calendrier listant les films de ta
-watchlist pas encore sortis et les prochains épisodes des séries que tu
-suis.
-
-**Confirmation à la complétion** — passer une série sur "Terminé"
-propose de marquer tous les épisodes de toutes les saisons comme vus
-d'un coup (utile pour une série que tu as déjà vue avant d'utiliser
-l'appli). Si tu réponds non, seul le statut change.
-
-**Navigation saisons/épisodes complète** — la fiche série propose
-maintenant un sélecteur de saison (toutes les saisons, plus seulement
-la 1ère). Les épisodes déjà enregistrés dans ton journal sont marqués
-d'un ✓ vert.
-
-**Progression automatique** — après chaque ajout/suppression au
-journal ou chaque import, l'appli recalcule automatiquement pour
-chaque série : nombre d'épisodes vus, total d'épisodes (via TMDB),
-et % de progression. Ça alimente une barre de progression sur la
-fiche série et sur les cartes de la bibliothèque. Le statut
-"Abandonné" que tu choisis à la main n'est jamais écrasé par ce
-recalcul ; les autres statuts (à voir/en cours/terminé) se mettent à
-jour tout seuls selon ton activité.
-
-**Durées de visionnage enrichies** — après chargement, l'appli va
-chercher en tâche de fond (sans bloquer l'interface) les durées TMDB
-manquantes sur les entrées du journal (utile surtout pour les entrées
-importées). Les stats affichent maintenant le temps total **séries**
-et **films** séparément.
-
----
-
-## Ce qui n'est PAS inclus / à faire toi-même
-
-Je te liste honnêtement les limites de cette V1, pour que tu saches
-exactement où compléter :
-
-1. **Titres non reconnus sur TMDB** — voir section 5 ci-dessus. Une
-   poignée d'entrées peut nécessiter une correction manuelle si l'id
-   TheTVDB/IMDb ne matche rien côté TMDB.
-
-2. **Durées introuvables sur TMDB** — l'enrichissement automatique
-   dépend de ce que TMDB connaît. Certains épisodes (surtout sur de
-   vieilles séries ou des séries peu documentées) n'ont pas de durée
-   renseignée côté TMDB : ces entrées resteront sans `runtime_minutes`
-   et n'entreront pas dans le total, même après enrichissement.
-
-3. **Rebuild de la bibliothèque = appels TMDB** — la première synchro
-   après un gros import (des dizaines de séries) peut prendre quelques
-   secondes le temps de récupérer le nombre total d'épisodes de chaque
-   série ; les fois suivantes sont plus rapides grâce au cache mémoire
-   de la session.
-
-4. **Redirect URL mal configurée** — si le lien magique t'amène sur une
-   page d'erreur Supabase au lieu de ton appli, retourne en section 2 :
-   l'URL affichée dans ton navigateur doit être dans la liste des
-   Redirect URLs de ton projet Supabase.
-
-5. **Fonctionnalités PWA avancées** — l'application est déjà installable
-   comme PWA et supporte les notifications push (si autorisées). Certaines
-   fonctionnalités hors‑ligne avancées (background sync, etc.) ne sont pas
-   implémentées, mais l'expérience de base fonctionne hors‑ligne grâce au
-   service worker.
-
-Tout le reste (recherche, ajout bibliothèque, journal en tickets, notes,
-rewatch, 12 badges, stats avec graphique mensuel et genres favoris) est
-fonctionnel une fois les clés API renseignées.
+Le code source, le design, le logo, les icônes, les badges et les autres créations originales de ce dépôt sont protégés. Leur copie, modification, redistribution ou réutilisation, en tout ou partie, est interdite sans autorisation écrite préalable. Voir le fichier [LICENSE](./LICENSE) pour le détail.
