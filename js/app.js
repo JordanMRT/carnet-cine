@@ -2116,7 +2116,7 @@ if (typeof lucide !== "undefined") lucide.createIcons();
     if (type === "tv") {
       // `initialSeason` est déjà calculé plus haut, avant le rendu du bloc
       // progression — on le réutilise ici pour ouvrir le même onglet.
-      await renderSeasonsInto(qs("#seasons-container"), id, data.number_of_seasons, title, data.poster_path, genreIds, initialSeason);
+      await renderSeasonsInto(qs("#seasons-container"), id, data.number_of_seasons, title, data.poster_path, genreIds, initialSeason, false, (data.seasons || []).filter((s) => s.season_number > 0));
     }
   } catch {
     if (gen !== App._renderGen) return;
@@ -2964,190 +2964,386 @@ async function markAllEpisodesWatched(tvId, numberOfSeasons, title, posterPath, 
   toast(`${toInsert.length} épisode(s) marqué(s) comme vus.`, "success");
 }
 
-async function renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, selectedSeason = 1, suppressPeek = false) {
+// Fiche série : saisons en accordéon. Chaque saison est un bloc replié (en-tête
+// = titre, compteur vus/total, coche de saison) ; ses épisodes ne sont chargés
+// qu'à la première ouverture. `selectedSeason` = la saison dépliée au départ.
+async function renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, selectedSeason = 1, suppressPeek = false, seasonsMeta = null) {
   if (!numberOfSeasons) {
     container.innerHTML = "";
     return;
   }
-  lastViewedSeason[tvId] = selectedSeason;
   container.innerHTML = skeletonEpisodeRowsHTML(8);
   try {
-    const season = await TMDB.getSeason(tvId, selectedSeason);
-    const watchCounts = {};
-    App.diary
-      .filter((e) => String(e.tmdb_id) === String(tvId) && e.media_type === "tv" && e.season === selectedSeason)
-      .forEach((e) => {
-        watchCounts[e.episode] = (watchCounts[e.episode] || 0) + 1;
-      });
+    const seasonNumbers = seasonsMeta?.length
+      ? seasonsMeta.map((s) => s.season_number)
+      : Array.from({ length: numberOfSeasons }, (_, i) => i + 1);
+    const openSeason = seasonNumbers.includes(selectedSeason) ? selectedSeason : seasonNumbers[0];
+    lastViewedSeason[tvId] = openSeason;
 
-    const seasonOptions = Array.from({ length: numberOfSeasons }, (_, i) => i + 1)
-      .map((n) => `<option value="${n}" ${n === selectedSeason ? "selected" : ""}>Saison ${n}</option>`)
-      .join("");
-    const rows = (season.episodes || [])
-      .map((ep) => {
-        const count = watchCounts[ep.episode_number] || 0;
-        const watched = count > 0;
-        return `
-        <div class="episode-row ${watched ? "episode-row--watched" : ""}" data-season="${selectedSeason}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}" data-air-date="${ep.air_date || ""}">
+    // ponytail: avant le chargement d'une saison, le total vient de TMDB
+    // (episode_count, épisodes à venir inclus). Une fois la saison chargée ou
+    // cochée, il est recalculé sur les seuls épisodes déjà sortis.
+    const seasonTotals = {};
+    (seasonsMeta || []).forEach((s) => (seasonTotals[s.season_number] = s.episode_count || 0));
+    const isAired = (ep) => !(ep.air_date && ep.air_date > todayLocal());
+
+    const seasonCounts = (n) => {
+      const counts = {};
+      App.diary
+        .filter((e) => String(e.tmdb_id) === String(tvId) && e.media_type === "tv" && e.season === n)
+        .forEach((e) => {
+          counts[e.episode] = (counts[e.episode] || 0) + 1;
+        });
+      return counts;
+    };
+    // done = tous les épisodes (sortis) vus au moins une fois ;
+    // times = nombre de fois où la saison entière a été vue (le plus faible
+    // compteur parmi ses épisodes).
+    const seasonStats = (n) => {
+      const counts = seasonCounts(n);
+      const watched = Object.keys(counts).length;
+      const total = seasonTotals[n] || 0;
+      const done = total > 0 && watched >= total;
+      const times = done ? Math.min(...Object.values(counts)) : 0;
+      return { watched, total, done, times };
+    };
+    const accEl = (n) => container.querySelector(`.season-acc[data-season="${n}"]`);
+
+    const seasonAccHTML = (n) => {
+      const { watched, total, done, times } = seasonStats(n);
+      return `
+      <div class="season-acc ${n === openSeason ? "season-acc--open" : ""} ${done ? "season-acc--done" : ""}" data-season="${n}">
+        <div class="season-acc-head" role="button" tabindex="0" aria-expanded="${n === openSeason}">
+          <span class="season-acc-title">Saison ${n}<i data-lucide="chevron-down" class="season-acc-chev"></i></span>
+          <span class="episode-rewatch-badge season-acc-badge" ${done && times > 1 ? "" : "hidden"}>×${times}</span>
+          <span class="season-acc-count">${total ? `${watched}/${total}` : watched}</span>
+          <button class="season-check-toggle ${done ? "is-watched" : ""}" title="${done ? "Revoir ou retirer la saison" : "Marquer la saison comme vue"}" data-season="${n}"><span class="check-icon">${done ? '<i data-lucide="circle-check-big"></i>' : ""}</span></button>
+        </div>
+        <div class="season-acc-bar"><i style="width:${total ? Math.min(100, (watched / total) * 100) : 0}%"></i></div>
+        <div class="season-acc-body"><div class="season-acc-inner"><div class="season-acc-content"></div></div></div>
+      </div>`;
+    };
+
+    // Met à jour l'en-tête sur place (jamais de innerHTML sur la coche : le
+    // switch haptique vit comme frère du span .check-icon).
+    const updateSeasonHead = (n) => {
+      const acc = accEl(n);
+      if (!acc) return;
+      const { watched, total, done, times } = seasonStats(n);
+      const badge = acc.querySelector(".season-acc-badge");
+      badge.hidden = !(done && times > 1);
+      badge.textContent = `×${times}`;
+      acc.querySelector(".season-acc-count").textContent = total ? `${watched}/${total}` : watched;
+      acc.querySelector(".season-acc-bar i").style.width = `${total ? Math.min(100, (watched / total) * 100) : 0}%`;
+      acc.classList.toggle("season-acc--done", done);
+      const btn = acc.querySelector(".season-check-toggle");
+      btn.classList.toggle("is-watched", done);
+      btn.title = done ? "Revoir ou retirer la saison" : "Marquer la saison comme vue";
+      acc.querySelector(".check-icon").innerHTML = done ? '<i data-lucide="circle-check-big" class="check-pop"></i>' : "";
+      if (typeof lucide !== "undefined") lucide.createIcons();
+    };
+
+    // Charge (ou recharge sur place) les épisodes d'une saison.
+    async function loadSeason(n, { firstLoad = true, peek = true } = {}) {
+      const acc = accEl(n);
+      const content = acc.querySelector(".season-acc-content");
+      if (firstLoad) content.innerHTML = skeletonEpisodeRowsHTML(3);
+      try {
+        const season = await TMDB.getSeason(tvId, n);
+        const airedCount = (season.episodes || []).filter(isAired).length;
+        if (airedCount) seasonTotals[n] = airedCount;
+        const watchCounts = seasonCounts(n);
+        const rows = (season.episodes || [])
+          .map((ep) => {
+            const count = watchCounts[ep.episode_number] || 0;
+            const watched = count > 0;
+            return `
+        <div class="episode-row ${watched ? "episode-row--watched" : ""}" data-season="${n}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}" data-air-date="${ep.air_date || ""}">
           <img class="episode-thumb" src="${TMDB.posterUrl(ep.still_path, "w300")}" alt="" loading="lazy" />
           <div class="episode-info">
             <span class="episode-title-row">
-              <span class="episode-num">S${selectedSeason}E${ep.episode_number}</span>
+              <span class="episode-num">S${n}E${ep.episode_number}</span>
               <span class="episode-title">${escapeHtml(ep.name)}</span>
             </span>
             <span class="episode-date">${ep.air_date ? formatDate(ep.air_date) : ""}</span>
           </div>
           <div class="episode-row-actions">
             ${count > 1 ? `<span class="episode-rewatch-badge">×${count}</span>` : ""}
-            ${watched ? `<button class="episode-rewatch-btn" title="Ajouter un revisionnage" data-season="${selectedSeason}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}" data-air-date="${ep.air_date || ""}"><i data-lucide="refresh-cw"></i></button>` : ""}
-            <button class="episode-check-toggle ${watched ? "is-watched" : ""}" title="${watched ? "Marquer comme non vu" : "Marquer comme vu"}" data-season="${selectedSeason}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}" data-air-date="${ep.air_date || ""}"><span class="check-icon">${watched ? '<i data-lucide="circle-check-big"></i>' : ""}</span></button>
+            ${watched ? `<button class="episode-rewatch-btn" title="Ajouter un revisionnage" data-season="${n}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}" data-air-date="${ep.air_date || ""}"><i data-lucide="refresh-cw"></i></button>` : ""}
+            <button class="episode-check-toggle ${watched ? "is-watched" : ""}" title="${watched ? "Marquer comme non vu" : "Marquer comme vu"}" data-season="${n}" data-episode="${ep.episode_number}" data-runtime="${ep.runtime || ""}" data-air-date="${ep.air_date || ""}"><span class="check-icon">${watched ? '<i data-lucide="circle-check-big"></i>' : ""}</span></button>
           </div>
         </div>`;
-      })
-      .join("");
+          })
+          .join("");
+        const listHTML = `<div class="episode-list">${rows}</div>`;
+        if (firstLoad) revealContent(content, listHTML);
+        else content.innerHTML = listHTML;
+        acc.dataset.loaded = "1";
+        updateSeasonHead(n);
+
+        if (typeof lucide !== "undefined") lucide.createIcons();
+
+        const onDone = () => refreshSeason(n);
+
+        qsa(".episode-check-toggle", content).forEach((btn) => {
+          hapticTrigger(btn);
+          btn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            await toggleEpisodeWatched({
+              tmdb_id: Number(tvId),
+              title,
+              poster_path: posterPath,
+              genres: genreIds,
+              season: Number(btn.dataset.season),
+              episode: Number(btn.dataset.episode),
+              runtime_minutes: Number(btn.dataset.runtime) || null,
+              seasonEpisodes: season.episodes || [],
+            }, btn, onDone);
+          });
+        });
+
+        qsa(".episode-rewatch-btn", content).forEach((btn) => {
+          hapticTrigger(btn);
+          btn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            await addEpisodeRewatch({
+              tmdb_id: Number(tvId),
+              title,
+              poster_path: posterPath,
+              genres: genreIds,
+              season: Number(btn.dataset.season),
+              episode: Number(btn.dataset.episode),
+              runtime_minutes: Number(btn.dataset.runtime) || null,
+              air_date: btn.dataset.airDate || null,
+            }, onDone);
+          });
+        });
+
+        // Swipe tactile : gauche = revisionnage (+1), droite = annule le dernier
+        // visionnage. N'active chaque direction que si l'état le permet (voir
+        // les 3 cas définis avec Jordan : non vu → aucun swipe, vu 1 fois →
+        // gauche seul, vu ≥ 2 fois → les deux).
+        let firstLeftRow = null;
+        let firstRightRow = null;
+
+        qsa(".episode-row", content).forEach((row) => {
+          const count = watchCounts[Number(row.dataset.episode)] || 0;
+          const rowCtx = {
+            tmdb_id: Number(tvId),
+            title,
+            poster_path: posterPath,
+            genres: genreIds,
+            season: Number(row.dataset.season),
+            episode: Number(row.dataset.episode),
+            runtime_minutes: Number(row.dataset.runtime) || null,
+            air_date: row.dataset.airDate || null,
+            seasonEpisodes: season.episodes || [],
+          };
+
+          bindRowSwipe(row, {
+            leftLabel: "Revisionnage +1",
+            rightLabel: "Annuler le dernier visionnage",
+            leftIcon: "refresh-cw",
+            rightIcon: "x",
+            onSwipeLeft: count >= 1 ? () => addEpisodeRewatch(rowCtx, onDone) : null,
+            onSwipeRight: count >= 2 ? () => undoLastEpisodeWatch(rowCtx, onDone) : null,
+          });
+
+          if (count >= 1 && !firstLeftRow) firstLeftRow = row;
+          if (count >= 2 && !firstRightRow) firstRightRow = row;
+        });
+
+        // Hint de découverte, à deux vitesses. La toute première fois qu'une
+        // direction est croisée (par utilisateur, via hasSeenSwipeHint) : un
+        // hint "complet" qui révèle l'icône + le texte, assez longtemps pour
+        // être lu — ça, ça enseigne le geste. Toutes les fois suivantes, à
+        // chaque arrivée sur une saison utilisable : un sliver discret, comme
+        // un simple rappel que le geste existe. Gauche et droite sont hintés
+        // indépendamment, sur la première ligne où chacun est réellement
+        // possible (pas forcément la même ligne).
+        function observePeek(rowEl, direction, big, delay = 0) {
+          if (!rowEl) return;
+          const observer = new IntersectionObserver(
+            (entries) => {
+              if (entries[0].isIntersecting) {
+                setTimeout(() => {
+                  peekRowSwipe(rowEl, direction, { big });
+                  if (big) markSwipeHintSeen(direction);
+                }, delay);
+                observer.disconnect();
+              }
+            },
+            { threshold: 0.6 }
+          );
+          observer.observe(rowEl);
+        }
+
+        if (peek && !suppressPeek) {
+          const bigLeft = !hasSeenSwipeHint("left");
+          const bigRight = !hasSeenSwipeHint("right");
+          const leftDuration = bigLeft ? 1800 : 420;
+          // Si c'est la même ligne des deux côtés, on attend la fin de
+          // l'animation gauche avant de démarrer la droite, pour ne pas les
+          // superposer.
+          const sameRow = firstRightRow && firstRightRow === firstLeftRow;
+          const rightDelay = sameRow ? leftDuration + 300 : 0;
+
+          observePeek(firstLeftRow, "left", bigLeft);
+          observePeek(firstRightRow, "right", bigRight, rightDelay);
+        }
+
+        qsa(".episode-row", content).forEach((row) =>
+          row.addEventListener("click", (e) => {
+            if (e.target.closest("button")) return;
+            location.hash = `#/episode/${tvId}-${row.dataset.season}-${row.dataset.episode}`;
+          })
+        );
+      } catch {
+        content.innerHTML = emptyState("Impossible de charger les épisodes de cette saison.");
+      }
+    }
+
+    // Après une action : recharge sur place les épisodes si la saison est
+    // dépliée/chargée (sans rejouer squelette ni peek), sinon juste l'en-tête.
+    function refreshSeason(n) {
+      if (accEl(n)?.dataset.loaded) return loadSeason(n, { firstLoad: false, peek: false });
+      updateSeasonHead(n);
+      return Promise.resolve();
+    }
+
+    function toggleSeason(n) {
+      const acc = accEl(n);
+      const willOpen = !acc.classList.contains("season-acc--open");
+      acc.classList.toggle("season-acc--open", willOpen);
+      acc.querySelector(".season-acc-head").setAttribute("aria-expanded", String(willOpen));
+      if (willOpen) {
+        lastViewedSeason[tvId] = n;
+        if (!acc.dataset.loaded) loadSeason(n);
+      }
+    }
+
+    // Coche de saison. Saison non complète : marque les épisodes sortis
+    // manquants (toast "Annuler" si la saison était partielle, car "Retirer"
+    // ne saurait pas restaurer l'état d'avant). Saison complète : choix
+    // "Revoir" (+1 par épisode) / "Retirer" (−1 par épisode).
+    async function onSeasonCheck(n, btn) {
+      if (btn.dataset.busy) return;
+      btn.dataset.busy = "1";
+      try {
+        const season = await TMDB.getSeason(tvId, n);
+        const aired = (season.episodes || []).filter(isAired);
+        if (!aired.length) return;
+        seasonTotals[n] = aired.length;
+        const today = todayLocal();
+        const baseCtx = { tmdb_id: Number(tvId), title, poster_path: posterPath, genres: genreIds, season: n };
+        const counts = seasonCounts(n);
+        const missing = aired.filter((ep) => !counts[ep.episode_number]);
+
+        if (missing.length) {
+          const wasPartial = missing.length < aired.length;
+          const { rows } = await DB.bulkInsertDiary(missing.map((ep) => buildEpisodeEntry(baseCtx, today, { ep })));
+          await App.refreshSilently();
+          await refreshSeason(n);
+          if (wasPartial) {
+            toast(`${missing.length} épisode${missing.length > 1 ? "s" : ""} marqué${missing.length > 1 ? "s" : ""} comme vu${missing.length > 1 ? "s" : ""} 🎟️`, "ticket", {
+              actionLabel: "Annuler",
+              onAction: async () => {
+                try {
+                  await DB.deleteDiaryEntries(rows.map((r) => r.id));
+                  await App.refreshSilently();
+                  await refreshSeason(n);
+                } catch (err) {
+                  toast(err.message, "error");
+                }
+              },
+            });
+          } else {
+            toast(`Saison ${n} marquée comme vue 🎟️`, "ticket");
+          }
+          return;
+        }
+
+        const { times } = seasonStats(n);
+        const choice = await showSeasonChoice(n, times);
+        if (!choice) return;
+
+        if (choice === "rewatch") {
+          await DB.bulkInsertDiary(aired.map((ep) => buildEpisodeEntry(baseCtx, today, { rewatch: true, ep })));
+          await App.refreshSilently();
+          await refreshSeason(n);
+          toast(`Saison ${n} : revisionnage ajouté 🎟️`, "ticket");
+          return;
+        }
+
+        // "Retirer" : supprime le dernier visionnage de chaque épisode de la
+        // saison (même logique que undoLastEpisodeWatch, id en tiebreaker).
+        const byEpisode = {};
+        App.diary
+          .filter((e) => String(e.tmdb_id) === String(tvId) && e.media_type === "tv" && e.season === n)
+          .forEach((e) => (byEpisode[e.episode] = byEpisode[e.episode] || []).push(e));
+        const toDelete = Object.values(byEpisode).map(
+          (list) =>
+            list.sort(
+              (a, b) => (b.created_at || "").localeCompare(a.created_at || "") || String(b.id).localeCompare(String(a.id))
+            )[0]
+        );
+        await DB.deleteDiaryEntries(toDelete.map((e) => e.id));
+        await App.refreshSilently();
+        await refreshSeason(n);
+        toast(times > 1 ? `Saison ${n} : un visionnage retiré.` : `Saison ${n} marquée comme non vue.`, "success", {
+          actionLabel: "Annuler",
+          onAction: async () => {
+            try {
+              // Réinsertion telle quelle (sans l'ancien id, régénéré par Supabase).
+              await DB.bulkInsertDiary(toDelete.map(({ id, ...rest }) => rest));
+              await App.refreshSilently();
+              await refreshSeason(n);
+              toast(`Saison ${n} restaurée.`, "success");
+            } catch (err) {
+              toast(err.message, "error");
+            }
+          },
+        });
+      } catch (err) {
+        toast(err.message, "error");
+      } finally {
+        delete btn.dataset.busy;
+      }
+    }
+
     revealContent(
       container,
       `
       <div class="seasons-block">
         <div class="seasons-header">
           <h2>Épisodes</h2>
-          <select id="season-select">${seasonOptions}</select>
         </div>
-        <div class="episode-list">${rows}</div>
+        <div class="season-acc-list">${seasonNumbers.map(seasonAccHTML).join("")}</div>
       </div>`
     );
 
-if (typeof lucide !== "undefined") lucide.createIcons();
+    if (typeof lucide !== "undefined") lucide.createIcons();
 
-    qs("#season-select", container).addEventListener("change", (e) => {
-      renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, Number(e.target.value));
-    });
-
-    qsa(".episode-check-toggle", container).forEach((btn) => {
-      hapticTrigger(btn);
-      btn.addEventListener("click", async (e) => {
+    seasonNumbers.forEach((n) => {
+      const head = accEl(n).querySelector(".season-acc-head");
+      head.addEventListener("click", (e) => {
+        if (e.target.closest(".season-check-toggle")) return;
+        toggleSeason(n);
+      });
+      head.addEventListener("keydown", (e) => {
+        if (e.target !== head || (e.key !== "Enter" && e.key !== " ")) return;
+        e.preventDefault();
+        toggleSeason(n);
+      });
+      const checkBtn = head.querySelector(".season-check-toggle");
+      hapticTrigger(checkBtn);
+      checkBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        await toggleEpisodeWatched({
-  tmdb_id: Number(tvId),
-  title,
-  poster_path: posterPath,
-  genres: genreIds,
-  season: Number(btn.dataset.season),
-  episode: Number(btn.dataset.episode),
-  runtime_minutes: Number(btn.dataset.runtime) || null,
-  seasonEpisodes: season.episodes || [],
-}, btn, () =>
-          renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, selectedSeason, true)
-        );
+        onSeasonCheck(n, checkBtn);
       });
     });
 
-    qsa(".episode-rewatch-btn", container).forEach((btn) => {
-      hapticTrigger(btn);
-      btn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        await addEpisodeRewatch({
-          tmdb_id: Number(tvId),
-          title,
-          poster_path: posterPath,
-          genres: genreIds,
-          season: Number(btn.dataset.season),
-          episode: Number(btn.dataset.episode),
-          runtime_minutes: Number(btn.dataset.runtime) || null,
-          air_date: btn.dataset.airDate || null,
-        }, () => renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, selectedSeason));
-      });
-    });
-
-    // Swipe tactile : gauche = revisionnage (+1), droite = annule le dernier
-    // visionnage. N'active chaque direction que si l'état le permet (voir
-    // les 3 cas définis avec Jordan : non vu → aucun swipe, vu 1 fois →
-    // gauche seul, vu ≥ 2 fois → les deux).
-    let firstLeftRow = null;
-    let firstRightRow = null;
-
-    qsa(".episode-row", container).forEach((row) => {
-      const count = watchCounts[Number(row.dataset.episode)] || 0;
-      const rowCtx = {
-        tmdb_id: Number(tvId),
-        title,
-        poster_path: posterPath,
-        genres: genreIds,
-        season: Number(row.dataset.season),
-        episode: Number(row.dataset.episode),
-        runtime_minutes: Number(row.dataset.runtime) || null,
-        air_date: row.dataset.airDate || null,
-        seasonEpisodes: season.episodes || [],
-      };
-
-      bindRowSwipe(row, {
-        leftLabel: "Revisionnage +1",
-        rightLabel: "Annuler le dernier visionnage",
-        leftIcon: "refresh-cw",
-        rightIcon: "x",
-        onSwipeLeft: count >= 1
-          ? () => addEpisodeRewatch(rowCtx, () =>
-              renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, selectedSeason, true)
-            )
-          : null,
-        onSwipeRight: count >= 2
-          ? () => undoLastEpisodeWatch(rowCtx, () =>
-              renderSeasonsInto(container, tvId, numberOfSeasons, title, posterPath, genreIds, selectedSeason, true)
-            )
-          : null,
-      });
-
-      if (count >= 1 && !firstLeftRow) firstLeftRow = row;
-      if (count >= 2 && !firstRightRow) firstRightRow = row;
-    });
-
-    // Hint de découverte, à deux vitesses. La toute première fois qu'une
-    // direction est croisée (par utilisateur, via hasSeenSwipeHint) : un
-    // hint "complet" qui révèle l'icône + le texte, assez longtemps pour
-    // être lu — ça, ça enseigne le geste. Toutes les fois suivantes, à
-    // chaque arrivée sur une saison utilisable : un sliver discret, comme
-    // un simple rappel que le geste existe. Gauche et droite sont hintés
-    // indépendamment, sur la première ligne où chacun est réellement
-    // possible (pas forcément la même ligne).
-    function observePeek(rowEl, direction, big, delay = 0) {
-      if (!rowEl) return;
-      const observer = new IntersectionObserver(
-        (entries) => {
-          if (entries[0].isIntersecting) {
-            setTimeout(() => {
-              peekRowSwipe(rowEl, direction, { big });
-              if (big) markSwipeHintSeen(direction);
-            }, delay);
-            observer.disconnect();
-          }
-        },
-        { threshold: 0.6 }
-      );
-      observer.observe(rowEl);
-    }
-
-    if (!suppressPeek) {
-      const bigLeft = !hasSeenSwipeHint("left");
-      const bigRight = !hasSeenSwipeHint("right");
-      const leftDuration = bigLeft ? 1800 : 420;
-      // Si c'est la même ligne des deux côtés, on attend la fin de
-      // l'animation gauche avant de démarrer la droite, pour ne pas les
-      // superposer.
-      const sameRow = firstRightRow && firstRightRow === firstLeftRow;
-      const rightDelay = sameRow ? leftDuration + 300 : 0;
-
-      observePeek(firstLeftRow, "left", bigLeft);
-      observePeek(firstRightRow, "right", bigRight, rightDelay);
-    }
-
-    qsa(".episode-row", container).forEach((row) =>
-  row.addEventListener("click", (e) => {
-    if (e.target.closest("button")) return;
-
-    location.hash = `#/episode/${tvId}-${row.dataset.season}-${row.dataset.episode}`;
-  })
-);
-
+    await loadSeason(openSeason, { peek: !suppressPeek });
   } catch {
     container.innerHTML = emptyState("Impossible de charger les épisodes de cette saison.");
   }
@@ -3428,6 +3624,33 @@ function showConfirm(message, { confirmLabel = "Oui", cancelLabel = "Non", hint 
     overlay.querySelector("#confirm-no").addEventListener("click", () => close(false));
     overlay.querySelector("#confirm-yes").addEventListener("click", () => close(true));
     overlay.addEventListener("click", (e) => e.target === overlay && close(false));
+  });
+}
+
+// ---------- CHOIX SUR UNE SAISON COMPLÈTE (revoir / retirer) ----------
+// Renvoie "rewatch", "remove" ou null (fermé en tapant à côté).
+function showSeasonChoice(season, times) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal modal--confirm">
+        <p class="modal-confirm-text">Saison ${season} ${times > 1 ? `vue ${times} fois` : "vue en entier"}. Que veux-tu faire ?</p>
+        <p class="modal-confirm-hint">Revoir : ×${times + 1} · Retirer : ${times > 1 ? `×${times - 1}` : "non vue"}</p>
+        <div class="modal-actions">
+          <button id="season-choice-remove" class="btn btn--ghost">Retirer</button>
+          <button id="season-choice-rewatch" class="btn btn--accent">Revoir</button>
+        </div>
+      </div>
+    `;
+    showModalOverlay(overlay);
+    const close = (result) => {
+      closeModalOverlay(overlay);
+      resolve(result);
+    };
+    overlay.querySelector("#season-choice-remove").addEventListener("click", () => close("remove"));
+    overlay.querySelector("#season-choice-rewatch").addEventListener("click", () => close("rewatch"));
+    overlay.addEventListener("click", (e) => e.target === overlay && close(null));
   });
 }
 

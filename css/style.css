@@ -939,6 +939,56 @@ a.filter-btn { text-decoration: none; display: inline-flex; align-items: center;
     background-size: 0.9em;
 }
 .episode-list { display: flex; flex-direction: column; gap: 0.4rem; }
+
+/* Saisons en accordéon (fiche série) */
+.season-acc-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.season-acc {
+  --ease-acc: cubic-bezier(0.32, 0.72, 0, 1);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: border-color 0.3s ease;
+}
+.season-acc--done { border-color: var(--sage); }
+.season-acc-head {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.8em 0.9em;
+  cursor: pointer;
+  user-select: none; -webkit-user-select: none;
+}
+.season-acc-title {
+  flex: 1; display: flex; align-items: center; gap: 0.4rem;
+  font-family: var(--font-display); font-size: 0.85rem; font-weight: 600;
+}
+.season-acc-chev { width: 16px; height: 16px; color: var(--muted); transition: transform 0.35s var(--ease-acc); }
+.season-acc--open .season-acc-chev { transform: rotate(180deg); }
+.season-acc-count { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); }
+.season-check-toggle {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--ink);
+  color: transparent;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s ease;
+}
+.season-check-toggle:hover { border-color: var(--sage); }
+.season-check-toggle.is-watched { background: var(--sage); color: var(--ink); border-color: var(--sage); }
+.season-acc-bar { height: 3px; background: var(--ink); }
+.season-acc-bar i { display: block; height: 100%; background: var(--sage); transition: width 0.45s var(--ease-acc); }
+/* Ouverture/fermeture fluide : la hauteur s'anime via grid 0fr → 1fr (pas de
+   hauteur à mesurer en JS), le contenu se fond et glisse légèrement. */
+.season-acc-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.38s var(--ease-acc); }
+.season-acc--open .season-acc-body { grid-template-rows: 1fr; }
+.season-acc-inner { overflow: hidden; min-height: 0; }
+.season-acc-content {
+  padding: 0.4rem 0.6rem 0.7rem;
+  opacity: 0; transform: translateY(-6px);
+  transition: opacity 0.25s ease, transform 0.38s var(--ease-acc);
+}
+.season-acc--open .season-acc-content { opacity: 1; transform: none; transition-delay: 0.06s; }
 .episode-airdate {color: var(--muted)}
 .episode-row {
   display: grid;
